@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tasks, attention, questionAnswers } from '../ui/model.ts';
+import { tasks, attention, questionAnswers, taskAttentionKey } from '../ui/model.ts';
 test('presentation preserves native workflow failure and never infers dependency or verification', () => {
   const row = {
     id: 'session',
@@ -94,5 +94,107 @@ test('question answers use the native nested selection mode and preserve all sel
       { questionId: 'many', selectedLabels: ['Alpha', 'Beta'] },
       { questionId: 'free', freeText: 'Explanation' },
     ],
+  );
+});
+
+test('failed turn retains the native error and does not equate connectivity with success', () => {
+  const error = { kind: 'authRequired', message: 'not logged in', retryable: false };
+  const row = {
+    id: 's',
+    lifecycle: 'connected',
+    state: {
+      current: true,
+      items: [],
+      turns: [{ turnId: 't', terminal: 'failed', error }],
+      approvals: [],
+      userInputs: [],
+    },
+  };
+  assert.deepEqual(tasks(row, {})[0].error, error);
+  assert.equal(attention({ sessions: [row] }, {})[0].kind, 'failure');
+});
+
+test('routine reminders stay inspectable without flooding attention; failed reminders stay visible', () => {
+  const row = {
+    id: 's',
+    lifecycle: 'connected',
+    state: {
+      current: true,
+      turns: [],
+      approvals: [],
+      userInputs: [],
+      items: ['completed', 'cancelled', 'failed'].map((status) => ({
+        itemId: status,
+        kind: 'reminderChild',
+        status,
+        revision: 1,
+      })),
+    },
+  };
+  assert.equal(tasks(row, {}).length, 3);
+  assert.deepEqual(
+    attention({ sessions: [row] }, {}).map((e) => e.target),
+    ['s:failed'],
+  );
+  assert.equal(attention({ sessions: [row] }, { showRuntimeReminders: true }).length, 3);
+});
+
+test('multiline task briefs use their first line as a derived label', () => {
+  const row = {
+    id: 's',
+    state: {
+      turns: [{ turnId: 't', terminal: 'completed' }],
+      items: [
+        {
+          itemId: 'i',
+          kind: 'userMessage',
+          turnId: 't',
+          text: 'Audit dispatch queue\nDetailed instructions',
+        },
+      ],
+    },
+  };
+  assert.equal(tasks(row, {})[0].label, 'Audit dispatch queue');
+});
+
+test('inspection acknowledgements clear attention without changing execution or accepting later revisions', () => {
+  const row = {
+    id: 's',
+    state: {
+      current: true,
+      turns: [],
+      approvals: [],
+      userInputs: [],
+      items: [
+        { itemId: 'w', kind: 'workflow', entryId: 'Audit', status: 'completed', revision: 2 },
+      ],
+    },
+  };
+  const prefs = { acknowledgedTaskFacts: [taskAttentionKey(tasks(row, {})[0])] };
+  assert.equal(attention({ sessions: [row] }, prefs).length, 0);
+  assert.equal(row.state.items[0].status, 'completed');
+  assert.equal(tasks(row, prefs).length, 1);
+  row.state.items[0].revision = 3;
+  assert.equal(attention({ sessions: [row] }, prefs)[0].kind, 'review');
+});
+
+test('inspection acknowledgement never hides or reroutes a pending question', () => {
+  const row = {
+    id: 's',
+    state: {
+      current: true,
+      items: [],
+      approvals: [],
+      turns: [
+        { turnId: 't', terminal: 'completed' },
+        { turnId: 'other', terminal: 'completed' },
+      ],
+      userInputs: [{ userInputId: 'q', turnId: 't' }],
+    },
+  };
+  const prefs = { acknowledgedTaskFacts: [taskAttentionKey(tasks(row, {})[0])] };
+  assert.equal(
+    attention({ sessions: [row] }, prefs).find((e) => e.kind === 'question').target,
+    's:t',
   );
 });

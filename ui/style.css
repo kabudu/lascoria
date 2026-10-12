@@ -413,7 +413,7 @@ main {
 }
 .task-map {
   position: relative;
-  min-width: 820px;
+  min-width: 100%;
 }
 .edges {
   position: absolute;
@@ -840,4 +840,15 @@ dialog > button {
 }
 .diff .hunk {
   color: var(--accent);
+}
+
+.runtime-filter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+.runtime-filter input {
+  width: auto;
 }

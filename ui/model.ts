@@ -9,8 +9,12 @@ export function tasks(session: SessionRow, prefs: Prefs): Task[] {
       id,
       sessionId: session.id,
       turnId: turn.turnId,
-      label: prefs.labels?.[id] ?? prompt?.text?.slice(0, 100) ?? `Turn ${turn.turnId.slice(-8)}`,
+      label:
+        prefs.labels?.[id] ??
+        prompt?.text?.trim().split('\n')[0]?.slice(0, 100) ??
+        `Turn ${turn.turnId.slice(-8)}`,
       status: turn.terminal ?? 'running',
+      error: turn.error,
       provenance: 'derived' as const,
     };
   });
@@ -23,7 +27,7 @@ export function tasks(session: SessionRow, prefs: Prefs): Task[] {
         sessionId: session.id,
         turnId: item.turnId,
         item,
-        label: prefs.labels?.[id] ?? item.objective ?? item.label ?? item.kind,
+        label: prefs.labels?.[id] ?? item.objective ?? item.label ?? item.entryId ?? item.kind,
         status: item.status,
         provenance: 'native' as const,
         parentId: item.turnId ? `${session.id}:${item.turnId}` : undefined,
@@ -48,9 +52,19 @@ export function tasks(session: SessionRow, prefs: Prefs): Task[] {
   );
   return [...turns, ...children, ...workflowChildren];
 }
+export function taskAttentionKey(task: Task) {
+  return JSON.stringify([
+    task.id,
+    task.status,
+    task.item?.revision ?? 0,
+    task.nativeChild?.attempt ?? 0,
+    task.nativeChild?.failureKind ?? task.error?.kind ?? null,
+  ]);
+}
 export function attention(status: Status, prefs: Prefs) {
   return status.sessions.flatMap((session) => {
     const nodes = tasks(session, prefs);
+    const unseen = (task: Task) => !prefs.acknowledgedTaskFacts?.includes(taskAttentionKey(task));
     const target = (turnId?: string) => nodes.find((t) => t.turnId === turnId)?.id ?? nodes[0]?.id;
     return [
       ...(session.interruptions ?? [])
@@ -93,7 +107,14 @@ export function attention(status: Status, prefs: Prefs) {
         label: 'Answer required',
       })),
       ...nodes
-        .filter((t) => ['failed', 'rejected', 'cancelled'].includes(t.status))
+        .filter(
+          (t) =>
+            unseen(t) &&
+            ['failed', 'rejected', 'cancelled'].includes(t.status) &&
+            (t.item?.kind !== 'reminderChild' ||
+              t.status !== 'cancelled' ||
+              prefs.showRuntimeReminders),
+        )
         .map((t) => ({
           id: t.id,
           sessionId: session.id,
@@ -102,7 +123,12 @@ export function attention(status: Status, prefs: Prefs) {
           label: t.label,
         })),
       ...nodes
-        .filter((t) => t.status === 'completed')
+        .filter(
+          (t) =>
+            unseen(t) &&
+            t.status === 'completed' &&
+            (t.item?.kind !== 'reminderChild' || prefs.showRuntimeReminders),
+        )
         .map((t) => ({
           id: `${t.id}:review`,
           sessionId: session.id,

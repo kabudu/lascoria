@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Surface native task errors and workflow summaries, reduce routine reminder noise, isolate per-session drafts and bind live sessions to an explicit native catalog model for delegation.
+
 - Review Stage B state races, capture-scoped evidence paging, focused-field persistence, save retries, keyboard tabs and capture limits; validate light mode with automated WCAG checks.
 - Add a Tauri/React/TypeScript desktop workflow with a light default theme, task map/list, attention queue, transcript, permission decisions and contextual controls.
 - Persist presentation state separately from Muse execution; add immutable Git captures and revision-bound test, review and acceptance attestations with freshness rejection.

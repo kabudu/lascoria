@@ -114,6 +114,18 @@ test('real Muse implementation, tests and review through React and the native Ru
       await page.getByRole('button', { name: 'Start session', exact: true }).click();
       await expect.poll(async () => (await status()).sessions.length).toBe(sessions.length + 1);
       const createdSession = (await status()).sessions.at(-1).id;
+      await expect
+        .poll(
+          async () =>
+            (await status()).commands.find(
+              (c: any) => c.operation === 'start' && c.sessionId === createdSession,
+            )?.result?.session?.modelId,
+        )
+        .toBe('stage-a-fixture');
+      const startReceipt = (await status()).commands.find(
+        (c: any) => c.operation === 'start' && c.sessionId === createdSession,
+      );
+      expect(startReceipt.result.session.providerId).toBe('meta');
 
       if (marker === 'STAGE_B_IMPLEMENT') {
         await expect(
@@ -157,6 +169,11 @@ test('real Muse implementation, tests and review through React and the native Ru
     await expect(
       page.getByRole('button', { name: /Workflow child.*completed, native/ }).first(),
     ).toBeVisible();
+    const mapBounds = (await page.locator('.map-scroll').boundingBox())!;
+    for (const node of await page.locator('.task-node').all()) {
+      const bounds = (await node.boundingBox())!;
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(mapBounds.x + mapBounds.width);
+    }
     await page
       .getByRole('button', { name: /Workflow child.*completed, native/ })
       .first()
@@ -165,6 +182,12 @@ test('real Muse implementation, tests and review through React and the native Ru
       page.getByRole('heading', { name: 'Native workflow child', exact: true }),
     ).toBeVisible();
     await expect(page.locator('.command-area textarea')).toBeDisabled();
+    await page.getByRole('button', { name: 'Mark completion inspected', exact: true }).click();
+    await expect(
+      page
+        .getByRole('region', { name: 'Attention' })
+        .getByRole('button', { name: /Inspect completion: Workflow child/ }),
+    ).toHaveCount(0);
     await page.getByRole('button', { name: 'Open owning turn', exact: true }).click();
 
     expect(await readFile(join(workspace, 'sum.mjs'), 'utf8')).toContain('a + b');
@@ -276,6 +299,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     await page.reload();
     await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
     await page.getByText('Task label, notes and relationships', { exact: true }).click();
+    await page.getByLabel('Session display label', { exact: true }).fill('Implementation');
     await page.getByLabel('Task label', { exact: true }).fill('Implement addition');
     await expect
       .poll(
@@ -311,6 +335,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     await expect(page.getByRole('button', { name: 'Task map', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Dark', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /Implement addition/ }).first()).toBeVisible();
+    await expect(page.locator('.session-card').first()).toContainText('Implementation');
     expect((await status()).pid).toBe(daemon.pid);
     await page.getByRole('tab', { name: 'transcript', exact: true }).focus();
     await page.keyboard.press('End');
@@ -365,6 +390,18 @@ test('real Muse implementation, tests and review through React and the native Ru
     page = await context.newPage();
     await page.goto('/');
     await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await page.locator('.session-card').first().click();
+    await page.locator('.command-area textarea').fill('Follow-up acknowledgement check');
+    await page.locator('.session-card').nth(1).click();
+    await page.locator('.command-area textarea').fill('Independent unsent draft');
+    await page.locator('.session-card').first().click();
+    await expect(page.locator('.command-area textarea')).toHaveValue(
+      'Follow-up acknowledgement check',
+    );
+    await page.getByRole('button', { name: 'Start turn', exact: true }).click();
+    await expect(page.locator('.command-area textarea')).toHaveValue('');
+    await page.locator('.session-card').nth(1).click();
+    await expect(page.locator('.command-area textarea')).toHaveValue('Independent unsent draft');
     await page.getByRole('button', { name: 'Quit & stop', exact: true }).click();
     await expect(page.getByRole('dialog')).toContainText('registered sessions');
     await page.getByRole('button', { name: 'Stop all sessions', exact: true }).click();

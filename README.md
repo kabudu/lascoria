@@ -25,7 +25,7 @@ npm start -- start '{"workspace":"/absolute/path/to/repository"}' session-one
 npm start -- status
 ```
 
-`up` launches the Rust service independently and reconnects if it already exists. `supervisor` runs it in the foreground for diagnostics. The default provider is credential-free `echo`; set `SCH_PROVIDER=meta` before launching the service to use your configured provider. Muse owns credentials, permissions, and its sandbox. The harness does not disable them.
+`up` launches the Rust service independently and reconnects if it already exists. `supervisor` runs it in the foreground for diagnostics. The default provider is credential-free `echo`; set `SCH_PROVIDER=meta` before launching the service to use your configured provider. Live sessions explicitly select the provider and default model advertised by Muse's native catalog, so workflow children have a recorded parent route. This uses the catalog default, with no model picker in this development client; existing sessions retain their recorded route. Muse owns credentials, permissions, and its sandbox. The harness does not disable them.
 
 Copy the returned session ID into the next request:
 

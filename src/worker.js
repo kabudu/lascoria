@@ -264,10 +264,20 @@ async function execute(message) {
     opening = true;
     sessionId = params.sessionId;
     runtime.attach(sessionId, []);
+    let initialRoute = {};
+    if (operation === 'start' && (process.env.SCH_PROVIDER ?? 'echo') !== 'echo') {
+      const catalog = await runtime.request('model/list', {});
+      const defaults = catalog.models.filter((model) => model.isDefault);
+      if (defaults.length !== 1 || !catalog.providerId)
+        throw new ValidationError(
+          'Muse must advertise one default model before starting a live session',
+        );
+      initialRoute = { providerId: catalog.providerId, modelId: defaults[0].modelId };
+    }
     const result = await runtime.command(
       operation === 'start' ? 'session/start' : 'session/resume',
       operation === 'start'
-        ? { sessionId, workspaceRoot: params.workspace }
+        ? { sessionId, workspaceRoot: params.workspace, ...initialRoute }
         : { sessionId, excludeItems: true },
       commandId,
     );

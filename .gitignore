@@ -12,3 +12,5 @@ src-tauri/gen/
 dist/
 test-results/
 playwright-report/
+
+.dev/

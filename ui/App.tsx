@@ -2,11 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { FormEvent } from 'react';
 import { connect, request } from './api';
-import { tasks, attention, questionAnswers } from './model';
+import { tasks, attention, questionAnswers, taskAttentionKey } from './model';
 import type { Status, SessionRow, Task, Prefs, Artifact, Evidence, Item, Json } from './types';
 const empty: Status = { pid: 0, sessions: [], commands: [] };
 const text = (value: Json) => (typeof value === 'string' ? value : JSON.stringify(value, null, 2));
 const short = (value: string) => value.slice(-8);
+function workflowSummary(value: string) {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
 export function App() {
   const [status, setStatus] = useState<Status>(empty),
     [prefs, setPrefs] = useState<Prefs>({ theme: 'light', view: 'map' });
@@ -14,6 +21,8 @@ export function App() {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
+  const [mapWidth, setMapWidth] = useState(600);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [modal, setModal] = useState<'start' | 'stop' | 'palette' | null>(null),
     [tab, setTab] = useState('transcript');
   const [review, setReview] = useState<{
@@ -239,6 +248,14 @@ export function App() {
       mapRef.current.scrollTop = prefs.viewport.y;
     }
   }, [prefs.view, session?.id]);
+  useEffect(() => {
+    const element = mapRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setMapWidth(element.clientWidth));
+    observer.observe(element);
+    setMapWidth(element.clientWidth);
+    return () => observer.disconnect();
+  }, [prefs.view, session?.id]);
   async function loadReview() {
     if (!session) return;
     const value = await request('review/list', {
@@ -349,13 +366,18 @@ export function App() {
   );
   const visible = nodes.filter(
     (n) =>
+      (n.item?.kind !== 'reminderChild' ||
+        prefs.showRuntimeReminders ||
+        n.id === task?.id ||
+        ['failed', 'rejected'].includes(n.status)) &&
       (!prefs.collapsed?.includes(n.id) || n.id === task?.id) &&
       n.label.toLowerCase().includes((prefs.search ?? '').toLowerCase()),
   );
+  const columns = Math.max(1, Math.floor((mapWidth - 40) / 260));
   const position = (node: Task, index: number) =>
     prefs.positions?.[node.id] ?? {
-      x: 40 + (index % 3) * 260,
-      y: 40 + Math.floor(index / 3) * 154,
+      x: 40 + (index % columns) * 260,
+      y: 40 + Math.floor(index / columns) * 154,
     };
   async function capture() {
     if (!session || !task?.turnId) return;
@@ -402,7 +424,8 @@ export function App() {
               onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
             >
               <span className="eyebrow">{s.workspace.split('/').at(-1)}</span>
-              <strong>{short(s.id)}</strong>
+              <strong>{prefs.sessionLabels?.[s.id] || short(s.id)}</strong>
+              {prefs.sessionLabels?.[s.id] && <small>{short(s.id)}</small>}
               <span>
                 {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
                 {queue.filter((q) => q.sessionId === s.id).length} attention
@@ -527,6 +550,16 @@ export function App() {
                       placeholder="Filter tasks…"
                     />
                   </label>
+                  <label className="runtime-filter">
+                    <input
+                      type="checkbox"
+                      checked={prefs.showRuntimeReminders ?? false}
+                      onChange={(event) =>
+                        updatePrefs({ showRuntimeReminders: event.target.checked })
+                      }
+                    />
+                    Runtime reminders
+                  </label>
                   <button
                     onClick={() =>
                       updatePrefs({
@@ -568,7 +601,16 @@ export function App() {
                   >
                     <div
                       className="task-map"
-                      style={{ height: Math.max(420, Math.ceil(visible.length / 3) * 154 + 80) }}
+                      style={{
+                        width: Math.max(
+                          mapWidth,
+                          ...visible.map((node, index) => position(node, index).x + 260),
+                        ),
+                        height: Math.max(
+                          420,
+                          ...visible.map((node, index) => position(node, index).y + 154),
+                        ),
+                      }}
                       aria-label="Task map"
                     >
                       <svg className="edges" width="100%" height="100%" aria-hidden="true">
@@ -654,6 +696,21 @@ export function App() {
                 {task && (
                   <details className="layout-controls">
                     <summary>Task label, notes and relationships</summary>
+                    <label>
+                      Session display label
+                      <input
+                        value={prefs.sessionLabels?.[session.id] ?? ''}
+                        maxLength={100}
+                        onChange={(event) =>
+                          updatePrefs({
+                            sessionLabels: {
+                              ...prefs.sessionLabels,
+                              [session.id]: event.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </label>
                     <label>
                       Task label
                       <input
@@ -785,6 +842,47 @@ export function App() {
                       : 'Derived grouping by native turn ID'}{' '}
                     · {task?.status ?? 'idle'}
                   </p>
+                  {task &&
+                    queue.some(
+                      (entry) =>
+                        entry.target === task.id && ['review', 'failure'].includes(entry.kind),
+                    ) && (
+                      <div>
+                        <button
+                          onClick={() =>
+                            updatePrefs({
+                              acknowledgedTaskFacts: [
+                                ...new Set([
+                                  ...(prefs.acknowledgedTaskFacts ?? []),
+                                  taskAttentionKey(task),
+                                ]),
+                              ],
+                            })
+                          }
+                        >
+                          {task.status === 'completed'
+                            ? 'Mark completion inspected'
+                            : 'Mark failure seen'}
+                        </button>
+                        <p className="muted">
+                          Inspection acknowledgement is presentation state. Verification and
+                          acceptance use evidence.
+                        </p>
+                      </div>
+                    )}
+                  {task?.error && (
+                    <section className="revision-badge stale" aria-label="Native task failure">
+                      <strong>Muse error: {task.error.kind}</strong>
+                      <span>{task.error.message}</span>
+                      {task.error.kind === 'authRequired' && (
+                        <p>
+                          Sign in with <code>muse login</code> or configure a provider API key
+                          locally, then start a new turn. The failed turn is retained for
+                          inspection.
+                        </p>
+                      )}
+                    </section>
+                  )}
                 </div>
                 {task?.provenance === 'native' &&
                   nodes.some((node) => node.id === session.id + ':' + task.turnId) && (
@@ -892,6 +990,18 @@ export function App() {
                               )}
                             </pre>
                           </details>
+                          {item.kind === 'workflow' && item.finalSummary && (
+                            <section
+                              className="revision-badge"
+                              aria-label="Native workflow outcome"
+                            >
+                              <strong>Native workflow outcome</strong>
+                              <pre>{workflowSummary(item.finalSummary)}</pre>
+                              <small>
+                                This is a returned summary, not independently verified evidence.
+                              </small>
+                            </section>
+                          )}
                           {item.args && (
                             <details>
                               <summary>Arguments</summary>
@@ -1096,13 +1206,15 @@ export function App() {
                       e.preventDefault();
                       const data = new FormData(e.currentTarget);
                       const message = String(data.get('message'));
-                      await mutate(session.state.activeTurnId ? 'steer' : 'turn', {
+                      const result = await mutate(session.state.activeTurnId ? 'steer' : 'turn', {
                         sessionId: session.id,
                         text: message,
                         ...(session.state.activeTurnId
                           ? { turnId: session.state.activeTurnId }
                           : {}),
                       });
+                      if (result && ['applied', 'accepted'].includes(result.status))
+                        setDrafts((previous) => ({ ...previous, [session.id]: '' }));
                     }}
                   >
                     <label htmlFor="message">
@@ -1113,6 +1225,10 @@ export function App() {
                     <textarea
                       id="message"
                       name="message"
+                      value={drafts[session.id] ?? ''}
+                      onChange={(event) =>
+                        setDrafts((previous) => ({ ...previous, [session.id]: event.target.value }))
+                      }
                       required
                       maxLength={16000}
                       placeholder="Describe the next step…"
@@ -1232,8 +1348,8 @@ export function App() {
               />
             </label>
             <p className="muted">
-              Muse controls tool permissions. Closing this window leaves the supervisor and sessions
-              running.
+              Live sessions use Muse's advertised catalog default model. Muse controls tool
+              permissions. Closing this window leaves the supervisor and sessions running.
             </p>
             <button className="primary" disabled={busy}>
               Start session

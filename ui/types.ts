@@ -39,16 +39,20 @@ export interface Task {
   parentId?: string;
   childSessionId?: string;
   nativeChild?: Json;
+  error?: { kind: string; message: string; retryable?: boolean };
 }
 export interface Prefs {
   selection?: string;
   selections?: Record<string, string>;
   sessionId?: string;
+  sessionLabels?: Record<string, string>;
   view?: 'map' | 'list';
   theme?: 'dark' | 'light';
   search?: string;
+  showRuntimeReminders?: boolean;
   collapsed?: string[];
   acknowledgedInterruptions?: string[];
+  acknowledgedTaskFacts?: string[];
   labels?: Record<string, string>;
   annotations?: Record<string, string>;
   positions?: Record<string, { x: number; y: number }>;
