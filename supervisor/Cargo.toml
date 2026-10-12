@@ -1,0 +1,16 @@
+[package]
+name = "constellation-supervisor"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+
+[dependencies]
+anyhow = "1"
+fs2 = "0.4"
+libc = "0.2"
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+futures-util = { version = "0.3", features = ["sink"] }
+uuid = { version = "1", features = ["v4", "v7"] }

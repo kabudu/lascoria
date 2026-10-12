@@ -1,0 +1,31 @@
+{
+  "name": "spatial-constellation-harness",
+  "version": "0.1.0",
+  "description": "Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.",
+  "scripts": {
+    "build": "cargo build --manifest-path supervisor/Cargo.toml",
+    "test": "npm run build && cargo test --manifest-path supervisor/Cargo.toml && node --test test/*.test.js",
+    "start": "node src/cli.js",
+    "check": "cargo fmt --manifest-path supervisor/Cargo.toml --check && cargo clippy --manifest-path supervisor/Cargo.toml --all-targets -- -D warnings && prettier --check src testing test package.json .prettierrc.json",
+    "format": "cargo fmt --manifest-path supervisor/Cargo.toml && prettier --write src testing test package.json .prettierrc.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kabudu/spatial-constellation-harness.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/kabudu/spatial-constellation-harness/issues"
+  },
+  "homepage": "https://github.com/kabudu/spatial-constellation-harness#readme",
+  "dependencies": {
+    "@muse-code/sdk": "1.4.6"
+  },
+  "private": true,
+  "devDependencies": {
+    "prettier": "3.9.10"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

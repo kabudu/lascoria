@@ -2,8 +2,51 @@
 
 Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.
 
-The initial scope is a local macOS client for Muse Code, with a separate supervisor for background execution. This repository currently contains the revised product strategy and technical implementation plan.
+Stage A implements a local Rust supervisor, a Node worker using the official Muse SDK, and a diagnostic CLI. The eventual interface is Tauri with React and TypeScript. A native Rust MSP SDK is a possible follow-up after the concept is proven; the current `muse-codes` crate wraps headless CLI output and does not replace this interactive MSP integration.
 
-## Implementation plan
+## Run the diagnostic client
 
-[Read the revised plan](docs/Spatial_Constellation_Harness_Revised_Plan.docx).
+Prerequisites: macOS, Rust 1.97+, Node.js 24+, and Muse Code 1.4.6 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.6 and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
+
+```sh
+npm ci
+npm run build
+npm start -- up
+npm start -- start '{"workspace":"/absolute/path/to/repository"}' session-one
+npm start -- status
+```
+
+`up` launches the Rust service independently and reconnects if it already exists. `supervisor` runs it in the foreground for diagnostics. The default provider is credential-free `echo`; set `SCH_PROVIDER=meta` before launching the service to use your configured provider. Muse owns credentials, permissions, and its sandbox. The harness does not disable them.
+
+Copy the returned session ID into the next request:
+
+```sh
+npm start -- turn '{"sessionId":"SESSION_ID","text":"Explain this repository"}' turn-one
+npm start -- status
+npm start -- steer '{"sessionId":"SESSION_ID","turnId":"CURRENT_TURN_ID","text":"Focus on the tests"}' steer-one
+npm start -- cancel '{"sessionId":"SESSION_ID","turnId":"CURRENT_TURN_ID"}' cancel-one
+```
+
+For an approval, inspect `sessions[].state.approvals[].requested`, then send `decide` with the exact `sessionId`, `approvalId`, `currentRequirementId` as `requirementId`, and one offered `choiceId`. For structured questions, use `answer` with the current `userInputId` and the runtime's question IDs and answer format. Old turn targets and resolved approvals are rejected.
+
+Use a stable request ID when retrying. The CLI prints an automatically generated ID before submission if one was not supplied. Reusing an ID returns its journaled outcome; changing its payload is rejected. `outcomeUnknown` does not authorize retrying with a new ID: inspect the recovered session and its effects first.
+
+```sh
+npm start -- resume '{"sessionId":"SESSION_ID"}' recover-one
+npm start -- stop '{"sessions":["SESSION_ID"]}' stop-one
+```
+
+`stop` must name every registered session in the order shown by `status`. A changed set is rejected. It drains all workers and stops the supervisor. Closing an ordinary client only closes its socket.
+
+State lives in `~/.spatial-constellation`, or `SCH_STATE_DIR`. Use separate directories for independent diagnostic runs. The directory is private, the authenticated Unix socket and token are owner-restricted, and an OS lock prevents duplicate supervisors. No network control API is exposed. `SCH_NODE` selects Node; `SCH_WORKER` is a private development/test override. Launch-time environment changes take effect on the next supervisor start.
+
+## Verify Stage A
+
+```sh
+npm run check
+npm test
+```
+
+The suite requires the real Muse 1.4.6 binary. It uses temporary repositories and isolated XDG configuration/data directories. Its scripted model binds only to loopback, uses a dummy credential, and exercises real Muse tools and approvals without a paid provider. It also uses explicit fault fixtures for lost acknowledgements and incompatible handshakes. Test-owned processes and temporary data are cleaned up.
+
+[Stage A requirements, evidence, and limits](docs/stage-a.md) distinguish real runtime proof from injected scenarios. [Architecture decisions](docs/architecture.md) describe the Rust/Node boundary and later SDK replacement option. [Revised product plan](docs/Spatial_Constellation_Harness_Revised_Plan.docx) remains the source plan; the Rust ownership decision in the architecture document supersedes its provisional Node supervisor choice.

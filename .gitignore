@@ -1,2 +1,8 @@
 .DS_Store
 ~$*.docx
+
+node_modules/
+.state/
+coverage/
+
+supervisor/target/
