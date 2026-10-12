@@ -42,6 +42,7 @@ export interface Task {
   error?: { kind: string; message: string; retryable?: boolean };
 }
 export interface Prefs {
+  panels?: Record<string, { x: number; y: number; collapsed: boolean }>;
   selection?: string;
   selections?: Record<string, string>;
   sessionId?: string;

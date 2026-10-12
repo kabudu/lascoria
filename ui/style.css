@@ -852,3 +852,268 @@ dialog > button {
 .runtime-filter input {
   width: auto;
 }
+
+/* The canvas is the workspace; panels overlay it without reserving columns. */
+.shell {
+  display: block;
+  height: 100dvh;
+  overflow: hidden;
+}
+.topbar {
+  position: fixed;
+  inset: 0 0 auto;
+  height: 68px;
+  z-index: 30;
+}
+.sidebar {
+  display: contents;
+}
+.sidebar-foot {
+  display: none;
+}
+main {
+  padding: 0;
+}
+.workspace-title {
+  position: fixed;
+  top: 78px;
+  left: 24px;
+  right: 24px;
+  z-index: 5;
+  margin: 0;
+  pointer-events: none;
+}
+.workspace-title > * {
+  pointer-events: auto;
+}
+.workspace-title h1 {
+  font-size: 1.1rem;
+  margin: 4px 0;
+}
+.workspace-title .eyebrow,
+.workspace-title .muted {
+  display: none;
+}
+.workspace-grid {
+  display: block;
+}
+.task-surface {
+  position: fixed;
+  inset: 68px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg);
+}
+.surface-toolbar {
+  position: absolute;
+  top: 64px;
+  left: 300px;
+  right: 460px;
+  z-index: 5;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px #0000000a;
+}
+.map-scroll {
+  height: 100%;
+  width: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+.map-scroll:active {
+  cursor: grabbing;
+}
+.task-map {
+  min-height: 100%;
+}
+.node {
+  cursor: pointer;
+}
+.surface-foot {
+  position: absolute;
+  left: 300px;
+  bottom: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  pointer-events: none;
+}
+.layout-controls {
+  position: absolute;
+  left: 300px;
+  bottom: 62px;
+  width: 340px;
+  max-height: 45vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  z-index: 6;
+}
+.floating-panel {
+  position: fixed;
+  width: 264px;
+  max-width: calc(100vw - 16px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px #00000018;
+  overflow: hidden;
+}
+.floating-panel:focus-within {
+  z-index: 20;
+}
+.inspector-window {
+  width: 420px;
+}
+.panel-heading {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+}
+.panel-heading button {
+  font-size: 0.8rem;
+}
+.panel-handle {
+  flex: 1;
+  text-align: left;
+  border: 0;
+  touch-action: none;
+  cursor: grab;
+}
+.panel-handle:active {
+  cursor: grabbing;
+}
+.panel-content {
+  overflow: auto;
+  min-height: 0;
+  padding: 12px;
+}
+.panel-content[hidden] {
+  display: none;
+}
+.panel-content .section-heading {
+  margin-bottom: 10px;
+}
+.panel-content .attention {
+  margin: 0;
+  max-height: none;
+  overflow: visible;
+}
+.panel-content .inspector {
+  border: 0;
+  border-radius: 0;
+}
+.inspector-window .panel-content {
+  padding: 0;
+}
+.inspector-heading {
+  padding: 14px;
+}
+.inspector-body {
+  max-height: none;
+  overflow: visible;
+  padding: 14px;
+}
+.banner {
+  position: fixed;
+  top: 76px;
+  left: 300px;
+  right: 460px;
+  z-index: 25;
+}
+.task-list {
+  position: absolute;
+  inset: 130px 460px 70px 300px;
+  overflow: auto;
+  background: var(--panel);
+}
+@media (max-width: 1000px) {
+  .surface-toolbar {
+    left: 12px;
+    right: 12px;
+    top: 64px;
+  }
+  .workspace-title {
+    top: 80px;
+  }
+  .banner {
+    left: 12px;
+    right: 12px;
+  }
+  .surface-foot {
+    left: 12px;
+  }
+  .layout-controls {
+    left: 12px;
+  }
+  .task-list {
+    inset: 190px 12px 70px;
+  }
+  .topbar {
+    height: 68px;
+    padding: 8px;
+  }
+  .wordmark .edition,
+  .connection {
+    display: none;
+  }
+  .top-actions {
+    gap: 4px;
+  }
+}
+.floating-panel[aria-label='Sessions panel'] .panel-content {
+  max-height: 240px;
+}
+.panel-content .attention {
+  border-top: 0;
+  padding-top: 0;
+}
+.map-scroll:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+.task-node {
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 3px 12px #0000000a;
+  padding: 12px 14px;
+}
+.task-node:hover {
+  box-shadow: 0 8px 22px #0000001a;
+}
+.task-node.selected {
+  background: var(--raised);
+}
+.task-node small {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.task-node small .node-symbol {
+  display: inline;
+  font-size: 1rem;
+  color: var(--accent);
+}
+.task-node strong {
+  font-weight: 600;
+}
+.task-node > span {
+  align-self: stretch;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+.native-edge,
+.asserted-edge {
+  stroke-linecap: round;
+}

@@ -169,7 +169,53 @@ test('real Muse implementation, tests and review through React and the native Ru
     await expect(
       page.getByRole('button', { name: /Workflow child.*completed, native/ }).first(),
     ).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Sessions panel', exact: true })).toBeVisible();
+    const inspectorWindow = page.getByRole('region', { name: 'Task inspector panel', exact: true });
+    const beforeMove = (await inspectorWindow.boundingBox())!;
+    await page.getByRole('button', { name: 'Move Task inspector panel', exact: true }).focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(async () => (await inspectorWindow.boundingBox())!.x).toBe(beforeMove.x - 20);
+    await page.getByRole('button', { name: 'Collapse Task inspector panel', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toBeHidden();
+    await page.getByRole('button', { name: 'Expand Task inspector panel', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
+    const sessionsHandle = page.getByRole('button', { name: 'Move Sessions panel', exact: true });
+    const handleBounds = (await sessionsHandle.boundingBox())!;
+    await page.mouse.move(handleBounds.x + 30, handleBounds.y + 15);
+    await page.mouse.down();
+    await page.mouse.move(handleBounds.x + 60, handleBounds.y + 35, { steps: 6 });
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.panels?.sessions?.x)
+      .toBe(46);
+    await page.getByRole('button', { name: 'Collapse Sessions panel', exact: true }).click();
+    await expect
+      .poll(
+        async () =>
+          (await request(directory, 'presentation/get')).value.panels?.sessions?.collapsed,
+      )
+      .toBe(true);
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Expand Sessions panel', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Sessions panel', exact: true })).toHaveCSS(
+      'left',
+      '46px',
+    );
+    await page.getByRole('button', { name: 'Expand Sessions panel', exact: true }).click();
+    await page.setViewportSize({ width: 800, height: 700 });
+    const smallPanel = (await inspectorWindow.boundingBox())!;
+    expect(smallPanel.x).toBeGreaterThanOrEqual(8);
+    expect(smallPanel.x + smallPanel.width).toBeLessThanOrEqual(792);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
+
+    await expect(page.locator('.native-edge').first()).toHaveAttribute('d', / C /);
     const mapBounds = (await page.locator('.map-scroll').boundingBox())!;
+    expect(mapBounds.width).toBe(1440);
+    expect(mapBounds.height).toBeGreaterThan(850);
     for (const node of await page.locator('.task-node').all()) {
       const bounds = (await node.boundingBox())!;
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(mapBounds.x + mapBounds.width);

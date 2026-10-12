@@ -153,3 +153,56 @@ export function questionAnswers(
       : { freeText: String(data.get(q.id)) }),
   }));
 }
+
+// Pack native ownership trees into non-overlapping shelves. Missing parents and
+// cycles are retained as visible roots; presentation never invents relationships.
+export function constellationLayout(nodes: Task[], width: number, left = 300, right = 460) {
+  const columns = Math.max(1, Math.floor((width - left - right) / 260));
+  const ids = new Set(nodes.map((node) => node.id));
+  const children = new Map<string, Task[]>();
+  for (const node of nodes)
+    if (node.parentId && ids.has(node.parentId)) {
+      const siblings = children.get(node.parentId) ?? [];
+      siblings.push(node);
+      children.set(node.parentId, siblings);
+    }
+  const roots = nodes.filter((node) => !node.parentId || !ids.has(node.parentId));
+  roots.sort((a, b) => (children.get(b.id)?.length ?? 0) - (children.get(a.id)?.length ?? 0));
+  const placed = new Set<string>();
+  const result: Record<string, { x: number; y: number }> = {};
+  let shelfX = 0,
+    shelfY = 180,
+    shelfHeight = 0;
+  for (const root of [...roots, ...nodes]) {
+    if (placed.has(root.id)) continue;
+    const levels: Task[][] = [];
+    let level = [root];
+    while (level.length) {
+      const fresh = level.filter((node) => !placed.has(node.id));
+      if (!fresh.length) break;
+      fresh.forEach((node) => placed.add(node.id));
+      levels.push(fresh);
+      level = fresh.flatMap((node) => children.get(node.id) ?? []);
+    }
+    const span = Math.min(columns, Math.max(...levels.map((level) => level.length)));
+    if (shelfX + span > columns) {
+      shelfX = 0;
+      shelfY += shelfHeight + 60;
+      shelfHeight = 0;
+    }
+    let row = 0;
+    for (const level of levels) {
+      level.forEach((node, index) => {
+        const count = Math.min(span, level.length - Math.floor(index / span) * span);
+        result[node.id] = {
+          x: left + (shelfX + (span - count) / 2 + (index % span)) * 260,
+          y: shelfY + (row + Math.floor(index / span)) * 180,
+        };
+      });
+      row += Math.ceil(level.length / span);
+    }
+    shelfHeight = Math.max(shelfHeight, row * 180);
+    shelfX += span;
+  }
+  return result;
+}

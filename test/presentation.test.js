@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { tasks, attention, questionAnswers, taskAttentionKey } from '../ui/model.ts';
+import {
+  tasks,
+  attention,
+  questionAnswers,
+  taskAttentionKey,
+  constellationLayout,
+} from '../ui/model.ts';
 test('presentation preserves native workflow failure and never infers dependency or verification', () => {
   const row = {
     id: 'session',
@@ -197,4 +203,31 @@ test('inspection acknowledgement never hides or reroutes a pending question', ()
     attention({ sessions: [row] }, prefs).find((e) => e.kind === 'question').target,
     's:t',
   );
+});
+
+test('constellation layout keeps ownership levels below parents without overlap and retains cycles/orphans', () => {
+  const nodes = [
+    { id: 'root' },
+    { id: 'workflow', parentId: 'root' },
+    ...Array.from({ length: 5 }, (_, i) => ({ id: 'child' + i, parentId: 'workflow' })),
+    { id: 'standalone' },
+    { id: 'orphan', parentId: 'missing' },
+    { id: 'cycle-a', parentId: 'cycle-b' },
+    { id: 'cycle-b', parentId: 'cycle-a' },
+  ];
+  for (const width of [800, 1440, 2200]) {
+    const layout = constellationLayout(nodes, width);
+    assert.equal(Object.keys(layout).length, nodes.length);
+    assert.ok(layout.workflow.y > layout.root.y);
+    for (let i = 0; i < 5; i++) assert.ok(layout['child' + i].y > layout.workflow.y);
+    for (const [index, a] of nodes.entries()) {
+      const p = layout[a.id];
+      assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
+      assert.ok(p.x + 220 <= width);
+      for (const b of nodes.slice(index + 1)) {
+        const q = layout[b.id];
+        assert.ok(Math.abs(p.x - q.x) >= 220 || Math.abs(p.y - q.y) >= 114);
+      }
+    }
+  }
 });

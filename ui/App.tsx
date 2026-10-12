@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { FloatingPanel } from './FloatingPanel';
+import type { PanelLayout } from './FloatingPanel';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { FormEvent } from 'react';
 import { connect, request } from './api';
-import { tasks, attention, questionAnswers, taskAttentionKey } from './model';
+import { tasks, attention, questionAnswers, taskAttentionKey, constellationLayout } from './model';
 import type { Status, SessionRow, Task, Prefs, Artifact, Evidence, Item, Json } from './types';
 const empty: Status = { pid: 0, sessions: [], commands: [] };
 const text = (value: Json) => (typeof value === 'string' ? value : JSON.stringify(value, null, 2));
@@ -22,6 +24,7 @@ export function App() {
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
   const [mapWidth, setMapWidth] = useState(600);
+  const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [modal, setModal] = useState<'start' | 'stop' | 'palette' | null>(null),
     [tab, setTab] = useState('transcript');
@@ -342,6 +345,7 @@ export function App() {
   function select(node: Task) {
     updatePrefs({ selection: node.id, sessionId: node.sessionId });
     setTab('transcript');
+    openInspector();
   }
   async function page() {
     if (!session) return;
@@ -373,12 +377,13 @@ export function App() {
       (!prefs.collapsed?.includes(n.id) || n.id === task?.id) &&
       n.label.toLowerCase().includes((prefs.search ?? '').toLowerCase()),
   );
-  const columns = Math.max(1, Math.floor((mapWidth - 40) / 260));
-  const position = (node: Task, index: number) =>
-    prefs.positions?.[node.id] ?? {
-      x: 40 + (index % columns) * 260,
-      y: 40 + Math.floor(index / columns) * 154,
-    };
+  const layout = constellationLayout(
+    visible,
+    mapWidth,
+    prefs.panels?.sessions?.collapsed && prefs.panels?.attention?.collapsed ? 40 : 300,
+    prefs.panels?.inspector?.collapsed ? 40 : 460,
+  );
+  const position = (node: Task, _index: number) => prefs.positions?.[node.id] ?? layout[node.id];
   async function capture() {
     if (!session || !task?.turnId) return;
     const value = await mutate('artifact/capture', { sessionId: session.id, taskId: task.turnId });
@@ -388,6 +393,15 @@ export function App() {
       setTab('diff');
     }
   }
+  const panelChange = (name: string, value: PanelLayout) =>
+    updatePrefs({ panels: { ...latestPrefs.current.panels, [name]: value } });
+  const openInspector = () =>
+    panelChange('inspector', {
+      x: window.innerWidth - 440,
+      y: 150,
+      ...latestPrefs.current.panels?.inspector,
+      collapsed: false,
+    });
   return (
     <div className="shell">
       <header className="topbar">
@@ -406,69 +420,86 @@ export function App() {
           >
             {prefs.theme === 'light' ? 'Dark' : 'Light'}
           </button>
+          <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
           <button onClick={() => setModal('stop')}>Quit &amp; stop</button>
         </div>
       </header>
       <aside className="sidebar">
-        <div className="section-heading">
-          <h2>Sessions</h2>
-          <button onClick={() => setModal('start')} aria-label="Start a session">
-            ＋
-          </button>
-        </div>
-        <nav aria-label="Sessions">
-          {status.sessions.map((s) => (
-            <button
-              key={s.id}
-              className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
-              onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
-            >
-              <span className="eyebrow">{s.workspace.split('/').at(-1)}</span>
-              <strong>{prefs.sessionLabels?.[s.id] || short(s.id)}</strong>
-              {prefs.sessionLabels?.[s.id] && <small>{short(s.id)}</small>}
-              <span>
-                {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
-                {queue.filter((q) => q.sessionId === s.id).length} attention
-              </span>
-            </button>
-          ))}
-        </nav>
-        <section className="attention" aria-labelledby="attention-heading">
+        <FloatingPanel
+          title="Sessions"
+          layout={prefs.panels?.sessions}
+          initial={{ x: 16, y: 150 }}
+          onChange={(value) => panelChange('sessions', value)}
+        >
           <div className="section-heading">
-            <h2 id="attention-heading">Attention</h2>
-            <span className="count">{queue.length}</span>
+            <h2>Sessions</h2>
+            <button onClick={() => setModal('start')} aria-label="Start a session">
+              ＋
+            </button>
           </div>
-          {queue.length === 0 ? (
-            <p className="muted">Nothing needs attention.</p>
-          ) : (
-            queue.map((entry) => (
+          <nav aria-label="Sessions">
+            {status.sessions.map((s) => (
               <button
-                key={entry.id}
-                className="attention-row"
-                onClick={() => {
-                  updatePrefs({ sessionId: entry.sessionId, selection: entry.target });
-                  setTab(entry.kind === 'review' ? 'diff' : 'transcript');
-                }}
+                key={s.id}
+                className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
+                onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
               >
-                <span className={`attention-icon ${entry.kind}`}>
-                  {entry.kind === 'approval'
-                    ? '!'
-                    : entry.kind === 'question'
-                      ? '?'
-                      : entry.kind === 'review'
-                        ? '↗'
-                        : '×'}
-                </span>
+                <span className="eyebrow">{s.workspace.split('/').at(-1)}</span>
+                <strong>{prefs.sessionLabels?.[s.id] || short(s.id)}</strong>
+                {prefs.sessionLabels?.[s.id] && <small>{short(s.id)}</small>}
                 <span>
-                  <small>
-                    {entry.kind} · {short(entry.sessionId)}
-                  </small>
-                  <strong>{entry.label}</strong>
+                  {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
+                  {queue.filter((q) => q.sessionId === s.id).length} attention
                 </span>
               </button>
-            ))
-          )}
-        </section>
+            ))}
+          </nav>
+        </FloatingPanel>
+        <FloatingPanel
+          title="Attention"
+          badge={queue.length}
+          layout={prefs.panels?.attention}
+          initial={{ x: 16, y: 460 }}
+          onChange={(value) => panelChange('attention', value)}
+        >
+          <section className="attention" aria-labelledby="attention-heading">
+            <div className="section-heading">
+              <h2 id="attention-heading">Attention</h2>
+              <span className="count">{queue.length}</span>
+            </div>
+            {queue.length === 0 ? (
+              <p className="muted">Nothing needs attention.</p>
+            ) : (
+              queue.map((entry) => (
+                <button
+                  key={entry.id}
+                  className="attention-row"
+                  onClick={() => {
+                    updatePrefs({ sessionId: entry.sessionId, selection: entry.target });
+                    setTab(entry.kind === 'review' ? 'diff' : 'transcript');
+                    openInspector();
+                  }}
+                >
+                  <span className={`attention-icon ${entry.kind}`}>
+                    {entry.kind === 'approval'
+                      ? '!'
+                      : entry.kind === 'question'
+                        ? '?'
+                        : entry.kind === 'review'
+                          ? '↗'
+                          : '×'}
+                  </span>
+                  <span>
+                    <small>
+                      {entry.kind} · {short(entry.sessionId)}
+                    </small>
+                    <strong>{entry.label}</strong>
+                  </span>
+                </button>
+              ))
+            )}
+          </section>
+        </FloatingPanel>
         <div className="sidebar-foot">
           LOCAL EXECUTION
           <br />
@@ -528,6 +559,14 @@ export function App() {
             <div className="workspace-grid">
               <section className="task-surface">
                 <div className="surface-toolbar">
+                  <button
+                    onClick={() => {
+                      mapRef.current?.scrollTo({ left: 0, top: 0 });
+                      updatePrefs({ viewport: { x: 0, y: 0 } });
+                    }}
+                  >
+                    Recenter canvas
+                  </button>
                   <div className="segmented">
                     <button
                       aria-pressed={prefs.view !== 'list'}
@@ -592,7 +631,51 @@ export function App() {
                 ) : (
                   <div
                     className="map-scroll"
+                    role="region"
+                    aria-label="Constellation canvas"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      const steps: Record<string, [number, number]> = {
+                        ArrowLeft: [-80, 0],
+                        ArrowRight: [80, 0],
+                        ArrowUp: [0, -80],
+                        ArrowDown: [0, 80],
+                      };
+                      if (!steps[event.key]) return;
+                      event.preventDefault();
+                      const [left, top] = steps[event.key];
+                      event.currentTarget.scrollBy({ left, top });
+                    }}
                     ref={mapRef}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0 || (event.target as HTMLElement).closest('button'))
+                        return;
+                      const element = event.currentTarget;
+                      pan.current = {
+                        x: event.clientX,
+                        y: event.clientY,
+                        left: element.scrollLeft,
+                        top: element.scrollTop,
+                      };
+                      element.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={(event) => {
+                      if (!pan.current) return;
+                      event.currentTarget.scrollLeft =
+                        pan.current.left - event.clientX + pan.current.x;
+                      event.currentTarget.scrollTop =
+                        pan.current.top - event.clientY + pan.current.y;
+                    }}
+                    onPointerUp={() => {
+                      pan.current = null;
+                    }}
+                    onPointerCancel={() => {
+                      pan.current = null;
+                    }}
+                    onLostPointerCapture={() => {
+                      pan.current = null;
+                    }}
                     onScroll={(e) =>
                       updatePrefs({
                         viewport: { x: e.currentTarget.scrollLeft, y: e.currentTarget.scrollTop },
@@ -604,10 +687,11 @@ export function App() {
                       style={{
                         width: Math.max(
                           mapWidth,
+                          1800,
                           ...visible.map((node, index) => position(node, index).x + 260),
                         ),
                         height: Math.max(
-                          420,
+                          1400,
                           ...visible.map((node, index) => position(node, index).y + 154),
                         ),
                       }}
@@ -622,7 +706,7 @@ export function App() {
                           return [
                             <path
                               key={node.id}
-                              d={`M ${a.x + 110} ${a.y + 114} L ${b.x + 110} ${b.y}`}
+                              d={`M ${a.x + 110} ${a.y + 114} C ${a.x + 110} ${a.y + 150}, ${b.x + 110} ${b.y - 36}, ${b.x + 110} ${b.y}`}
                               className="native-edge"
                             />,
                           ];
@@ -636,7 +720,7 @@ export function App() {
                           return (
                             <g key={edge.id}>
                               <path
-                                d={`M ${p.x + 220} ${p.y + 55} L ${q.x} ${q.y + 55}`}
+                                d={`M ${p.x + 220} ${p.y + 55} C ${p.x + 300} ${p.y + 55}, ${q.x - 80} ${q.y + 55}, ${q.x} ${q.y + 55}`}
                                 className="asserted-edge"
                               />
                               <text x={(p.x + 220 + q.x) / 2} y={(p.y + q.y) / 2 + 45}>
@@ -674,6 +758,9 @@ export function App() {
                             aria-label={`${node.label}, ${node.status}, ${node.provenance}`}
                           >
                             <small>
+                              <span className="node-symbol" aria-hidden="true">
+                                {node.nativeChild ? '◈' : node.provenance === 'native' ? '✳' : '◉'}
+                              </span>
                               {node.provenance === 'native' ? node.item?.kind : 'DERIVED TURN TASK'}
                             </small>
                             <strong>{node.label}</strong>
@@ -832,477 +919,492 @@ export function App() {
                   </details>
                 )}
               </section>
-              <section className="inspector" aria-label="Selected task inspector">
-                <div className="inspector-heading">
-                  <p className="eyebrow">SELECTED TASK</p>
-                  <h2>{task?.label ?? 'No tasks yet'}</h2>
-                  <p className="muted">
-                    {task?.provenance === 'native'
-                      ? 'Native Muse item'
-                      : 'Derived grouping by native turn ID'}{' '}
-                    · {task?.status ?? 'idle'}
-                  </p>
-                  {task &&
-                    queue.some(
-                      (entry) =>
-                        entry.target === task.id && ['review', 'failure'].includes(entry.kind),
-                    ) && (
-                      <div>
+              <FloatingPanel
+                title="Task inspector"
+                badge={
+                  (session.state.userInputs?.length ?? 0) +
+                    (session.state.approvals?.length ?? 0) || undefined
+                }
+                layout={prefs.panels?.inspector}
+                initial={{ x: window.innerWidth - 440, y: 150 }}
+                onChange={(value) => panelChange('inspector', value)}
+              >
+                <section className="inspector" aria-label="Selected task inspector">
+                  <div className="inspector-heading">
+                    <p className="eyebrow">SELECTED TASK</p>
+                    <h2>{task?.label ?? 'No tasks yet'}</h2>
+                    <p className="muted">
+                      {task?.provenance === 'native'
+                        ? 'Native Muse item'
+                        : 'Derived grouping by native turn ID'}{' '}
+                      · {task?.status ?? 'idle'}
+                    </p>
+                    {task &&
+                      queue.some(
+                        (entry) =>
+                          entry.target === task.id && ['review', 'failure'].includes(entry.kind),
+                      ) && (
+                        <div>
+                          <button
+                            onClick={() =>
+                              updatePrefs({
+                                acknowledgedTaskFacts: [
+                                  ...new Set([
+                                    ...(prefs.acknowledgedTaskFacts ?? []),
+                                    taskAttentionKey(task),
+                                  ]),
+                                ],
+                              })
+                            }
+                          >
+                            {task.status === 'completed'
+                              ? 'Mark completion inspected'
+                              : 'Mark failure seen'}
+                          </button>
+                          <p className="muted">
+                            Inspection acknowledgement is presentation state. Verification and
+                            acceptance use evidence.
+                          </p>
+                        </div>
+                      )}
+                    {task?.error && (
+                      <section className="revision-badge stale" aria-label="Native task failure">
+                        <strong>Muse error: {task.error.kind}</strong>
+                        <span>{task.error.message}</span>
+                        {task.error.kind === 'authRequired' && (
+                          <p>
+                            Sign in with <code>muse login</code> or configure a provider API key
+                            locally, then start a new turn. The failed turn is retained for
+                            inspection.
+                          </p>
+                        )}
+                      </section>
+                    )}
+                  </div>
+                  {task?.provenance === 'native' &&
+                    nodes.some((node) => node.id === session.id + ':' + task.turnId) && (
+                      <button
+                        onClick={() =>
+                          select(nodes.find((node) => node.id === session.id + ':' + task.turnId)!)
+                        }
+                      >
+                        Open owning turn
+                      </button>
+                    )}
+                  <div className="tabs" role="tablist">
+                    {['transcript', 'diff', 'evidence'].map((name) => (
+                      <button
+                        key={name}
+                        id={`tab-${name}`}
+                        aria-controls="inspector-panel"
+                        role="tab"
+                        aria-selected={tab === name}
+                        tabIndex={tab === name ? 0 : -1}
+                        onKeyDown={(event) => {
+                          const names = ['transcript', 'diff', 'evidence'];
+                          const index = names.indexOf(name);
+                          const target =
+                            event.key === 'ArrowRight'
+                              ? names[(index + 1) % 3]
+                              : event.key === 'ArrowLeft'
+                                ? names[(index + 2) % 3]
+                                : event.key === 'Home'
+                                  ? names[0]
+                                  : event.key === 'End'
+                                    ? names[2]
+                                    : undefined;
+                          if (target) {
+                            event.preventDefault();
+                            setTab(target);
+                            document.getElementById(`tab-${target}`)?.focus();
+                          }
+                        }}
+                        onClick={() => setTab(name)}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                  <div
+                    className="inspector-body"
+                    id="inspector-panel"
+                    role="tabpanel"
+                    aria-labelledby={`tab-${tab}`}
+                  >
+                    {tab === 'transcript' && (
+                      <>
+                        {task?.nativeChild && (
+                          <section className="decision">
+                            <h3>Native workflow child</h3>
+                            <pre>{text(task.nativeChild)}</pre>
+                            <p className="muted">
+                              The runtime supplies this child's identity, attempt, outcome and
+                              result reference. It does not supply a child-session transcript ID on
+                              this workflow envelope.
+                            </p>
+                          </section>
+                        )}
+                        <DecisionPanels
+                          session={session}
+                          disabled={!available || busy}
+                          mutate={mutate}
+                        />
+                        <div className="transcript-tools">
+                          <span>
+                            {history !== null ? total : session.state.totalItems} session items ·
+                            current page only
+                          </span>
+                          <button disabled={!available || busy} onClick={() => void page()}>
+                            {history !== null ? 'Next / first page' : 'Browse history'}
+                          </button>
+                        </div>
+                        {items.map((item) => (
+                          <article key={item.itemId} className="transcript-item">
+                            <header>
+                              <strong>{item.tool ?? item.kind}</strong>
+                              <small>
+                                {item.status} · r{item.revision}
+                              </small>
+                            </header>
+                            <pre>
+                              {(item.status === 'inProgress'
+                                ? session.state.provisionalText?.[item.itemId]
+                                : undefined) ??
+                                item.text ??
+                                item.objective ??
+                                item.fallbackText ??
+                                item.finalSummary ??
+                                (item.kind === 'toolCall'
+                                  ? (item.statusLine ?? 'Tool execution')
+                                  : text(item))}
+                            </pre>
+                            <details>
+                              <summary>Native provenance</summary>
+                              <pre>
+                                {text(
+                                  session.state.itemProvenance?.[item.itemId] ??
+                                    'Source cursor and event range unavailable',
+                                )}
+                              </pre>
+                            </details>
+                            {item.kind === 'workflow' && item.finalSummary && (
+                              <section
+                                className="revision-badge"
+                                aria-label="Native workflow outcome"
+                              >
+                                <strong>Native workflow outcome</strong>
+                                <pre>{workflowSummary(item.finalSummary)}</pre>
+                                <small>
+                                  This is a returned summary, not independently verified evidence.
+                                </small>
+                              </section>
+                            )}
+                            {item.args && (
+                              <details>
+                                <summary>Arguments</summary>
+                                <pre>{item.args}</pre>
+                              </details>
+                            )}
+                            {(item.outputRef || item.patchRef) && (
+                              <StoredOutput
+                                key={`${session.id}:${item.itemId}:${item.revision}`}
+                                sessionId={session.id}
+                                item={item}
+                                disabled={!available || busy || !!task?.childSessionId}
+                              />
+                            )}
+                            {item.visibleOutput && (
+                              <details open>
+                                <summary>Tool output</summary>
+                                <pre>{item.visibleOutput}</pre>
+                              </details>
+                            )}
+                            <small className="muted">
+                              {item.itemId} {item.recordedAt ?? 'provisional'}
+                            </small>
+                          </article>
+                        ))}
+                        {items.length === 0 && (
+                          <p className="muted">Send a task to begin its transcript.</p>
+                        )}
+                      </>
+                    )}
+                    {tab === 'diff' && (
+                      <>
+                        <div className="row">
+                          <button
+                            className="primary"
+                            disabled={!available || busy || !task?.turnId}
+                            onClick={() => void capture()}
+                          >
+                            Capture working-tree diff
+                          </button>
+                          <button onClick={() => void loadReview()}>Refresh captures</button>
+                        </div>
+                        <p className="muted">
+                          Captures include HEAD, tracked changes and untracked files. Producing-task
+                          association is your assertion.
+                        </p>
+                        <label>
+                          Captured revision
+                          <select
+                            value={candidate?.id ?? ''}
+                            onChange={(e) => setArtifactId(e.target.value)}
+                          >
+                            <option value="">Select a capture</option>
+                            {review.artifacts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {short(a.fingerprint.slice(7))} ·{' '}
+                                {new Date(a.capturedAtMillis).toLocaleTimeString()}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {artifact ? (
+                          <>
+                            <RevisionBadge artifact={artifact} fresh={fresh} />
+                            <DiffView key={artifact.id} patch={artifact.patch} />
+                            {artifact.untracked.map((f) => (
+                              <details key={f.path} open>
+                                <summary>
+                                  Untracked: {f.path} · {f.bytes} bytes
+                                </summary>
+                                <pre>{f.text ?? `Binary file · ${f.sha256}`}</pre>
+                              </details>
+                            ))}
+                          </>
+                        ) : (
+                          <p className="muted">
+                            Capture a diff to inspect an exact repository revision.
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {tab === 'evidence' && (
+                      <>
+                        {artifact ? (
+                          <>
+                            <RevisionBadge artifact={artifact} fresh={fresh} />
+                            <p className="muted">
+                              Completion, test results, review and acceptance are distinct. Records
+                              below are explicit user attestations with a native source item, not
+                              automatic verification.
+                            </p>
+                            <EvidenceForm
+                              key={artifact.id}
+                              artifact={artifact}
+                              items={status.sessions
+                                .filter((s) => s.workspace === session.workspace)
+                                .flatMap((s) =>
+                                  (s.state.items ?? []).map((item) => ({
+                                    ...item,
+                                    sourceSessionId: s.id,
+                                  })),
+                                )}
+                              disabled={!available || busy || fresh?.fresh !== true}
+                              record={async (params) => {
+                                await mutate('evidence/record', {
+                                  ...params,
+                                  sessionId: session.id,
+                                  artifactId: artifact.id,
+                                  fingerprint: artifact.fingerprint,
+                                });
+                                await loadReview();
+                              }}
+                            />
+                            {review.nextOffset != null && (
+                              <button
+                                onClick={async () => {
+                                  const value = await request('review/list', {
+                                    sessionId: session.id,
+                                    artifactId: artifact.id,
+                                    offset: review.nextOffset,
+                                  });
+                                  if (
+                                    selectedSession.current === session.id &&
+                                    selectedTask.current === task?.id
+                                  )
+                                    setReview(value);
+                                }}
+                              >
+                                Older evidence records
+                              </button>
+                            )}
+                            {review.evidence
+                              .filter((e) => e.artifactId === artifact.id)
+                              .map((e) => (
+                                <article className="evidence-card" key={e.id}>
+                                  <strong>
+                                    {e.params.kind}: {e.params.outcome}
+                                  </strong>
+                                  <span>
+                                    {e.provenance === 'userAttested'
+                                      ? 'User attestation; revision association unverified'
+                                      : e.provenance}{' '}
+                                    ·{' '}
+                                    {fresh?.fresh === true
+                                      ? 'current revision'
+                                      : fresh?.fresh === false
+                                        ? 'stale revision'
+                                        : 'freshness unknown'}
+                                  </span>
+                                  <p>{e.params.notes}</p>
+                                  <code>
+                                    {e.params.command} · exit{' '}
+                                    {e.params.exitCode ?? 'not applicable'}
+                                  </code>
+                                  <small>
+                                    {e.params.author} · {e.params.environment} · source r
+                                    {e.source.revision}
+                                  </small>
+                                </article>
+                              ))}
+                          </>
+                        ) : (
+                          <p className="muted">
+                            Capture and inspect a diff before recording revision-bound evidence.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="command-area">
+                    <details>
+                      <summary>Runtime and interruption history</summary>
+                      <pre>
+                        {text({
+                          generation: session.generation,
+                          lifecycle: session.lifecycle,
+                          handshake: session.handshake,
+                          interruptions: session.interruptions,
+                        })}
+                      </pre>
+                      {session.interruptions?.length > 0 && (
                         <button
+                          type="button"
                           onClick={() =>
                             updatePrefs({
-                              acknowledgedTaskFacts: [
+                              acknowledgedInterruptions: [
                                 ...new Set([
-                                  ...(prefs.acknowledgedTaskFacts ?? []),
-                                  taskAttentionKey(task),
+                                  ...(prefs.acknowledgedInterruptions ?? []),
+                                  ...session.interruptions.map(
+                                    (i) => session.id + ':interrupt:' + i.atMillis + ':' + i.kind,
+                                  ),
                                 ]),
                               ],
                             })
                           }
                         >
-                          {task.status === 'completed'
-                            ? 'Mark completion inspected'
-                            : 'Mark failure seen'}
+                          Mark interruptions seen
                         </button>
-                        <p className="muted">
-                          Inspection acknowledgement is presentation state. Verification and
-                          acceptance use evidence.
-                        </p>
-                      </div>
-                    )}
-                  {task?.error && (
-                    <section className="revision-badge stale" aria-label="Native task failure">
-                      <strong>Muse error: {task.error.kind}</strong>
-                      <span>{task.error.message}</span>
-                      {task.error.kind === 'authRequired' && (
-                        <p>
-                          Sign in with <code>muse login</code> or configure a provider API key
-                          locally, then start a new turn. The failed turn is retained for
-                          inspection.
-                        </p>
                       )}
-                    </section>
-                  )}
-                </div>
-                {task?.provenance === 'native' &&
-                  nodes.some((node) => node.id === session.id + ':' + task.turnId) && (
-                    <button
-                      onClick={() =>
-                        select(nodes.find((node) => node.id === session.id + ':' + task.turnId)!)
-                      }
-                    >
-                      Open owning turn
-                    </button>
-                  )}
-                <div className="tabs" role="tablist">
-                  {['transcript', 'diff', 'evidence'].map((name) => (
-                    <button
-                      key={name}
-                      id={`tab-${name}`}
-                      aria-controls="inspector-panel"
-                      role="tab"
-                      aria-selected={tab === name}
-                      tabIndex={tab === name ? 0 : -1}
-                      onKeyDown={(event) => {
-                        const names = ['transcript', 'diff', 'evidence'];
-                        const index = names.indexOf(name);
-                        const target =
-                          event.key === 'ArrowRight'
-                            ? names[(index + 1) % 3]
-                            : event.key === 'ArrowLeft'
-                              ? names[(index + 2) % 3]
-                              : event.key === 'Home'
-                                ? names[0]
-                                : event.key === 'End'
-                                  ? names[2]
-                                  : undefined;
-                        if (target) {
-                          event.preventDefault();
-                          setTab(target);
-                          document.getElementById(`tab-${target}`)?.focus();
-                        }
+                    </details>
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const data = new FormData(e.currentTarget);
+                        const message = String(data.get('message'));
+                        const result = await mutate(session.state.activeTurnId ? 'steer' : 'turn', {
+                          sessionId: session.id,
+                          text: message,
+                          ...(session.state.activeTurnId
+                            ? { turnId: session.state.activeTurnId }
+                            : {}),
+                        });
+                        if (result && ['applied', 'accepted'].includes(result.status))
+                          setDrafts((previous) => ({ ...previous, [session.id]: '' }));
                       }}
-                      onClick={() => setTab(name)}
                     >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-                <div
-                  className="inspector-body"
-                  id="inspector-panel"
-                  role="tabpanel"
-                  aria-labelledby={`tab-${tab}`}
-                >
-                  {tab === 'transcript' && (
-                    <>
-                      {task?.nativeChild && (
-                        <section className="decision">
-                          <h3>Native workflow child</h3>
-                          <pre>{text(task.nativeChild)}</pre>
-                          <p className="muted">
-                            The runtime supplies this child's identity, attempt, outcome and result
-                            reference. It does not supply a child-session transcript ID on this
-                            workflow envelope.
-                          </p>
-                        </section>
-                      )}
-                      <DecisionPanels
-                        session={session}
-                        disabled={!available || busy}
-                        mutate={mutate}
+                      <label htmlFor="message">
+                        {session.state.activeTurnId
+                          ? 'Steer current turn'
+                          : 'New task for this session'}
+                      </label>
+                      <textarea
+                        id="message"
+                        name="message"
+                        value={drafts[session.id] ?? ''}
+                        onChange={(event) =>
+                          setDrafts((previous) => ({
+                            ...previous,
+                            [session.id]: event.target.value,
+                          }))
+                        }
+                        required
+                        maxLength={16000}
+                        placeholder="Describe the next step…"
+                        disabled={!available || busy || task?.provenance === 'native'}
                       />
-                      <div className="transcript-tools">
-                        <span>
-                          {history !== null ? total : session.state.totalItems} session items ·
-                          current page only
-                        </span>
-                        <button disabled={!available || busy} onClick={() => void page()}>
-                          {history !== null ? 'Next / first page' : 'Browse history'}
-                        </button>
-                      </div>
-                      {items.map((item) => (
-                        <article key={item.itemId} className="transcript-item">
-                          <header>
-                            <strong>{item.tool ?? item.kind}</strong>
-                            <small>
-                              {item.status} · r{item.revision}
-                            </small>
-                          </header>
-                          <pre>
-                            {(item.status === 'inProgress'
-                              ? session.state.provisionalText?.[item.itemId]
-                              : undefined) ??
-                              item.text ??
-                              item.objective ??
-                              item.fallbackText ??
-                              item.finalSummary ??
-                              (item.kind === 'toolCall'
-                                ? (item.statusLine ?? 'Tool execution')
-                                : text(item))}
-                          </pre>
-                          <details>
-                            <summary>Native provenance</summary>
-                            <pre>
-                              {text(
-                                session.state.itemProvenance?.[item.itemId] ??
-                                  'Source cursor and event range unavailable',
-                              )}
-                            </pre>
-                          </details>
-                          {item.kind === 'workflow' && item.finalSummary && (
-                            <section
-                              className="revision-badge"
-                              aria-label="Native workflow outcome"
-                            >
-                              <strong>Native workflow outcome</strong>
-                              <pre>{workflowSummary(item.finalSummary)}</pre>
-                              <small>
-                                This is a returned summary, not independently verified evidence.
-                              </small>
-                            </section>
-                          )}
-                          {item.args && (
-                            <details>
-                              <summary>Arguments</summary>
-                              <pre>{item.args}</pre>
-                            </details>
-                          )}
-                          {(item.outputRef || item.patchRef) && (
-                            <StoredOutput
-                              key={`${session.id}:${item.itemId}:${item.revision}`}
-                              sessionId={session.id}
-                              item={item}
-                              disabled={!available || busy || !!task?.childSessionId}
-                            />
-                          )}
-                          {item.visibleOutput && (
-                            <details open>
-                              <summary>Tool output</summary>
-                              <pre>{item.visibleOutput}</pre>
-                            </details>
-                          )}
-                          <small className="muted">
-                            {item.itemId} {item.recordedAt ?? 'provisional'}
-                          </small>
-                        </article>
-                      ))}
-                      {items.length === 0 && (
-                        <p className="muted">Send a task to begin its transcript.</p>
-                      )}
-                    </>
-                  )}
-                  {tab === 'diff' && (
-                    <>
                       <div className="row">
+                        <span className="muted">
+                          Target session: {short(session.id)}
+                          {session.state.activeTurnId
+                            ? ' · turn ' + short(session.state.activeTurnId)
+                            : ''}
+                          {task?.childSessionId ? ' · child is read-only' : ''}
+                        </span>
                         <button
                           className="primary"
-                          disabled={!available || busy || !task?.turnId}
-                          onClick={() => void capture()}
-                        >
-                          Capture working-tree diff
-                        </button>
-                        <button onClick={() => void loadReview()}>Refresh captures</button>
-                      </div>
-                      <p className="muted">
-                        Captures include HEAD, tracked changes and untracked files. Producing-task
-                        association is your assertion.
-                      </p>
-                      <label>
-                        Captured revision
-                        <select
-                          value={candidate?.id ?? ''}
-                          onChange={(e) => setArtifactId(e.target.value)}
-                        >
-                          <option value="">Select a capture</option>
-                          {review.artifacts.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {short(a.fingerprint.slice(7))} ·{' '}
-                              {new Date(a.capturedAtMillis).toLocaleTimeString()}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {artifact ? (
-                        <>
-                          <RevisionBadge artifact={artifact} fresh={fresh} />
-                          <DiffView key={artifact.id} patch={artifact.patch} />
-                          {artifact.untracked.map((f) => (
-                            <details key={f.path} open>
-                              <summary>
-                                Untracked: {f.path} · {f.bytes} bytes
-                              </summary>
-                              <pre>{f.text ?? `Binary file · ${f.sha256}`}</pre>
-                            </details>
-                          ))}
-                        </>
-                      ) : (
-                        <p className="muted">
-                          Capture a diff to inspect an exact repository revision.
-                        </p>
-                      )}
-                    </>
-                  )}
-                  {tab === 'evidence' && (
-                    <>
-                      {artifact ? (
-                        <>
-                          <RevisionBadge artifact={artifact} fresh={fresh} />
-                          <p className="muted">
-                            Completion, test results, review and acceptance are distinct. Records
-                            below are explicit user attestations with a native source item, not
-                            automatic verification.
-                          </p>
-                          <EvidenceForm
-                            key={artifact.id}
-                            artifact={artifact}
-                            items={status.sessions
-                              .filter((s) => s.workspace === session.workspace)
-                              .flatMap((s) =>
-                                (s.state.items ?? []).map((item) => ({
-                                  ...item,
-                                  sourceSessionId: s.id,
-                                })),
-                              )}
-                            disabled={!available || busy || fresh?.fresh !== true}
-                            record={async (params) => {
-                              await mutate('evidence/record', {
-                                ...params,
-                                sessionId: session.id,
-                                artifactId: artifact.id,
-                                fingerprint: artifact.fingerprint,
-                              });
-                              await loadReview();
-                            }}
-                          />
-                          {review.nextOffset != null && (
-                            <button
-                              onClick={async () => {
-                                const value = await request('review/list', {
-                                  sessionId: session.id,
-                                  artifactId: artifact.id,
-                                  offset: review.nextOffset,
-                                });
-                                if (
-                                  selectedSession.current === session.id &&
-                                  selectedTask.current === task?.id
-                                )
-                                  setReview(value);
-                              }}
-                            >
-                              Older evidence records
-                            </button>
-                          )}
-                          {review.evidence
-                            .filter((e) => e.artifactId === artifact.id)
-                            .map((e) => (
-                              <article className="evidence-card" key={e.id}>
-                                <strong>
-                                  {e.params.kind}: {e.params.outcome}
-                                </strong>
-                                <span>
-                                  {e.provenance === 'userAttested'
-                                    ? 'User attestation; revision association unverified'
-                                    : e.provenance}{' '}
-                                  ·{' '}
-                                  {fresh?.fresh === true
-                                    ? 'current revision'
-                                    : fresh?.fresh === false
-                                      ? 'stale revision'
-                                      : 'freshness unknown'}
-                                </span>
-                                <p>{e.params.notes}</p>
-                                <code>
-                                  {e.params.command} · exit {e.params.exitCode ?? 'not applicable'}
-                                </code>
-                                <small>
-                                  {e.params.author} · {e.params.environment} · source r
-                                  {e.source.revision}
-                                </small>
-                              </article>
-                            ))}
-                        </>
-                      ) : (
-                        <p className="muted">
-                          Capture and inspect a diff before recording revision-bound evidence.
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-                <div className="command-area">
-                  <details>
-                    <summary>Runtime and interruption history</summary>
-                    <pre>
-                      {text({
-                        generation: session.generation,
-                        lifecycle: session.lifecycle,
-                        handshake: session.handshake,
-                        interruptions: session.interruptions,
-                      })}
-                    </pre>
-                    {session.interruptions?.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updatePrefs({
-                            acknowledgedInterruptions: [
-                              ...new Set([
-                                ...(prefs.acknowledgedInterruptions ?? []),
-                                ...session.interruptions.map(
-                                  (i) => session.id + ':interrupt:' + i.atMillis + ':' + i.kind,
-                                ),
-                              ]),
-                            ],
-                          })
-                        }
-                      >
-                        Mark interruptions seen
-                      </button>
-                    )}
-                  </details>
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      const data = new FormData(e.currentTarget);
-                      const message = String(data.get('message'));
-                      const result = await mutate(session.state.activeTurnId ? 'steer' : 'turn', {
-                        sessionId: session.id,
-                        text: message,
-                        ...(session.state.activeTurnId
-                          ? { turnId: session.state.activeTurnId }
-                          : {}),
-                      });
-                      if (result && ['applied', 'accepted'].includes(result.status))
-                        setDrafts((previous) => ({ ...previous, [session.id]: '' }));
-                    }}
-                  >
-                    <label htmlFor="message">
-                      {session.state.activeTurnId
-                        ? 'Steer current turn'
-                        : 'New task for this session'}
-                    </label>
-                    <textarea
-                      id="message"
-                      name="message"
-                      value={drafts[session.id] ?? ''}
-                      onChange={(event) =>
-                        setDrafts((previous) => ({ ...previous, [session.id]: event.target.value }))
-                      }
-                      required
-                      maxLength={16000}
-                      placeholder="Describe the next step…"
-                      disabled={!available || busy || task?.provenance === 'native'}
-                    />
-                    <div className="row">
-                      <span className="muted">
-                        Target session: {short(session.id)}
-                        {session.state.activeTurnId
-                          ? ' · turn ' + short(session.state.activeTurnId)
-                          : ''}
-                        {task?.childSessionId ? ' · child is read-only' : ''}
-                      </span>
-                      <button
-                        className="primary"
-                        disabled={!available || busy || task?.provenance === 'native'}
-                      >
-                        {session.state.activeTurnId ? 'Send steering' : 'Start turn'}
-                      </button>
-                      {session.state.activeTurnId && (
-                        <button
-                          type="button"
                           disabled={!available || busy || task?.provenance === 'native'}
-                          onClick={() =>
-                            void mutate('cancel', {
-                              sessionId: session.id,
-                              turnId: session.state.activeTurnId,
-                            })
-                          }
                         >
-                          Cancel turn
+                          {session.state.activeTurnId ? 'Send steering' : 'Start turn'}
+                        </button>
+                        {session.state.activeTurnId && (
+                          <button
+                            type="button"
+                            disabled={!available || busy || task?.provenance === 'native'}
+                            onClick={() =>
+                              void mutate('cancel', {
+                                sessionId: session.id,
+                                turnId: session.state.activeTurnId,
+                              })
+                            }
+                          >
+                            Cancel turn
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                    <details>
+                      <summary>Command acknowledgements</summary>
+                      {status.commands
+                        .filter((c) => c.sessionId === session.id)
+                        .slice(0, 10)
+                        .map((c) => (
+                          <p key={c.id}>
+                            <strong>
+                              {c.operation}: {c.status}
+                            </strong>
+                            <small>Request {c.id}</small>
+                            {c.error && <pre>{text(c.error)}</pre>}
+                          </p>
+                        ))}
+                      {lastCommand.current && (
+                        <button
+                          disabled={busy}
+                          onClick={async () => {
+                            const last = lastCommand.current!;
+                            setBusy(true);
+                            try {
+                              const r = await request(last.operation, last.params, last.id);
+                              setNotice(
+                                `${last.operation}: ${r.status ?? 'saved'} · same request ID`,
+                              );
+                              await refresh();
+                            } catch (e) {
+                              setError(String(e));
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        >
+                          Query / retry last request with same ID
                         </button>
                       )}
-                    </div>
-                  </form>
-                  <details>
-                    <summary>Command acknowledgements</summary>
-                    {status.commands
-                      .filter((c) => c.sessionId === session.id)
-                      .slice(0, 10)
-                      .map((c) => (
-                        <p key={c.id}>
-                          <strong>
-                            {c.operation}: {c.status}
-                          </strong>
-                          <small>Request {c.id}</small>
-                          {c.error && <pre>{text(c.error)}</pre>}
-                        </p>
-                      ))}
-                    {lastCommand.current && (
-                      <button
-                        disabled={busy}
-                        onClick={async () => {
-                          const last = lastCommand.current!;
-                          setBusy(true);
-                          try {
-                            const r = await request(last.operation, last.params, last.id);
-                            setNotice(
-                              `${last.operation}: ${r.status ?? 'saved'} · same request ID`,
-                            );
-                            await refresh();
-                          } catch (e) {
-                            setError(String(e));
-                          } finally {
-                            setBusy(false);
-                          }
-                        }}
-                      >
-                        Query / retry last request with same ID
-                      </button>
-                    )}
-                  </details>
-                </div>
-              </section>
+                    </details>
+                  </div>
+                </section>
+              </FloatingPanel>
             </div>
           </>
         )}
