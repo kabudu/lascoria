@@ -6,3 +6,9 @@ node_modules/
 coverage/
 
 supervisor/target/
+
+src-tauri/target/
+src-tauri/gen/
+dist/
+test-results/
+playwright-report/

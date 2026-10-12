@@ -1,5 +1,6 @@
 // Private SDK bridge. Only the Rust supervisor owns the public control API.
 import readline from 'node:readline';
+import { Session } from '@muse-code/sdk';
 import { isDeepStrictEqual } from 'node:util';
 import { bounded, spawnRuntime } from './runtime.js';
 
@@ -14,6 +15,23 @@ let acceptedReceipt;
 let staleReason;
 let runtime;
 const gaps = [];
+const itemProvenance = new Map();
+function rememberSource(event) {
+  if (event.params?.sessionId !== sessionId) return;
+  const item = event.params?.item;
+  if (item && event.params.viewCursor && event.params.sourceRange) {
+    const previous = itemProvenance.get(item.itemId);
+    if (!previous || previous.revision <= item.revision)
+      itemProvenance.set(item.itemId, {
+        revision: item.revision,
+        viewCursor: event.params.viewCursor,
+        sourceRange: event.params.sourceRange,
+        method: event.method,
+      });
+    if (itemProvenance.size > 10000) throw new Error('Item provenance budget exhausted');
+  }
+}
+
 let gapRecovery;
 let stateTimer;
 const stateFacts = new Map();
@@ -51,8 +69,21 @@ const send = (value, flushed) => {
 };
 function snapshot() {
   const fold = runtime?.session?.fold;
+  // Cold replay and live gap repair may discover items in different insertion orders.
+  // Keep content, provenance and provisional text in the same presentation window.
+  const items = (fold?.items.list() ?? [])
+    .sort(
+      (a, b) =>
+        (a.recordedAt ?? '').localeCompare(b.recordedAt ?? '') || a.itemId.localeCompare(b.itemId),
+    )
+    .slice(-100);
   return {
     sessionId,
+    itemProvenance: Object.fromEntries(
+      items
+        .map((item) => [item.itemId, itemProvenance.get(item.itemId)])
+        .filter(([id, value]) => value?.revision === fold.items.get(id)?.revision),
+    ),
     current: !stale && !opening && !!fold?.current,
     sessionState: Object.fromEntries(
       (fold?.sessionState.families() ?? []).map((family) => [
@@ -65,17 +96,13 @@ function snapshot() {
     gaps,
     failure: staleReason,
     activeTurnId: fold?.activeTurnId,
-    // Gap splice and cold replay can discover items in different insertion order.
-    // Order this presentation window by native time and ID, without changing the SDK fold.
-    items:
-      fold?.items
-        .list()
-        .sort(
-          (left, right) =>
-            (left.recordedAt ?? '').localeCompare(right.recordedAt ?? '') ||
-            left.itemId.localeCompare(right.itemId),
-        )
-        .slice(-100) ?? [],
+    items,
+    provisionalText: Object.fromEntries(
+      items
+        .filter((item) => item.status === 'inProgress')
+        .map((item) => [item.itemId, fold.items.accumulated(item.itemId, 'text')])
+        .filter(([, value]) => value !== undefined),
+    ),
     totalItems: fold?.items.size ?? 0,
     itemsTruncated: (fold?.items.size ?? 0) > 100,
     approvals: fold?.pendingApprovals() ?? [],
@@ -86,9 +113,14 @@ function snapshot() {
 }
 try {
   runtime = await spawnRuntime(
-    { binary: process.env.MUSE_BIN, provider: process.env.SCH_PROVIDER ?? 'echo' },
+    {
+      binary: process.env.MUSE_BIN,
+      provider: process.env.SCH_PROVIDER ?? 'echo',
+      onHistory: rememberSource,
+    },
     (event) => {
       if (event.params?.sessionId !== sessionId) return;
+      rememberSource(event);
       eventCount++;
       eventBytes += Buffer.byteLength(JSON.stringify(event));
       if (eventCount > 10000 || eventBytes > 32 * 1024 * 1024) {
@@ -148,6 +180,79 @@ try {
 
 async function execute(message) {
   const { operation, params, commandId } = message;
+  if (operation === 'readOutput') {
+    if (stale || !runtime.session?.fold.current || params.sessionId !== sessionId)
+      throw new ValidationError('Session state unavailable');
+    const item = runtime.session.fold.items.get(params.itemId);
+    if (
+      !item ||
+      item.revision !== params.revision ||
+      ![item.outputRef?.id, item.patchRef?.id].includes(params.outputRef) ||
+      !params.outputRef
+    )
+      throw new ValidationError('Stale or unknown output reference');
+    if (
+      !Number.isInteger(params.offsetBytes ?? 0) ||
+      (params.offsetBytes ?? 0) < 0 ||
+      (params.offsetBytes ?? 0) > 256 * 1024 * 1024
+    )
+      throw new ValidationError('Output offset exceeds bounds');
+    return runtime.request('item/readOutput', {
+      sessionId,
+      itemId: item.itemId,
+      outputRef: params.outputRef,
+      offsetBytes: params.offsetBytes ?? 0,
+      lengthBytes: 65536,
+    });
+  }
+  if (operation === 'inspect') {
+    if (stale || !runtime.session?.fold.current || params.sessionId !== sessionId)
+      throw new ValidationError('Session state unavailable');
+    let fold = runtime.session.fold;
+    if (params.childSessionId) {
+      if (!fold.items.list().some((item) => item.childSessionId === params.childSessionId))
+        throw new ValidationError('Unknown native child session');
+      const child = new Session({ sessionId: params.childSessionId, durability: runtime.profile });
+      let cursor;
+      let bytes = 0;
+      let count = 0;
+      for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
+        const page = await runtime.request('view/page', {
+          sessionId: params.childSessionId,
+          limit: 100,
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const event of page.events) {
+          count++;
+          bytes += Buffer.byteLength(JSON.stringify(event));
+          if (count > 10000 || bytes > 32 * 1024 * 1024)
+            throw new ValidationError('Child history exceeds bounds');
+          child.apply(event);
+        }
+        if (page.nextCursor === null) break;
+        cursor = page.events.at(-1)?.params.viewCursor;
+        if (!cursor || pageNumber === 99)
+          throw new ValidationError('Child paging did not converge');
+      }
+      fold = child.fold;
+    }
+    const offset = params.offset ?? 0;
+    if (!Number.isInteger(offset) || offset < 0 || offset > 10000)
+      throw new ValidationError('Invalid transcript offset');
+    const items = fold.items
+      .list()
+      .sort(
+        (a, b) =>
+          (a.recordedAt ?? '').localeCompare(b.recordedAt ?? '') ||
+          a.itemId.localeCompare(b.itemId),
+      );
+    return {
+      items: items.slice(offset, offset + 100),
+      totalItems: items.length,
+      nextOffset: offset + 100 < items.length ? offset + 100 : null,
+      current: fold.current,
+    };
+  }
   if (operation === 'stop') {
     closing = true;
     await runtime.close();
@@ -190,6 +295,8 @@ async function execute(message) {
         if (!last || pageNumber === 99)
           throw new ValidationError('Recovery paging did not converge');
       }
+      itemProvenance.clear();
+      for (const event of events) rememberSource(event);
       runtime.attach(sessionId, events);
       eventCount = events.length;
       eventBytes = bytes;

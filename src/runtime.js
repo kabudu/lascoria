@@ -37,7 +37,9 @@ export async function spawnRuntime(options, onEvent, onDeath) {
   async function read(method, params) {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await bounded(host.connection.request(method, params));
+        const result = await bounded(host.connection.request(method, params));
+        if (method === 'view/page') for (const event of result.events) options.onHistory?.(event);
+        return result;
       } catch (error) {
         if (
           method !== 'view/page' ||

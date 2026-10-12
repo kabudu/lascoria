@@ -16,19 +16,30 @@ impl Db {
         let db = Connection::open(path)?;
         let version: u32 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         ensure!(
-            version <= 1,
+            version <= 2,
             "Unsupported supervisor journal schema {version}"
         );
         db.execute_batch(
             "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;
           CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, value TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS commands(id TEXT PRIMARY KEY, value TEXT NOT NULL);",
+          CREATE TABLE IF NOT EXISTS commands(id TEXT PRIMARY KEY, value TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS presentation(id TEXT PRIMARY KEY, value TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY, value TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )?;
-        db.execute_batch("PRAGMA user_version=1;")?;
+        db.execute_batch("PRAGMA user_version=2;")?;
         Ok(Self(db))
     }
     pub fn put(&self, table: &str, id: &str, value: &Value) -> Result<()> {
-        if !["sessions", "commands"].contains(&table) {
+        if ![
+            "sessions",
+            "commands",
+            "presentation",
+            "artifacts",
+            "evidence",
+        ]
+        .contains(&table)
+        {
             bail!("Invalid table");
         }
         self.0.execute(
@@ -38,7 +49,17 @@ impl Db {
         Ok(())
     }
     pub fn get(&self, table: &str, id: &str) -> Result<Option<Value>> {
-        ensure!(["sessions", "commands"].contains(&table), "Invalid table");
+        ensure!(
+            [
+                "sessions",
+                "commands",
+                "presentation",
+                "artifacts",
+                "evidence"
+            ]
+            .contains(&table),
+            "Invalid table"
+        );
         let raw: Option<String> = self
             .0
             .query_row(
@@ -51,7 +72,15 @@ impl Db {
             .transpose()
     }
     pub fn all(&self, table: &str) -> Result<Vec<Value>> {
-        if !["sessions", "commands"].contains(&table) {
+        if ![
+            "sessions",
+            "commands",
+            "presentation",
+            "artifacts",
+            "evidence",
+        ]
+        .contains(&table)
+        {
             bail!("Invalid table");
         }
         let mut statement = self
@@ -60,6 +89,47 @@ impl Db {
         let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
         let mut values = Vec::new();
         for row in rows {
+            values.push(serde_json::from_str(&row?)?);
+        }
+        Ok(values)
+    }
+    pub fn count(&self, table: &str) -> Result<usize> {
+        ensure!(
+            [
+                "sessions",
+                "commands",
+                "presentation",
+                "artifacts",
+                "evidence"
+            ]
+            .contains(&table),
+            "Invalid table"
+        );
+        Ok(self
+            .0
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                row.get::<_, i64>(0)
+            })? as usize)
+    }
+    pub fn artifact_metadata(&self, session: &str) -> Result<Vec<Value>> {
+        let mut statement=self.0.prepare("SELECT json_remove(value,'$.patch','$.untracked') FROM artifacts WHERE json_extract(value,'$.sessionId')=?1 ORDER BY rowid")?;
+        let mut values = Vec::new();
+        for row in statement.query_map([session], |row| row.get::<_, String>(0))? {
+            values.push(serde_json::from_str(&row?)?);
+        }
+        Ok(values)
+    }
+    pub fn evidence_page(
+        &self,
+        session: &str,
+        artifact: Option<&str>,
+        offset: usize,
+    ) -> Result<Vec<Value>> {
+        let mut statement=self.0.prepare("SELECT value FROM evidence WHERE json_extract(value,'$.sessionId')=?1 AND (?2 IS NULL OR json_extract(value,'$.artifactId')=?2) ORDER BY rowid DESC LIMIT 101 OFFSET ?3")?;
+        let mut values = Vec::new();
+        for row in statement.query_map(params![session, artifact, offset as i64], |row| {
+            row.get::<_, String>(0)
+        })? {
             values.push(serde_json::from_str(&row?)?);
         }
         Ok(values)
@@ -150,6 +220,33 @@ impl Db {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn evidence_pages_filter_before_offset_and_omit_capture_bytes() -> Result<()> {
+        let db = Db::open(Path::new(":memory:"))?;
+        db.put(
+            "artifacts",
+            "a",
+            &json!({"id":"a","sessionId":"s","patch":"large","untracked":["large"]}),
+        )?;
+        db.put(
+            "evidence",
+            "old",
+            &json!({"id":"old","sessionId":"s","artifactId":"a"}),
+        )?;
+        for index in 0..102 {
+            db.put(
+                "evidence",
+                &format!("other{index}"),
+                &json!({"id":index,"sessionId":"s","artifactId":"b"}),
+            )?;
+        }
+        assert_eq!(db.evidence_page("s", None, 0)?.len(), 101);
+        assert_eq!(db.evidence_page("s", Some("a"), 0)?[0]["id"], "old");
+        assert!(db.evidence_page("s", Some("a"), 100)?.is_empty());
+        assert!(db.artifact_metadata("s")?[0].get("patch").is_none());
+        Ok(())
+    }
 
     #[test]
     fn updating_sessions_preserves_registry_order() -> Result<()> {

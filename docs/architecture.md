@@ -7,7 +7,7 @@ Recorded 12 October 2026.
 The control plane is Rust, as confirmed during Stage A implementation. It owns the supervisor lifecycle, owner-restricted Unix IPC, client authentication, worker registry, SQLite command journal, and bounded recovery. A per-session Node worker owns an official `@muse-code/sdk` connection and one `muse serve` process. Muse owns execution, durable session logs, writer leases, sandboxing, and permissions.
 
 ```text
-Diagnostic CLI now / Tauri + React + TypeScript later
+Diagnostic CLI / Tauri + React + TypeScript desktop client
     authenticated local Unix socket, API version 1
 Rust supervisor
     private NDJSON stdin/stdout, one worker per top-level session
@@ -19,7 +19,7 @@ Muse Code 1.4.6 (muse serve)
 
 A diagnostic client disconnect never closes the worker's stdin. An explicit stop identifies all affected sessions and closes worker stdin; the worker drains Muse through the SDK's shutdown ladder. If Rust dies, worker stdin closes and Muse drains or requires recovery. No surviving host discovery is promised: this binary has a single stdio connection and no exposed reattachment endpoint. Sleep suspends local work; logout and reboot require recovery.
 
-The current source checkout is the deployment unit. `SCH_WORKER` defaults to the worker next to the Rust crate at build time. A bundled application must replace that path with an installed resource and ship a compatible Node runtime. Signing, an installer, login startup, and Tauri/React are later delivery work.
+The current source checkout is the deployment unit. `SCH_WORKER` defaults to the worker next to the Rust crate at build time. A bundled application must replace that path with an installed resource and ship a compatible Node runtime. Tauri/React is implemented in Stage B; signing, an installer and login startup remain later delivery work.
 
 ## Protocol and recovery
 
@@ -43,7 +43,7 @@ There are at most 10 registered sessions, 16 active IPC connections, 16 queued c
 
 IPC requests are capped at 64 KiB. Worker frames are capped at 4 MiB, stdout buffering at 8 MiB, and stderr tails at 8 KiB. Each worker admits up to 10,000 events and 32 MiB of event content, including provisional deltas; replay admits at most 100 pages of 100 events. Budget exhaustion makes state unavailable and triggers bounded durable recovery. Native stream gaps first use the SDK paged splice on the same host, with a 60-second deadline, 100-page, 10,000-event and 32 MiB budget. Typed read backpressure has at most five attempts; mutating commands are never retried. Failed splice closes the host and invokes bounded durable recovery. Diagnostic snapshots coalesce for 25 ms while retaining command facts, and publish immediately at gap boundaries and command responses. The diagnostic snapshot orders items by native recorded time and item ID so gap splice and cold replay have the same window. It shows the last 100 items and turns, along with item count/truncation indicators. This is not the Stage C 100,000-item history implementation.
 
-Handshake, command, connection, and shutdown waits are bounded. A timed-out worker is stopped rather than receiving more commands. The serialized control actor favors a small, auditable Stage A implementation; long recovery can delay other control calls. Stage B needs independent session scheduling and paged inspector reads before claiming scalable interactive performance.
+Handshake, command, connection, and shutdown waits are bounded. A timed-out worker is stopped rather than receiving more commands. The serialized control actor favors a small, auditable Stage A implementation; long recovery can delay other control calls. Stage B adds paged inspector reads and independent snapshot acceptance. Mutating control work is still serialized; independent session command scheduling remains necessary before claiming scalable interactive performance.
 
 Local snapshots and journals can contain prompts, tool arguments and outputs. They are private local state, not sanitized export artifacts. No export facility is provided. Credentials remain with Muse. Repository text is emitted as JSON data, never evaluated or rendered as active markup.
 
@@ -54,3 +54,5 @@ The proposed post-proof option is an owned Rust MSP implementation, not a transc
 Before replacing the official Node worker, a Rust adapter must pass the same public lifecycle suite plus protocol conformance for handshake/capabilities, writer leases, authoritative revisions, gap recovery, snapshots, approval stages, unknown variants, idempotent commands, and host-death durability rules. Keep the Node implementation available as a reference until parity is demonstrated. The decision to build that SDK remains conditional on the concept's usefulness being proven.
 
 References: [official Muse SDK](https://github.com/meta-models/muse-code-sdk), [Rust headless crate](https://docs.rs/muse-codes/latest/muse_codes/), [SDK fold model](https://meta-models.github.io/muse-code-sdk/next/guides/msp-concepts/fold-model/).
+
+[Stage B presentation, evidence and desktop boundaries](stage-b.md) records the new API operations, schema migration and validation.

@@ -118,7 +118,10 @@ test(
     console.log('NATIVE_TRANSPORT_STATUS', JSON.stringify(transport));
     await eventually(
       directory,
-      (state) => state.sessions[0].state.current && !state.sessions[0].state.activeTurnId,
+      (state) =>
+        state.sessions[0].state.current &&
+        !state.sessions[0].state.activeTurnId &&
+        state.sessions[0].state.gaps?.some((gap) => gap.recovered),
       'reader ready for tail',
     );
     const tail = await request(
@@ -212,6 +215,15 @@ test(
       'cold history and repaired live items converge',
     );
     assert.equal(cold.sessions[0].state.totalItems, row.state.totalItems);
+    for (const state of [row.state, cold.sessions[0].state]) {
+      for (const item of state.items) {
+        assert.equal(
+          state.itemProvenance[item.itemId]?.revision,
+          item.revision,
+          `Displayed ${item.itemId} retains matching native provenance`,
+        );
+      }
+    }
     assert.deepEqual(
       cold.sessions[0].state.sessionState,
       row.state.sessionState,

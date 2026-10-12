@@ -12,6 +12,7 @@ export async function provider(root, options = {}) {
   const burstFinished = new Promise((resolve) => {
     finishBurst = resolve;
   });
+  const stageBSent = new Set();
   let tools = 0;
   let asked = false;
   let produced = 0;
@@ -52,7 +53,22 @@ export async function provider(root, options = {}) {
     if (options.saturation && produced >= (options.batchSize ?? 1536)) finishBatch();
     const input = body.includes('STAGE_A_INPUT') && !asked;
     if (input) asked = true;
+    const stageB =
+      options.stageB &&
+      ['STAGE_B_IMPLEMENT', 'STAGE_B_TEST', 'STAGE_B_DELEGATE'].find(
+        (marker) => body.includes(marker) && !stageBSent.has(marker),
+      );
+    if (stageB) stageBSent.add(stageB);
+    const childResult =
+      options.stageB &&
+      !stageBSent.has('child-result') &&
+      JSON.parse(body)
+        .tools?.flatMap((t) => t.tools ?? [t])
+        .some((t) => t.name === 'submit_result');
+    if (childResult) stageBSent.add('child-result');
     const tool =
+      !!childResult ||
+      !!stageB ||
       (body.includes('STAGE_A_APPROVAL') && tools === 0) ||
       (body.includes('STAGE_A_APPROVAL_2') && tools === 1);
     if (tool) tools++;
@@ -95,12 +111,30 @@ export async function provider(root, options = {}) {
         sequence_number: 2,
         output_index: 0,
         item_id: 'fc_stage_a',
-        name: 'bash',
+        name: childResult ? 'submit_result' : stageB === 'STAGE_B_DELEGATE' ? 'workflow' : 'bash',
         call_id: 'call_stage_a',
-        arguments: JSON.stringify({
-          command: 'printf approved >> approval-count.txt',
-          description: 'Write a lifecycle test artifact once',
-        }),
+        arguments: JSON.stringify(
+          childResult
+            ? {
+                text: 'Addition reviewer completed the read-only review.',
+                notes: 'Scripted loopback child result',
+              }
+            : stageB === 'STAGE_B_DELEGATE'
+              ? {
+                  name: 'Addition review',
+                  script:
+                    "export default async function workflow(host) { return await host.agent({ input: 'STAGE_B_CHILD read-only addition review', label: 'Addition reviewer' }); }",
+                }
+              : {
+                  command:
+                    stageB === 'STAGE_B_IMPLEMENT'
+                      ? 'printf "export const sum = (a, b) => a + b;\\n" > sum.mjs'
+                      : stageB === 'STAGE_B_TEST'
+                        ? `node --input-type=module -e "import {sum} from './sum.mjs'; if(sum(2,3)!==5) process.exit(1); console.log('PASS sum(2,3)=5')"`
+                        : 'printf approved >> approval-count.txt',
+                  description: 'Write a lifecycle test artifact once',
+                },
+        ),
       });
     else
       emit({

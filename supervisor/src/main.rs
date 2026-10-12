@@ -1,4 +1,5 @@
 mod db;
+mod review;
 mod worker;
 
 use anyhow::{Context, Result, bail, ensure};
@@ -222,6 +223,54 @@ impl Actor {
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
         ensure!(params.is_object(), "Params must be an object");
+        if [
+            "presentation/get",
+            "presentation/save",
+            "artifact/capture",
+            "artifact/check",
+            "artifact/read",
+            "review/list",
+            "evidence/record",
+        ]
+        .contains(&operation)
+        {
+            let id = request["id"].as_str().context("Request ID required")?;
+            ensure!(
+                !id.is_empty()
+                    && id.len() <= 100
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
+                "Invalid request ID"
+            );
+            return timeout(
+                Duration::from_secs(12),
+                review::handle(self.db.clone(), operation, &params, id),
+            )
+            .await
+            .context("Review inspection timed out")?;
+        }
+        if operation == "transcript" || operation == "output" {
+            let session = params["sessionId"].as_str().context("Session required")?;
+            ensure!(
+                self.row(session)?["state"]["current"] == true,
+                "Session state unavailable"
+            );
+            let response = self
+                .workers
+                .get_mut(session)
+                .context("Worker unavailable")?
+                .call(
+                    json!({"id":Uuid::new_v4().to_string(),"operation":if operation == "output" {"readOutput"} else {"inspect"},"params":params}),
+                )
+                .await?;
+            ensure!(
+                response.get("error").is_none(),
+                "Transcript read failed: {}",
+                response["error"]
+            );
+            return Ok(response["result"].clone());
+        }
         if operation == "stop" {
             let sessions = self.db.lock().unwrap().all("sessions")?;
             let expected: Vec<&str> = sessions
@@ -353,7 +402,12 @@ struct Call {
     response: oneshot::Sender<Result<Value>>,
     delivered: oneshot::Receiver<()>,
 }
-async fn connection(stream: UnixStream, token: String, sender: mpsc::Sender<Call>) -> Result<()> {
+async fn connection(
+    stream: UnixStream,
+    token: String,
+    sender: mpsc::Sender<Call>,
+    db: SharedDb,
+) -> Result<()> {
     ensure!(
         stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
         "IPC peer belongs to another user"
@@ -369,6 +423,11 @@ async fn connection(stream: UnixStream, token: String, sender: mpsc::Sender<Call
             request["version"] == 1 && request["token"] == token,
             "Invalid version or authentication"
         );
+        // Snapshot reads remain available while the serialized command actor is recovering.
+        if request["operation"] == "status" {
+            let db = db.lock().unwrap();
+            return Ok(json!({"pid":std::process::id(),"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+        }
         let (tx, rx) = oneshot::channel();
         sender
             .try_send(Call {
@@ -476,6 +535,22 @@ async fn main() -> Result<()> {
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let mut tick = interval(Duration::from_secs(1));
     println!("{}", json!({"pid":std::process::id(),"socket":socket_path}));
+    let accept_db = actor.db.clone();
+    let accept_task = tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            if let Ok(permit) = permits.clone().try_acquire_owned() {
+                let sender = sender.clone();
+                let token = token.clone();
+                let db = accept_db.clone();
+                tokio::spawn(async move {
+                    let _permit = permit;
+                    if let Err(error) = connection(stream, token, sender, db).await {
+                        eprintln!("IPC: {error}");
+                    }
+                });
+            }
+        }
+    });
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => break,
@@ -487,15 +562,10 @@ async fn main() -> Result<()> {
                 let _ = call.response.send(result);
                 if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
             }
-            accepted = listener.accept() => {
-                let (stream, _) = accepted?;
-                if let Ok(permit) = permits.clone().try_acquire_owned() {
-                    let sender = sender.clone(); let token = token.clone();
-                    tokio::spawn(async move { let _permit = permit; if let Err(error) = connection(stream, token, sender).await { eprintln!("IPC: {error}"); } });
-                }
-            }
+
         }
     }
+    accept_task.abort();
     actor.stop().await;
     fs::remove_file(socket_path)?;
     drop(lock);

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Review Stage B state races, capture-scoped evidence paging, focused-field persistence, save retries, keyboard tabs and capture limits; validate light mode with automated WCAG checks.
+- Add a Tauri/React/TypeScript desktop workflow with a light default theme, task map/list, attention queue, transcript, permission decisions and contextual controls.
+- Persist presentation state separately from Muse execution; add immutable Git captures and revision-bound test, review and acceptance attestations with freshness rejection.
+- Add native workflow-child projection, bounded transcript/output/diff pages and real Muse UI integration coverage across implementation, testing, review and reopen.
+- Migrate the supervisor store to schema 2 and keep snapshot reads available during serialized control operations.
+
 - Add a Rust Stage A supervisor with authenticated Unix IPC, exclusive ownership, a durable command journal, and bounded worker recovery.
 - Add an official Muse SDK 1.4.6 Node worker and a diagnostic client for sessions, steering, cancellation, approvals, structured questions, and explicit stop.
 - Prove native egress saturation with real Muse gaps, bounded official-SDK splice recovery on the same host, and cold/live projection convergence.

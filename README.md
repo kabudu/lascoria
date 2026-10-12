@@ -2,7 +2,16 @@
 
 Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.
 
-Stage A implements a local Rust supervisor, a Node worker using the official Muse SDK, and a diagnostic CLI. The eventual interface is Tauri with React and TypeScript. A native Rust MSP SDK is a possible follow-up after the concept is proven; the current `muse-codes` crate wraps headless CLI output and does not replace this interactive MSP integration.
+Stage A implements a local Rust supervisor, a Node worker using the official Muse SDK, and a diagnostic CLI. Stage B adds a Tauri desktop client with React and TypeScript, using light mode by default. A native Rust MSP SDK is a possible follow-up after the concept is proven; the current `muse-codes` crate wraps headless CLI output and does not replace this interactive MSP integration.
+
+## Run the desktop client
+
+```sh
+npm ci
+npm run desktop:dev
+```
+
+Start a session from an existing Git repository, then inspect the task map/list, attention queue, transcript, captured diffs and revision-bound human evidence. Closing the GUI leaves the supervisor running. [Stage B scope, trust model and validation](docs/stage-b.md) describe the current development client and remaining release gates.
 
 ## Run the diagnostic client
 
