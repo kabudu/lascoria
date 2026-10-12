@@ -42,6 +42,8 @@ export interface Task {
   error?: { kind: string; message: string; retryable?: boolean };
 }
 export interface Prefs {
+  zoom?: number;
+  canvasOffset?: { x: number; y: number };
   panels?: Record<string, { x: number; y: number; collapsed: boolean }>;
   selection?: string;
   selections?: Record<string, string>;

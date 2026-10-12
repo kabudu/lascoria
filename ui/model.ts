@@ -206,3 +206,80 @@ export function constellationLayout(nodes: Task[], width: number, left = 300, ri
   }
   return result;
 }
+
+export interface CanvasFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+export function freeCanvasFrame(
+  width: number,
+  height: number,
+  obstacles: CanvasFrame[],
+): CanvasFrame {
+  const xs = [0, width],
+    ys = [0, height];
+  for (const box of obstacles) {
+    xs.push(Math.max(0, Math.min(width, box.x)), Math.max(0, Math.min(width, box.x + box.width)));
+    ys.push(
+      Math.max(0, Math.min(height, box.y)),
+      Math.max(0, Math.min(height, box.y + box.height)),
+    );
+  }
+  const xEdges = [...new Set(xs)].sort((a, b) => a - b),
+    yEdges = [...new Set(ys)].sort((a, b) => a - b);
+  let best: CanvasFrame = { x: 0, y: 0, width: 0, height: 0 };
+  for (let a = 0; a < xEdges.length; a++)
+    for (let b = a + 1; b < xEdges.length; b++)
+      for (let c = 0; c < yEdges.length; c++)
+        for (let d = c + 1; d < yEdges.length; d++) {
+          const candidate = {
+            x: xEdges[a],
+            y: yEdges[c],
+            width: xEdges[b] - xEdges[a],
+            height: yEdges[d] - yEdges[c],
+          };
+          if (
+            candidate.width * candidate.height <= best.width * best.height ||
+            candidate.width < 100 ||
+            candidate.height < 100
+          )
+            continue;
+          if (
+            obstacles.some(
+              (box) =>
+                candidate.x < box.x + box.width &&
+                candidate.x + candidate.width > box.x &&
+                candidate.y < box.y + box.height &&
+                candidate.y + candidate.height > box.y,
+            )
+          )
+            continue;
+          best = candidate;
+        }
+  return best;
+}
+export function fitConstellation(
+  points: { x: number; y: number }[],
+  width: number,
+  height: number,
+  frame: CanvasFrame = { x: 0, y: 166, width, height: height - 166 },
+) {
+  if (!points.length) return { zoom: 1, offset: { x: 0, y: 0 } };
+  const minX = Math.min(...points.map((p) => p.x)),
+    minY = Math.min(...points.map((p) => p.y));
+  const maxX = Math.max(...points.map((p) => p.x + 220)),
+    maxY = Math.max(...points.map((p) => p.y + 140));
+  const zoom = Math.max(
+    0.02,
+    Math.min(2, (frame.width - 48) / (maxX - minX), (frame.height - 48) / (maxY - minY)),
+  );
+  return {
+    zoom,
+    offset: {
+      x: frame.x + (frame.width - (maxX - minX) * zoom) / 2 - minX * zoom,
+      y: frame.y + (frame.height - (maxY - minY) * zoom) / 2 - minY * zoom,
+    },
+  };
+}

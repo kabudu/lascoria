@@ -147,7 +147,10 @@ test('real Muse implementation, tests and review through React and the native Ru
           async () => {
             const s = await status();
             const row = s.sessions.find((row: any) => row.id === createdSession);
-            return row.state.turns?.at(-1)?.terminal;
+            const turn = row.state.turns?.at(-1);
+            if (turn?.terminal === 'failed')
+              throw new Error('Native fixture turn failed: ' + JSON.stringify(turn));
+            return turn?.terminal;
           },
           { timeout: 25000 },
         )
@@ -212,6 +215,74 @@ test('real Muse implementation, tests and review through React and the native Ru
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
 
+    const draggedNode = page.locator('.task-node').first();
+    const nodeId = (await draggedNode.getAttribute('id'))!.slice(5);
+    const originalNodeBounds = (await draggedNode.boundingBox())!;
+    await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }),
+    ).toHaveText('80%');
+    const zoomedBounds = (await draggedNode.boundingBox())!;
+    expect(zoomedBounds.width).toBeCloseTo(originalNodeBounds.width * 0.8, 1);
+    const oldPin = (await request(directory, 'presentation/get')).value.positions?.[nodeId];
+    const natural = await draggedNode.evaluate((element) => ({
+      x: parseFloat((element as HTMLElement).style.left),
+      y: parseFloat((element as HTMLElement).style.top),
+    }));
+    await page.mouse.move(zoomedBounds.x + 60, zoomedBounds.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(zoomedBounds.x + 100, zoomedBounds.y + 64, { steps: 6 });
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.positions?.[nodeId]?.x)
+      .toBeCloseTo((oldPin?.x ?? natural.x) + 50, 1);
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.positions?.[nodeId]?.y)
+      .toBeCloseTo((oldPin?.y ?? natural.y) + 30, 1);
+    await draggedNode.focus();
+    await page.keyboard.press('Shift+ArrowRight');
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.positions?.[nodeId]?.x)
+      .toBeCloseTo((oldPin?.x ?? natural.x) + 70, 1);
+    await page.getByRole('button', { name: 'Fit to view', exact: true }).click();
+    const canvasBounds = (await page.locator('.map-scroll').boundingBox())!;
+    for (const node of await page.locator('.task-node').all()) {
+      const bounds = (await node.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(canvasBounds.x);
+      expect(bounds.y).toBeGreaterThanOrEqual(canvasBounds.y);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(canvasBounds.x + canvasBounds.width + 1);
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(
+        canvasBounds.y + canvasBounds.height + 1,
+      );
+      for (const panel of await page
+        .locator('.floating-panel, .surface-toolbar, .surface-foot, .layout-controls')
+        .all()) {
+        const box = (await panel.boundingBox())!;
+        expect(
+          bounds.x + bounds.width <= box.x ||
+            bounds.x >= box.x + box.width ||
+            bounds.y + bounds.height <= box.y ||
+            bounds.y >= box.y + box.height,
+        ).toBe(true);
+      }
+    }
+    const fittedZoom = await page
+      .locator('.task-map')
+      .evaluate((element) =>
+        Number((element as HTMLElement).style.transform.match(/scale\(([^)]+)\)/)![1]),
+      );
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.zoom)
+      .toBe(fittedZoom);
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }),
+    ).toHaveText(Math.round(fittedZoom * 100) + '%');
+    await expect
+      .poll(async () => (await draggedNode.boundingBox())!.width)
+      .toBeCloseTo(220 * fittedZoom, 1);
+    await page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }).click();
+    await page.getByRole('button', { name: 'Recenter canvas', exact: true }).click();
     await expect(page.locator('.native-edge').first()).toHaveAttribute('d', / C /);
     const mapBounds = (await page.locator('.map-scroll').boundingBox())!;
     expect(mapBounds.width).toBe(1440);

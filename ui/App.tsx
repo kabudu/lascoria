@@ -4,7 +4,15 @@ import type { PanelLayout } from './FloatingPanel';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { FormEvent } from 'react';
 import { connect, request } from './api';
-import { tasks, attention, questionAnswers, taskAttentionKey, constellationLayout } from './model';
+import {
+  tasks,
+  attention,
+  questionAnswers,
+  taskAttentionKey,
+  constellationLayout,
+  fitConstellation,
+  freeCanvasFrame,
+} from './model';
 import type { Status, SessionRow, Task, Prefs, Artifact, Evidence, Item, Json } from './types';
 const empty: Status = { pid: 0, sessions: [], commands: [] };
 const text = (value: Json) => (typeof value === 'string' ? value : JSON.stringify(value, null, 2));
@@ -23,6 +31,18 @@ export function App() {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
+  const [nodePreview, setNodePreview] = useState<{ id: string; x: number; y: number } | null>(null);
+  const nodeDrag = useRef<{
+    id: string;
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+    scrollX: number;
+    scrollY: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressNodeClick = useRef<string | null>(null);
   const [mapWidth, setMapWidth] = useState(600);
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -383,7 +403,63 @@ export function App() {
     prefs.panels?.sessions?.collapsed && prefs.panels?.attention?.collapsed ? 40 : 300,
     prefs.panels?.inspector?.collapsed ? 40 : 460,
   );
-  const position = (node: Task, _index: number) => prefs.positions?.[node.id] ?? layout[node.id];
+  const zoom = Math.max(0.02, Math.min(2, prefs.zoom ?? 1));
+  const canvasOffset = prefs.canvasOffset ?? { x: 0, y: 0 };
+  const position = (node: Task, _index: number) =>
+    nodePreview?.id === node.id ? nodePreview : (prefs.positions?.[node.id] ?? layout[node.id]);
+  const sceneWidth = Math.max(
+    mapWidth,
+    1800,
+    ...visible.map((node, index) => position(node, index).x + 260),
+  );
+  const sceneHeight = Math.max(
+    1400,
+    ...visible.map((node, index) => position(node, index).y + 180),
+  );
+  useEffect(() => {
+    if (mapRef.current && prefs.viewport)
+      mapRef.current.scrollTo({ left: prefs.viewport.x, top: prefs.viewport.y });
+  }, [prefs.zoom, prefs.canvasOffset]);
+  useEffect(() => {
+    nodeDrag.current = null;
+    setNodePreview(null);
+  }, [session?.id]);
+  function changeZoom(next: number) {
+    const element = mapRef.current;
+    if (!element) return;
+    next = Math.max(0.02, Math.min(2, next));
+    const x =
+      ((element.scrollLeft + element.clientWidth / 2 - canvasOffset.x) / zoom) * next +
+      canvasOffset.x -
+      element.clientWidth / 2;
+    const y =
+      ((element.scrollTop + element.clientHeight / 2 - canvasOffset.y) / zoom) * next +
+      canvasOffset.y -
+      element.clientHeight / 2;
+    updatePrefs({
+      zoom: next,
+      canvasOffset: { x: canvasOffset.x + Math.max(0, -x), y: canvasOffset.y + Math.max(0, -y) },
+      viewport: { x: Math.max(0, x), y: Math.max(0, y) },
+    });
+  }
+  function finishNodeDrag(commit: boolean) {
+    const drag = nodeDrag.current;
+    if (!drag) return;
+    nodeDrag.current = null;
+    if (commit && drag.moved && nodePreview) {
+      suppressNodeClick.current = drag.id;
+      setTimeout(() => {
+        suppressNodeClick.current = null;
+      }, 0);
+      updatePrefs({
+        positions: {
+          ...latestPrefs.current.positions,
+          [drag.id]: { x: nodePreview.x, y: nodePreview.y },
+        },
+      });
+    }
+    setNodePreview(null);
+  }
   async function capture() {
     if (!session || !task?.turnId) return;
     const value = await mutate('artifact/capture', { sessionId: session.id, taskId: task.turnId });
@@ -562,10 +638,89 @@ export function App() {
                   <button
                     onClick={() => {
                       mapRef.current?.scrollTo({ left: 0, top: 0 });
-                      updatePrefs({ viewport: { x: 0, y: 0 } });
+                      updatePrefs({ canvasOffset: { x: 0, y: 0 }, viewport: { x: 0, y: 0 } });
                     }}
                   >
                     Recenter canvas
+                  </button>
+                  <button
+                    disabled={prefs.view === 'list' || zoom <= 0.02}
+                    aria-label="Zoom out"
+                    onClick={() => changeZoom(zoom / 1.25)}
+                  >
+                    −
+                  </button>
+                  <button
+                    disabled={prefs.view === 'list'}
+                    aria-label="Reset zoom to 100 percent"
+                    onClick={() => changeZoom(1)}
+                  >
+                    {Math.round(zoom * 100)}%
+                  </button>
+                  <button
+                    disabled={prefs.view === 'list' || zoom >= 2}
+                    aria-label="Zoom in"
+                    onClick={() => changeZoom(zoom * 1.25)}
+                  >
+                    +
+                  </button>
+                  <button
+                    disabled={prefs.view === 'list' || !visible.length}
+                    onClick={() => {
+                      const element = mapRef.current;
+                      if (!element) return;
+                      const canvas = element.getBoundingClientRect();
+                      const obstacles = [
+                        ...document.querySelectorAll(
+                          '.floating-panel, .surface-toolbar, .surface-foot, .layout-controls',
+                        ),
+                      ].map((panel) => {
+                        const box = panel.getBoundingClientRect();
+                        return {
+                          x: box.left - canvas.left,
+                          y: box.top - canvas.top,
+                          width: box.width,
+                          height: box.height,
+                        };
+                      });
+                      const frame = freeCanvasFrame(
+                        element.clientWidth,
+                        element.clientHeight,
+                        obstacles,
+                      );
+                      if (!frame.width) {
+                        setNotice('Move or collapse a panel to make room for fit-to-view.');
+                        return;
+                      }
+                      const points = visible.map((node, index) => position(node, index));
+                      const fit = fitConstellation(
+                        points,
+                        element.clientWidth,
+                        element.clientHeight,
+                        frame,
+                      );
+                      if (
+                        points.some(
+                          (point) =>
+                            point.x * fit.zoom + fit.offset.x < frame.x ||
+                            (point.x + 220) * fit.zoom + fit.offset.x > frame.x + frame.width ||
+                            point.y * fit.zoom + fit.offset.y < frame.y ||
+                            (point.y + 140) * fit.zoom + fit.offset.y > frame.y + frame.height,
+                        )
+                      ) {
+                        setNotice(
+                          'Move or collapse a panel to fit all visible nodes at the minimum zoom.',
+                        );
+                        return;
+                      }
+                      updatePrefs({
+                        zoom: fit.zoom,
+                        canvasOffset: fit.offset,
+                        viewport: { x: 0, y: 0 },
+                      });
+                    }}
+                  >
+                    Fit to view
                   </button>
                   <div className="segmented">
                     <button
@@ -645,7 +800,13 @@ export function App() {
                       if (!steps[event.key]) return;
                       event.preventDefault();
                       const [left, top] = steps[event.key];
-                      event.currentTarget.scrollBy({ left, top });
+                      updatePrefs({
+                        canvasOffset: {
+                          x: canvasOffset.x - event.currentTarget.scrollLeft - left,
+                          y: canvasOffset.y - event.currentTarget.scrollTop - top,
+                        },
+                        viewport: { x: 0, y: 0 },
+                      });
                     }}
                     ref={mapRef}
                     onPointerDown={(event) => {
@@ -655,17 +816,24 @@ export function App() {
                       pan.current = {
                         x: event.clientX,
                         y: event.clientY,
-                        left: element.scrollLeft,
-                        top: element.scrollTop,
+                        left: canvasOffset.x - element.scrollLeft,
+                        top: canvasOffset.y - element.scrollTop,
                       };
+                      updatePrefs({
+                        canvasOffset: { x: pan.current.left, y: pan.current.top },
+                        viewport: { x: 0, y: 0 },
+                      });
                       element.setPointerCapture(event.pointerId);
                     }}
                     onPointerMove={(event) => {
                       if (!pan.current) return;
-                      event.currentTarget.scrollLeft =
-                        pan.current.left - event.clientX + pan.current.x;
-                      event.currentTarget.scrollTop =
-                        pan.current.top - event.clientY + pan.current.y;
+                      updatePrefs({
+                        canvasOffset: {
+                          x: pan.current.left + event.clientX - pan.current.x,
+                          y: pan.current.top + event.clientY - pan.current.y,
+                        },
+                        viewport: { x: 0, y: 0 },
+                      });
                     }}
                     onPointerUp={() => {
                       pan.current = null;
@@ -683,94 +851,184 @@ export function App() {
                     }
                   >
                     <div
-                      className="task-map"
+                      className="map-stage"
                       style={{
-                        width: Math.max(
-                          mapWidth,
-                          1800,
-                          ...visible.map((node, index) => position(node, index).x + 260),
-                        ),
+                        width: Math.max(mapWidth, sceneWidth * zoom + canvasOffset.x),
                         height: Math.max(
-                          1400,
-                          ...visible.map((node, index) => position(node, index).y + 154),
+                          mapRef.current?.clientHeight ?? 600,
+                          sceneHeight * zoom + canvasOffset.y,
                         ),
                       }}
-                      aria-label="Task map"
                     >
-                      <svg className="edges" width="100%" height="100%" aria-hidden="true">
-                        {visible.flatMap((node, index) => {
-                          const parent = visible.findIndex((n) => n.id === node.parentId);
-                          if (parent < 0) return [];
-                          const a = position(visible[parent], parent),
-                            b = position(node, index);
-                          return [
-                            <path
-                              key={node.id}
-                              d={`M ${a.x + 110} ${a.y + 114} C ${a.x + 110} ${a.y + 150}, ${b.x + 110} ${b.y - 36}, ${b.x + 110} ${b.y}`}
-                              className="native-edge"
-                            />,
-                          ];
-                        })}
-                        {(prefs.edges ?? []).map((edge) => {
-                          const a = visible.findIndex((n) => n.id === edge.from),
-                            b = visible.findIndex((n) => n.id === edge.to);
-                          if (a < 0 || b < 0) return null;
-                          const p = position(visible[a], a),
-                            q = position(visible[b], b);
-                          return (
-                            <g key={edge.id}>
+                      <div
+                        className="task-map"
+                        style={{
+                          width: sceneWidth,
+                          height: sceneHeight,
+                          left: canvasOffset.x,
+                          top: canvasOffset.y,
+                          transform: `scale(${zoom})`,
+                          transformOrigin: '0 0',
+                        }}
+                        aria-label="Task map"
+                      >
+                        <svg className="edges" width="100%" height="100%" aria-hidden="true">
+                          {visible.flatMap((node, index) => {
+                            const parent = visible.findIndex((n) => n.id === node.parentId);
+                            if (parent < 0) return [];
+                            const a = position(visible[parent], parent),
+                              b = position(node, index);
+                            return [
                               <path
-                                d={`M ${p.x + 220} ${p.y + 55} C ${p.x + 300} ${p.y + 55}, ${q.x - 80} ${q.y + 55}, ${q.x} ${q.y + 55}`}
-                                className="asserted-edge"
-                              />
-                              <text x={(p.x + 220 + q.x) / 2} y={(p.y + q.y) / 2 + 45}>
-                                {edge.kind} · user
-                              </text>
-                            </g>
+                                key={node.id}
+                                d={`M ${a.x + 110} ${a.y + 114} C ${a.x + 110} ${a.y + 150}, ${b.x + 110} ${b.y - 36}, ${b.x + 110} ${b.y}`}
+                                className="native-edge"
+                              />,
+                            ];
+                          })}
+                          {(prefs.edges ?? []).map((edge) => {
+                            const a = visible.findIndex((n) => n.id === edge.from),
+                              b = visible.findIndex((n) => n.id === edge.to);
+                            if (a < 0 || b < 0) return null;
+                            const p = position(visible[a], a),
+                              q = position(visible[b], b);
+                            return (
+                              <g key={edge.id}>
+                                <path
+                                  d={`M ${p.x + 220} ${p.y + 55} C ${p.x + 300} ${p.y + 55}, ${q.x - 80} ${q.y + 55}, ${q.x} ${q.y + 55}`}
+                                  className="asserted-edge"
+                                />
+                                <text x={(p.x + 220 + q.x) / 2} y={(p.y + q.y) / 2 + 45}>
+                                  {edge.kind} · user
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                        {visible.map((node, index) => {
+                          const p = position(node, index);
+                          return (
+                            <button
+                              key={node.id}
+                              className={`task-node ${task?.id === node.id ? 'selected' : ''}`}
+                              style={{ left: p.x, top: p.y }}
+                              title="Drag to arrange; Shift+arrow keys move; arrow keys navigate"
+                              onPointerDown={(event) => {
+                                if (event.button !== 0) return;
+                                event.stopPropagation();
+                                event.preventDefault();
+                                event.currentTarget.setPointerCapture(event.pointerId);
+                                nodeDrag.current = {
+                                  id: node.id,
+                                  x: event.clientX,
+                                  y: event.clientY,
+                                  left: p.x,
+                                  top: p.y,
+                                  scrollX: mapRef.current?.scrollLeft ?? 0,
+                                  scrollY: mapRef.current?.scrollTop ?? 0,
+                                  moved: false,
+                                };
+                              }}
+                              onPointerMove={(event) => {
+                                const drag = nodeDrag.current;
+                                if (!drag || drag.id !== node.id) return;
+                                const dx = event.clientX - drag.x,
+                                  dy = event.clientY - drag.y;
+                                if (Math.hypot(dx, dy) > 4) drag.moved = true;
+                                if (!drag.moved) return;
+                                setNodePreview({
+                                  id: node.id,
+                                  x: Math.max(
+                                    0,
+                                    Math.min(
+                                      12000,
+                                      drag.left +
+                                        (dx + (mapRef.current?.scrollLeft ?? 0) - drag.scrollX) /
+                                          zoom,
+                                    ),
+                                  ),
+                                  y: Math.max(
+                                    0,
+                                    Math.min(
+                                      12000,
+                                      drag.top +
+                                        (dy + (mapRef.current?.scrollTop ?? 0) - drag.scrollY) /
+                                          zoom,
+                                    ),
+                                  ),
+                                });
+                              }}
+                              onPointerUp={() => finishNodeDrag(true)}
+                              onPointerCancel={() => finishNodeDrag(false)}
+                              onLostPointerCapture={() => finishNodeDrag(false)}
+                              onClick={() => {
+                                if (suppressNodeClick.current === node.id) {
+                                  suppressNodeClick.current = null;
+                                  return;
+                                }
+                                select(node);
+                              }}
+                              onKeyDown={(e) => {
+                                if (
+                                  ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(
+                                    e.key,
+                                  )
+                                ) {
+                                  e.preventDefault();
+                                  if (e.shiftKey) {
+                                    const steps: Record<string, [number, number]> = {
+                                      ArrowLeft: [-20, 0],
+                                      ArrowRight: [20, 0],
+                                      ArrowUp: [0, -20],
+                                      ArrowDown: [0, 20],
+                                    };
+                                    const [x, y] = steps[e.key];
+                                    updatePrefs({
+                                      positions: {
+                                        ...latestPrefs.current.positions,
+                                        [node.id]: {
+                                          x: Math.max(0, Math.min(12000, p.x + x)),
+                                          y: Math.max(0, Math.min(12000, p.y + y)),
+                                        },
+                                      },
+                                    });
+                                    return;
+                                  }
+                                  const next =
+                                    visible[
+                                      (index +
+                                        (['ArrowLeft', 'ArrowUp'].includes(e.key) ? -1 : 1) +
+                                        visible.length) %
+                                        visible.length
+                                    ];
+                                  select(next);
+                                  document.getElementById(`node-${next.id}`)?.focus();
+                                }
+                              }}
+                              id={`node-${node.id}`}
+                              aria-label={`${node.label}, ${node.status}, ${node.provenance}`}
+                            >
+                              <small>
+                                <span className="node-symbol" aria-hidden="true">
+                                  {node.nativeChild
+                                    ? '◈'
+                                    : node.provenance === 'native'
+                                      ? '✳'
+                                      : '◉'}
+                                </span>
+                                {node.provenance === 'native'
+                                  ? node.item?.kind
+                                  : 'DERIVED TURN TASK'}
+                              </small>
+                              <strong>{node.label}</strong>
+                              <span>
+                                <i className={`status-dot ${node.status}`} />
+                                {node.status}
+                              </span>
+                            </button>
                           );
                         })}
-                      </svg>
-                      {visible.map((node, index) => {
-                        const p = position(node, index);
-                        return (
-                          <button
-                            key={node.id}
-                            className={`task-node ${task?.id === node.id ? 'selected' : ''}`}
-                            style={{ left: p.x, top: p.y }}
-                            onClick={() => select(node)}
-                            onKeyDown={(e) => {
-                              if (
-                                ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(e.key)
-                              ) {
-                                e.preventDefault();
-                                const next =
-                                  visible[
-                                    (index +
-                                      (['ArrowLeft', 'ArrowUp'].includes(e.key) ? -1 : 1) +
-                                      visible.length) %
-                                      visible.length
-                                  ];
-                                select(next);
-                                document.getElementById(`node-${next.id}`)?.focus();
-                              }
-                            }}
-                            id={`node-${node.id}`}
-                            aria-label={`${node.label}, ${node.status}, ${node.provenance}`}
-                          >
-                            <small>
-                              <span className="node-symbol" aria-hidden="true">
-                                {node.nativeChild ? '◈' : node.provenance === 'native' ? '✳' : '◉'}
-                              </span>
-                              {node.provenance === 'native' ? node.item?.kind : 'DERIVED TURN TASK'}
-                            </small>
-                            <strong>{node.label}</strong>
-                            <span>
-                              <i className={`status-dot ${node.status}`} />
-                              {node.status}
-                            </span>
-                          </button>
-                        );
-                      })}
+                      </div>
                     </div>
                   </div>
                 )}

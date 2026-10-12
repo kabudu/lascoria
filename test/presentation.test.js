@@ -6,6 +6,8 @@ import {
   questionAnswers,
   taskAttentionKey,
   constellationLayout,
+  fitConstellation,
+  freeCanvasFrame,
 } from '../ui/model.ts';
 test('presentation preserves native workflow failure and never infers dependency or verification', () => {
   const row = {
@@ -230,4 +232,42 @@ test('constellation layout keeps ownership levels below parents without overlap 
       }
     }
   }
+});
+
+test('fit frames visible moved nodes without mutating positions, including distant pins', () => {
+  const points = [
+    { x: 300, y: 180 },
+    { x: 12000, y: 12000 },
+  ];
+  const original = structuredClone(points);
+  for (const [width, height] of [
+    [800, 600],
+    [1440, 940],
+  ]) {
+    const fit = fitConstellation(points, width, height);
+    for (const point of points) {
+      assert.ok(point.x * fit.zoom + fit.offset.x >= 0);
+      assert.ok((point.x + 220) * fit.zoom + fit.offset.x <= width);
+      assert.ok(point.y * fit.zoom + fit.offset.y >= 190);
+      assert.ok((point.y + 140) * fit.zoom + fit.offset.y <= height);
+    }
+  }
+  assert.deepEqual(points, original);
+  assert.deepEqual(fitConstellation([], 800, 600), { zoom: 1, offset: { x: 0, y: 0 } });
+});
+
+test('fit uses free canvas space around moved floating panels', () => {
+  const obstacles = [
+    { x: 0, y: 0, width: 260, height: 940 },
+    { x: 1000, y: 0, width: 440, height: 940 },
+    { x: 260, y: 0, width: 740, height: 180 },
+  ];
+  const frame = freeCanvasFrame(1440, 940, obstacles);
+  assert.deepEqual(frame, { x: 260, y: 180, width: 740, height: 760 });
+  const point = { x: 1000, y: 2000 };
+  const fit = fitConstellation([point], 1440, 940, frame);
+  assert.ok(point.x * fit.zoom + fit.offset.x >= frame.x);
+  assert.ok((point.x + 220) * fit.zoom + fit.offset.x <= frame.x + frame.width);
+  assert.ok(point.y * fit.zoom + fit.offset.y >= frame.y);
+  assert.ok((point.y + 140) * fit.zoom + fit.offset.y <= frame.y + frame.height);
 });

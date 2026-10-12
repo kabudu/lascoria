@@ -1117,3 +1117,19 @@ main {
 .asserted-edge {
   stroke-linecap: round;
 }
+.map-stage {
+  position: relative;
+}
+.map-stage .task-map {
+  position: absolute;
+  min-width: 0;
+  min-height: 0;
+}
+.task-node {
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.task-node:active {
+  cursor: grabbing;
+}
