@@ -1133,3 +1133,6 @@ main {
 .task-node:active {
   cursor: grabbing;
 }
+.map-scroll {
+  overscroll-behavior: none;
+}

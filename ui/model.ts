@@ -283,3 +283,27 @@ export function fitConstellation(
     },
   };
 }
+
+export interface CanvasCamera {
+  zoom: number;
+  offset: { x: number; y: number };
+}
+export function zoomAtPoint(
+  camera: CanvasCamera,
+  requested: number,
+  anchor: { x: number; y: number },
+): CanvasCamera {
+  const zoom = Math.max(0.02, Math.min(2, requested));
+  const ratio = zoom / camera.zoom;
+  return {
+    zoom,
+    offset: {
+      x: anchor.x - (anchor.x - camera.offset.x) * ratio,
+      y: anchor.y - (anchor.y - camera.offset.y) * ratio,
+    },
+  };
+}
+export function normalizedWheel(x: number, y: number, mode: number, height: number) {
+  const factor = mode === 1 ? 16 : mode === 2 ? height : 1;
+  return { x: x * factor, y: y * factor };
+}

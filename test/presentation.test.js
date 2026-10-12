@@ -8,6 +8,8 @@ import {
   constellationLayout,
   fitConstellation,
   freeCanvasFrame,
+  zoomAtPoint,
+  normalizedWheel,
 } from '../ui/model.ts';
 test('presentation preserves native workflow failure and never infers dependency or verification', () => {
   const row = {
@@ -270,4 +272,26 @@ test('fit uses free canvas space around moved floating panels', () => {
   assert.ok((point.x + 220) * fit.zoom + fit.offset.x <= frame.x + frame.width);
   assert.ok(point.y * fit.zoom + fit.offset.y >= frame.y);
   assert.ok((point.y + 140) * fit.zoom + fit.offset.y <= frame.y + frame.height);
+});
+
+test('cursor zoom keeps the same world point under the cursor at arbitrary offsets and clamps', () => {
+  const anchor = { x: 213, y: 417 },
+    camera = { zoom: 0.7, offset: { x: -110, y: 53 } };
+  for (const requested of [0.0001, 0.45, 1.4, 100]) {
+    const next = zoomAtPoint(camera, requested, anchor);
+    assert.ok(next.zoom >= 0.02 && next.zoom <= 2);
+    assert.ok(
+      Math.abs(
+        (anchor.x - camera.offset.x) / camera.zoom - (anchor.x - next.offset.x) / next.zoom,
+      ) < 1e-8,
+    );
+    assert.ok(
+      Math.abs(
+        (anchor.y - camera.offset.y) / camera.zoom - (anchor.y - next.offset.y) / next.zoom,
+      ) < 1e-8,
+    );
+  }
+  assert.deepEqual(normalizedWheel(2, -3, 0, 900), { x: 2, y: -3 });
+  assert.deepEqual(normalizedWheel(2, -3, 1, 900), { x: 32, y: -48 });
+  assert.deepEqual(normalizedWheel(2, -3, 2, 900), { x: 1800, y: -2700 });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useCanvasGestures } from './useCanvasGestures';
 import { FloatingPanel } from './FloatingPanel';
 import type { PanelLayout } from './FloatingPanel';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -12,6 +13,7 @@ import {
   constellationLayout,
   fitConstellation,
   freeCanvasFrame,
+  zoomAtPoint,
 } from './model';
 import type { Status, SessionRow, Task, Prefs, Artifact, Evidence, Item, Json } from './types';
 const empty: Status = { pid: 0, sessions: [], commands: [] };
@@ -31,6 +33,7 @@ export function App() {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
+  const cameraFrame = useRef<number | null>(null);
   const [nodePreview, setNodePreview] = useState<{ id: string; x: number; y: number } | null>(null);
   const nodeDrag = useRef<{
     id: string;
@@ -188,6 +191,40 @@ export function App() {
     latestPrefs.current = next;
     setPrefs(next);
   }
+
+  function queueCamera(patch: Pick<Prefs, 'zoom' | 'canvasOffset' | 'viewport'>) {
+    // The close flush sees the final input immediately, even before its frame.
+    dirty.current = true;
+    latestPrefs.current = { ...latestPrefs.current, ...patch };
+    if (cameraFrame.current !== null) return;
+    cameraFrame.current = requestAnimationFrame(() => {
+      cameraFrame.current = null;
+      setPrefs(latestPrefs.current);
+    });
+  }
+  useEffect(
+    () => () => {
+      if (cameraFrame.current !== null) cancelAnimationFrame(cameraFrame.current);
+    },
+    [],
+  );
+  useCanvasGestures(
+    mapRef,
+    `${prefs.view}:${session?.id}`,
+    () => {
+      const value = latestPrefs.current;
+      return {
+        zoom: Math.max(0.02, Math.min(2, value.zoom ?? 1)),
+        offset: {
+          x: (value.canvasOffset?.x ?? 0) - (value.viewport?.x ?? 0),
+          y: (value.canvasOffset?.y ?? 0) - (value.viewport?.y ?? 0),
+        },
+      };
+    },
+    (camera) =>
+      queueCamera({ zoom: camera.zoom, canvasOffset: camera.offset, viewport: { x: 0, y: 0 } }),
+    () => !loaded.current || Boolean(nodeDrag.current || pan.current),
+  );
 
   async function flushPrefs() {
     if (saving.current) return saving.current;
@@ -427,20 +464,19 @@ export function App() {
   function changeZoom(next: number) {
     const element = mapRef.current;
     if (!element) return;
-    next = Math.max(0.02, Math.min(2, next));
-    const x =
-      ((element.scrollLeft + element.clientWidth / 2 - canvasOffset.x) / zoom) * next +
-      canvasOffset.x -
-      element.clientWidth / 2;
-    const y =
-      ((element.scrollTop + element.clientHeight / 2 - canvasOffset.y) / zoom) * next +
-      canvasOffset.y -
-      element.clientHeight / 2;
-    updatePrefs({
-      zoom: next,
-      canvasOffset: { x: canvasOffset.x + Math.max(0, -x), y: canvasOffset.y + Math.max(0, -y) },
-      viewport: { x: Math.max(0, x), y: Math.max(0, y) },
-    });
+    const value = latestPrefs.current;
+    const camera = zoomAtPoint(
+      {
+        zoom: value.zoom ?? 1,
+        offset: {
+          x: (value.canvasOffset?.x ?? 0) - (value.viewport?.x ?? 0),
+          y: (value.canvasOffset?.y ?? 0) - (value.viewport?.y ?? 0),
+        },
+      },
+      next,
+      { x: element.clientWidth / 2, y: element.clientHeight / 2 },
+    );
+    updatePrefs({ zoom: camera.zoom, canvasOffset: camera.offset, viewport: { x: 0, y: 0 } });
   }
   function finishNodeDrag(commit: boolean) {
     const drag = nodeDrag.current;
@@ -786,6 +822,7 @@ export function App() {
                 ) : (
                   <div
                     className="map-scroll"
+                    title="Two-finger scroll to pan; pinch or Ctrl/Cmd+wheel to zoom"
                     role="region"
                     aria-label="Constellation canvas"
                     tabIndex={0}
@@ -827,7 +864,7 @@ export function App() {
                     }}
                     onPointerMove={(event) => {
                       if (!pan.current) return;
-                      updatePrefs({
+                      queueCamera({
                         canvasOffset: {
                           x: pan.current.left + event.clientX - pan.current.x,
                           y: pan.current.top + event.clientY - pan.current.y,

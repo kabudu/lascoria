@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add trackpad pinch handling, cursor-centred Ctrl/Cmd+wheel zoom and frame-coalesced canvas panning, with floating-panel scroll isolation.
+
 - Add persistent canvas zoom, fit-to-view around floating panels, and direct node dragging with zoom-aware coordinates and keyboard movement.
 
 - Make the constellation a full-window canvas with pointer/keyboard panning and persistent floating, collapsible Sessions, Attention and Task inspector panels.

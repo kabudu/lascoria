@@ -215,6 +215,84 @@ test('real Muse implementation, tests and review through React and the native Ru
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
 
+    const canvas = page.getByRole('region', { name: 'Constellation canvas', exact: true });
+    const cameraState = () =>
+      page.locator('.task-map').evaluate((element) => {
+        const style = (element as HTMLElement).style;
+        return {
+          zoom: Number(style.transform.match(/scale\(([^)]+)\)/)![1]),
+          x: parseFloat(style.left),
+          y: parseFloat(style.top),
+        };
+      });
+    const beforeWheel = await cameraState();
+    const anchor = { x: 600, y: 500 };
+    await canvas.dispatchEvent('wheel', {
+      ctrlKey: true,
+      deltaY: -100,
+      clientX: anchor.x,
+      clientY: anchor.y + 68,
+      bubbles: true,
+      cancelable: true,
+    });
+    await expect.poll(async () => (await cameraState()).zoom).toBeGreaterThan(beforeWheel.zoom);
+    const afterWheel = await cameraState();
+    expect((anchor.x - afterWheel.x) / afterWheel.zoom).toBeCloseTo(
+      (anchor.x - beforeWheel.x) / beforeWheel.zoom,
+      2,
+    );
+    expect((anchor.y - afterWheel.y) / afterWheel.zoom).toBeCloseTo(
+      (anchor.y - beforeWheel.y) / beforeWheel.zoom,
+      2,
+    );
+    await canvas.dispatchEvent('wheel', {
+      deltaX: 25,
+      deltaY: 35,
+      bubbles: true,
+      cancelable: true,
+    });
+    await expect.poll(async () => (await cameraState()).x).toBeCloseTo(afterWheel.x - 25, 5);
+    expect((await cameraState()).zoom).toBe(afterWheel.zoom);
+    const beforeBurst = await cameraState();
+    await canvas.evaluate((element) => {
+      for (let index = 0; index < 50; index++)
+        element.dispatchEvent(
+          new WheelEvent('wheel', { deltaX: 1, deltaY: 2, bubbles: true, cancelable: true }),
+        );
+    });
+    await expect.poll(async () => (await cameraState()).x).toBeCloseTo(beforeBurst.x - 50, 2);
+    expect((await cameraState()).y).toBeCloseTo(beforeBurst.y - 100, 2);
+    const beforePinch = await cameraState();
+    await canvas.evaluate((element, anchor) => {
+      for (const [type, scale] of [
+        ['gesturestart', 1],
+        ['gesturechange', 1.25],
+      ] as const) {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.assign(event, { scale, clientX: anchor.x, clientY: anchor.y + 68 });
+        element.dispatchEvent(event);
+      }
+      // A duplicate wheel stream during WebKit pinch must not zoom twice.
+      element.dispatchEvent(
+        new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, bubbles: true, cancelable: true }),
+      );
+      window.dispatchEvent(new Event('gestureend', { cancelable: true }));
+    }, anchor);
+    await expect
+      .poll(async () => (await cameraState()).zoom)
+      .toBeCloseTo(beforePinch.zoom * 1.25, 5);
+    const pinched = await cameraState();
+    expect((anchor.x - pinched.x) / pinched.zoom).toBeCloseTo(
+      (anchor.x - beforePinch.x) / beforePinch.zoom,
+      2,
+    );
+    const inspectorCamera = await cameraState();
+    await page
+      .locator('.inspector-body')
+      .dispatchEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+    expect(await cameraState()).toEqual(inspectorCamera);
+    await page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }).click();
+    await page.getByRole('button', { name: 'Recenter canvas', exact: true }).click();
     const draggedNode = page.locator('.task-node').first();
     const nodeId = (await draggedNode.getAttribute('id'))!.slice(5);
     const originalNodeBounds = (await draggedNode.boundingBox())!;
