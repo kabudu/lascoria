@@ -67,3 +67,5 @@ Use Zoom in/out or the percentage button to reset to 100%. Fit to view frames vi
 Two-finger scrolling pans the canvas. Pinch, or hold Ctrl/Cmd while using the wheel, to zoom around the cursor. Canvas input is coalesced to animation frames; native trackpad momentum is preserved without an extra inertial animation. Scroll over a floating panel to scroll that panel instead.
 
 Stage C has started with local diagnostics, repeatable runtime/UI benchmarks and explicit Muse Wonder selection for new sessions. See [Stage C measurements and remaining gates](docs/stage-c.md). Run `npm run benchmark:runtime` for the five-minute runtime observation or `npm run benchmark:ui` for the synthetic projection benchmark. Resource budget misses remain visible in the JSON report.
+
+The default SDK transport shares one bounded Node broker across ten contexts while keeping Muse hosts independent. Use **Session model & effort** in the root-task inspector to change the model at the next model-call boundary or effort for subsequent turns. [Memory measurements, recovery and settings](docs/stage-c-memory.md) describe the tradeoffs and native GUI benchmark.

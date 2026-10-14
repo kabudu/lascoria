@@ -98,7 +98,16 @@ test(
       'stream started',
     );
     model.beginBurst();
-    await bounded(model.batchFinished, 180000);
+    try {
+      await bounded(model.batchFinished, 180000);
+    } catch (error) {
+      const status = await request(directory, 'status');
+      const row = status.sessions[0];
+      throw new Error(
+        `Saturation batch stalled: ${JSON.stringify({ requests: model.requests.length, generation: row.generation, lifecycle: row.lifecycle, current: row.state.current, failure: row.state.failure, turns: row.state.turns, eventCount: row.state.eventCount, totalItems: row.state.totalItems })}`,
+        { cause: error },
+      );
+    }
     before = await eventually(
       directory,
       (state) => !state.sessions[0].state.activeTurnId,

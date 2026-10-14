@@ -52,7 +52,7 @@ try {
     }
   } else if (operation === 'help') {
     console.log(
-      'Usage: npm start -- up | supervisor | status | start|turn|steer|cancel|decide|answer|resume|stop JSON [stable-request-id]\nBuild first: npm run build. Set SCH_STATE_DIR, MUSE_BIN and SCH_PROVIDER. Default provider: echo.',
+      'Usage: npm start -- up | supervisor | status | models|start|turn|steer|cancel|decide|answer|resume|setModel|setEffort|stop JSON [stable-request-id]\nBuild first: npm run build. Set SCH_STATE_DIR, MUSE_BIN and SCH_PROVIDER. Default provider: echo.',
     );
   } else {
     const requestId = id ?? randomUUID();

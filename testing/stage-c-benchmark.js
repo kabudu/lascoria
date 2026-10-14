@@ -47,7 +47,7 @@ const summary = (xs) => ({
   p95Ms: quantile(xs, 0.95),
   maxMs: Math.max(...xs),
 });
-async function processes() {
+async function inventory() {
   const { stdout } = await exec('ps', ['-axo', 'pid=,ppid=,rss=,time=,comm=']);
   const all = stdout
     .trim()
@@ -64,7 +64,12 @@ async function processes() {
         name: name.join(' ').split('/').at(-1),
       };
     });
-  const ids = new Set([daemon.pid]);
+  return all;
+}
+async function processes() {
+  const all = await inventory();
+  const ids = new Set([daemon.pid, ...(guiPid ? [guiPid] : [])]);
+  if (guiPid) for (const p of all) if (p.name.startsWith('com.apple.WebKit.')) ids.add(p.pid);
   for (let i = 0; i < all.length; i++) {
     let added = false;
     for (const p of all)
@@ -77,6 +82,10 @@ async function processes() {
   return all.filter((p) => ids.has(p.pid));
 }
 let report;
+const guiBinary = process.env.SCH_BENCH_GUI_BIN;
+let gui;
+let guiPid;
+
 try {
   const deadline = Date.now() + 10000;
   for (;;) {
@@ -109,6 +118,7 @@ try {
       ids,
     );
     for (const row of state.sessions) {
+      assert.equal(row.state.sessionId, row.id);
       assert.equal(row.generation, 1);
       assert.equal(row.lifecycle, 'connected');
       assert.equal(row.state.current, true);
@@ -156,6 +166,26 @@ try {
   }
   await Promise.all(inFlight);
   const burstElapsedMs = performance.now() - burstStart;
+  if (guiBinary) {
+    if (platform() !== 'darwin')
+      throw Error('Native GUI cohort benchmark currently requires macOS');
+    if ((await inventory()).some((p) => p.name.startsWith('com.apple.WebKit.')))
+      throw Error('Close existing WebKit apps before the conservative GUI-cohort benchmark');
+    gui = spawn(resolve(guiBinary), [], { env, stdio: 'ignore' });
+    guiPid = gui.pid;
+    let guiError;
+    gui.on('error', (error) => {
+      guiError = error;
+    });
+    for (let i = 0; i < 100; i++) {
+      if (guiError) throw guiError;
+      if ((await inventory()).some((p) => p.name === 'com.apple.WebKit.WebContent')) break;
+      if (i === 99) throw Error('Native WebView did not become ready');
+      await delay(100);
+    }
+    // Allow startup allocations to settle before the idle interval.
+    await delay(3000);
+  }
   console.log(`Idle resource observation: ${seconds} seconds`);
   const baseline = await processes();
   const idleStart = performance.now();
@@ -184,9 +214,12 @@ try {
     (sample) => sample.length === baseline.length && sample.every((p) => baselineById.has(p.pid)),
   );
   const control = (p) => p.pid === daemon.pid || p.ppid === daemon.pid;
+  const webkit = (p) => p.name.startsWith('com.apple.WebKit.');
+  const guiProcess = (p) => p.pid === guiPid || webkit(p);
+  const combined = (p) => control(p) || (Boolean(guiPid) && guiProcess(p));
   report = {
     schemaVersion: 1,
-    kind: 'real-supervisor-real-muse-echo',
+    kind: guiPid ? 'native-gui-real-supervisor-real-muse-echo' : 'real-supervisor-real-muse-echo',
     reference: {
       platform: platform(),
       release: release(),
@@ -203,6 +236,8 @@ try {
       snapshotRequests: 300,
       targetReadsPerSecond: 100,
       maxInFlight: 4,
+      sdkMode: process.env.SCH_DEDICATED_WORKERS ? 'dedicated' : 'shared',
+      guiIncluded: Boolean(guiPid),
       idleSeconds: seconds,
     },
     start: summary(startTimes),
@@ -218,6 +253,9 @@ try {
       sampleCount: samples.length,
       controlCpuPercentOneCore: cpu(control),
       controlMeanRssBytes: rss(control),
+      guiCohortMeanRssBytes: guiPid ? rss(guiProcess) : null,
+      combinedMeanRssBytes: guiPid ? rss(combined) : null,
+      combinedCpuPercentOneCore: guiPid ? cpu(combined) : null,
       fullTreeCpuPercentOneCore: cpu(() => true),
       fullTreeMeanRssBytes: rss(() => true),
       processTree: last,
@@ -225,6 +263,12 @@ try {
     diagnostics: await request(directory, 'diagnostics'),
     gates: {
       stableProcessTree,
+      expectedSdkProcessCount:
+        last.filter((p) => p.ppid === daemon.pid).length ===
+        (process.env.SCH_DEDICATED_WORKERS ? 10 : 1),
+      ...(guiPid
+        ? { combinedRss: rss(combined) < 300_000_000, combinedCpu: cpu(combined) < 1 }
+        : {}),
       idleControlCpu: cpu(control) < 1,
       idleControlRss: rss(control) < 300_000_000,
       fullFiveMinuteObservation: seconds >= 300,
@@ -233,13 +277,22 @@ try {
     },
     limitations: [
       'CPU uses ps cumulative time at platform resolution; direct children of the supervisor are classified as SDK workers.',
-      'No GUI, live-provider latency, native view-update stream, 100000-item runtime history or developer usefulness trial is represented. Snapshot requests are reads, not Muse view updates.',
+      guiPid
+        ? 'GUI cohort conservatively includes every WebKit process present after launch; pre-existing WebKit processes are refused. Do not launch another WebKit app during observation. Native GUI uses ten sessions with one turn each, not the fifty-node synthetic workload.'
+        : 'No GUI is represented.',
+      'No live-provider latency, native view-update stream, 100000-item runtime history or developer usefulness trial is represented. Snapshot requests are reads, not Muse view updates.',
     ],
   };
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report.gates));
 } finally {
+  if (gui && gui.exitCode === null && gui.signalCode === null) {
+    const exited = new Promise((r) => gui.once('exit', r));
+    gui.kill('SIGTERM');
+    await Promise.race([exited, delay(5000)]);
+    if (gui.exitCode === null && gui.signalCode === null) gui.kill('SIGKILL');
+  }
   try {
     const state = await request(directory, 'status', {}, undefined, 1000);
     await request(

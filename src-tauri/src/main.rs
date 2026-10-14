@@ -18,6 +18,9 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
     if ![
         "status",
         "diagnostics",
+        "models",
+        "setModel",
+        "setEffort",
         "start",
         "turn",
         "steer",

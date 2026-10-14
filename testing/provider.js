@@ -44,6 +44,21 @@ export async function provider(root, options = {}) {
                 },
               },
             },
+            ...(options.modelSettings
+              ? [
+                  {
+                    id: 'stage-b-alternate',
+                    object: 'model',
+                    metadata: {
+                      'muse-code': {
+                        release_date: '2025-12-01',
+                        is_hidden: false,
+                        limit: { context: 1000000, output: 1024 },
+                      },
+                    },
+                  },
+                ]
+              : []),
           ],
         }),
       );

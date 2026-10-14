@@ -1,5 +1,7 @@
 # Stage C: benchmarks, instrumentation and live trials
 
+The [memory and session-settings follow-up](stage-c-memory.md) supersedes the original per-session Node transport and adds GUI-inclusive measurements. The baseline below is retained as historical evidence.
+
 This first Stage C increment adds repeatable measurements and explicit model selection. It does not complete Stage C's usefulness/adoption gate or claim the full runtime scale target is met.
 
 ## Run the benchmarks
@@ -31,7 +33,7 @@ The new-session dialog offers the advertised catalog default, `muse-wonder-1.0`,
 
 Status advertises additive `modelSelection` and `diagnostics` features. The GUI disables the new controls against an older supervisor and explains that a restart is needed, rather than sending an explicit model that an old server could ignore. Existing sessions are not stopped by that compatibility check.
 
-The native session card shows the model reported by session/start or session/resume. Selection applies to a new session, not an already running turn. Durable resume restores Muse's authoritative model route. Browser login and provider billing are separate from selection; an authentication failure is retained as a failed turn and attention entry.
+The native session card shows the model reported by session/start or session/resume. The new-session picker applies at creation; the follow-up adds a separate mid-session settings dialog with native boundary semantics. Durable resume restores Muse's authoritative model route. Browser login and provider billing are separate from selection; an authentication failure is retained as a failed turn and attention entry.
 
 ## First reference measurements, 14 October 2026
 

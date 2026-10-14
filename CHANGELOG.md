@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Share a bounded Node SDK broker across independent Muse hosts to reduce ten-session control-plane memory; retain visible single-host and broker-wide recovery.
+- Avoid repeated idle snapshot allocation with authenticated conditional status reads and unchanged GUI state retention.
+- Add catalog-backed mid-session model and reasoning-effort controls with durable native setting commands.
+- Measure native GUI and WebKit helper memory alongside the supervisor and SDK, with enforced budget gates.
+
 - Start Stage C with bounded local diagnostics and repeatable runtime and UI projection benchmarks, including resource-budget reporting.
 - Add explicit Wonder/Spark selection for new live sessions and authoritative model labels after resume.
 - Pin Muse SDK/runtime compatibility to 1.4.8 and keep scripted-provider permission posture deterministic.

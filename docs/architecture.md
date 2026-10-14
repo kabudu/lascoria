@@ -1,29 +1,29 @@
 # Stage A architecture decisions
 
-Recorded 12 October 2026.
+Recorded 12 October 2026; updated for Stage C on 14 October 2026.
 
 ## Process boundaries
 
-The control plane is Rust, as confirmed during Stage A implementation. It owns the supervisor lifecycle, owner-restricted Unix IPC, client authentication, worker registry, SQLite command journal, and bounded recovery. A per-session Node worker owns an official `@muse-code/sdk` connection and one `muse serve` process. Muse owns execution, durable session logs, writer leases, sandboxing, and permissions.
+The control plane is Rust, as confirmed during Stage A implementation. It owns the supervisor lifecycle, owner-restricted Unix IPC, client authentication, worker registry, SQLite command journal, and bounded recovery. A shared Node broker owns up to ten independent session contexts, each with an official `@muse-code/sdk` connection and one `muse serve` process. Muse owns execution, durable session logs, writer leases, sandboxing, and permissions.
 
 ```text
 Diagnostic CLI / Tauri + React + TypeScript desktop client
     authenticated local Unix socket, API version 1
 Rust supervisor
-    private NDJSON stdin/stdout, one worker per top-level session
-Node SDK worker (@muse-code/sdk 1.4.8)
+    private generation-tagged NDJSON, one shared SDK broker
+Node SDK broker (@muse-code/sdk 1.4.8), up to ten contexts
     official MSP connection and authoritative SDK Session fold
-Muse Code 1.4.8 (muse serve)
+Muse Code 1.4.8 (one independent muse serve per session)
     tools, permissions, agent execution and durable logs
 ```
 
-A diagnostic client disconnect never closes the worker's stdin. An explicit stop identifies all affected sessions and closes worker stdin; the worker drains Muse through the SDK's shutdown ladder. If Rust dies, worker stdin closes and Muse drains or requires recovery. No surviving host discovery is promised: this binary has a single stdio connection and no exposed reattachment endpoint. Sleep suspends local work; logout and reboot require recovery.
+A diagnostic client disconnect never closes the worker's stdin. An explicit stop identifies all affected sessions, closes their broker contexts and drains Muse through the SDK's shutdown ladder before closing broker stdin. If Rust dies, worker stdin closes and Muse drains or requires recovery. No surviving host discovery is promised: this binary has a single stdio connection and no exposed reattachment endpoint. Sleep suspends local work; logout and reboot require recovery.
 
-The current source checkout is the deployment unit. `SCH_WORKER` defaults to the worker next to the Rust crate at build time. A bundled application must replace that path with an installed resource and ship a compatible Node runtime. Tauri/React is implemented in Stage B; signing, an installer and login startup remain later delivery work.
+The current source checkout is the deployment unit. The default broker and session module are loaded from `src/` next to the Rust crate at build time. `SCH_WORKER` selects a dedicated worker override. A bundled application must replace that path with an installed resource and ship a compatible Node runtime. Tauri/React is implemented in Stage B; signing, an installer and login startup remain later delivery work.
 
 ## Protocol and recovery
 
-The public Unix API accepts one bounded JSON request per connection with `version`, `token`, `id`, `operation`, and `params`. Responses contain `result` or `error`. `start`, `turn`, `steer`, `cancel`, `decide`, `answer`, `resume`, `status`, and `stop` are available. The worker API is private and not a general MSP proxy.
+The public Unix API accepts one bounded JSON request per connection with `version`, `token`, `id`, `operation`, and `params`. Responses contain `result` or `error`. `start`, `turn`, `steer`, `cancel`, `decide`, `answer`, `resume`, `status`, and `stop` are available. Stage C adds `models`, `setModel`, `setEffort` and optional conditional status versions, described in the [memory and settings follow-up](stage-c-memory.md). The worker API is private and not a general MSP proxy.
 
 Rust is the single UUIDv7 command-ID source for these SDK connections. IDs are passed through the SDK's public command override; automatic SDK command retry is disabled. SQLite uses `synchronous=FULL`. The ID, public input, target, operation, and sending status are persisted before dispatch. Requests sharing an ID must have identical semantic JSON input, even across supervisor restart.
 
@@ -56,3 +56,5 @@ Before replacing the official Node worker, a Rust adapter must pass the same pub
 References: [official Muse SDK](https://github.com/meta-models/muse-code-sdk), [Rust headless crate](https://docs.rs/muse-codes/latest/muse_codes/), [SDK fold model](https://meta-models.github.io/muse-code-sdk/next/guides/msp-concepts/fold-model/).
 
 [Stage B presentation, evidence and desktop boundaries](stage-b.md) records the new API operations, schema migration and validation.
+
+[Stage C memory and settings](stage-c-memory.md) describes shared-broker recovery, process-scoped RSS and native mid-session model/effort controls. Dedicated workers remain available for diagnostic comparison.

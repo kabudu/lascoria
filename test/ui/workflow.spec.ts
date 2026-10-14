@@ -30,7 +30,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     '-qm',
     'Initial',
   ]);
-  const model = await provider(root, { stageB: true });
+  const model = await provider(root, { stageB: true, modelSettings: true });
   const env = {
     ...process.env,
     MUSE_BIN: process.env.MUSE_BIN ?? 'muse',
@@ -47,6 +47,7 @@ test('real Muse implementation, tests and review through React and the native Ru
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const bridge = resolve('src-tauri/target/debug/spatial-constellation-desktop');
   let holdTranscript = false;
+  let failStatus = false;
   let releaseTranscript: (() => void) | undefined;
   let transcriptHeld = false;
   let transcriptReturned = false;
@@ -56,6 +57,7 @@ test('real Muse implementation, tests and review through React and the native Ru
         ? { operation: 'status', params: {}, id: 'ui-connect' }
         : args;
     try {
+      if (input.operation === 'status' && failStatus) throw new Error('Fixture connection lost');
       const { stdout } = await exec(bridge, ['--bridge-json', JSON.stringify(input)], {
         env,
         timeout: 35000,
@@ -106,6 +108,11 @@ test('real Muse implementation, tests and review through React and the native Ru
     await ready();
     await page.goto('/');
     await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    failStatus = true;
+    await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toBeVisible();
+    failStatus = false;
+    await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toHaveCount(0);
     const beforeInvalid = (await status()).sessions.length;
     await expect(
       request(directory, 'start', { workspace, modelId: '../bad model' }),
@@ -405,6 +412,17 @@ test('real Muse implementation, tests and review through React and the native Ru
     );
     expect(testItem.visibleOutput).toContain('PASS sum(2,3)=5');
     await page.locator('.session-card').first().click();
+    await page.getByRole('button', { name: 'Session model & effort', exact: true }).click();
+    await page.getByLabel('Session model', { exact: true }).selectOption('stage-b-alternate');
+    await page.getByRole('button', { name: 'Apply model', exact: true }).click();
+    await expect
+      .poll(async () => (await status()).sessions[0].state.modelRoute.modelId)
+      .toBe('stage-b-alternate');
+    await page.getByLabel('Reasoning effort', { exact: true }).selectOption('low');
+    await page.getByRole('button', { name: 'Apply effort', exact: true }).click();
+    await expect.poll(async () => (await status()).sessions[0].state.reasoningEffort).toBe('low');
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+
     holdTranscript = true;
     await page.getByRole('button', { name: 'Browse history', exact: true }).click();
     await expect.poll(() => transcriptHeld).toBe(true);
