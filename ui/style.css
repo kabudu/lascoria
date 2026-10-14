@@ -1136,3 +1136,117 @@ main {
 .map-scroll {
   overscroll-behavior: none;
 }
+
+/* Session controls share the inspector's inset and compact visual hierarchy. */
+.inspector-heading {
+  min-width: 0;
+}
+.inspector-heading p {
+  overflow-wrap: anywhere;
+}
+.inspector-heading button {
+  margin: 8px 0;
+  font-size: 0.8rem;
+}
+.session-settings-trigger {
+  margin: 0 14px 12px;
+  font-size: 0.8rem;
+}
+.settings-summary {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  margin: -8px 0 20px;
+}
+.settings-summary span {
+  padding: 0 5px;
+}
+.session-settings {
+  display: grid;
+  gap: 16px;
+}
+.setting-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+.setting-card label {
+  margin: 0 0 10px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.setting-row select {
+  min-width: 0;
+  flex: 1;
+  font-size: 0.85rem;
+}
+.setting-card button {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  padding: 9px 12px;
+}
+.setting-card .setting-help {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  margin-top: 12px;
+}
+.effort-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.effort-heading output {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.setting-card input[type='range'] {
+  appearance: auto;
+  accent-color: var(--accent);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  height: 26px;
+  background: transparent;
+  cursor: pointer;
+}
+.effort-stops {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.65rem;
+  text-transform: capitalize;
+}
+.effort-stops .selected {
+  color: var(--ink);
+  font-weight: 700;
+}
+.effort-footer {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.settings-empty {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 0.85rem;
+}
+@media (max-width: 520px) {
+  .setting-row,
+  .effort-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

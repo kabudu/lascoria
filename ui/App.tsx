@@ -1,3 +1,4 @@
+import { SessionSettings } from './SessionSettings';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recordTiming, timingSnapshot } from './diagnostics';
 import { useCanvasGestures } from './useCanvasGestures';
@@ -1382,6 +1383,7 @@ export function App() {
                       </button>
                     )}
                   <button
+                    className="session-settings-trigger"
                     disabled={
                       !available ||
                       busy ||
@@ -1785,13 +1787,13 @@ export function App() {
                         .filter((c) => c.sessionId === session.id)
                         .slice(0, 10)
                         .map((c) => (
-                          <p key={c.id}>
+                          <div key={c.id}>
                             <strong>
                               {c.operation}: {c.status}
                             </strong>
                             <small>Request {c.id}</small>
                             {c.error && <pre>{text(c.error)}</pre>}
-                          </p>
+                          </div>
                         ))}
                       {lastCommand.current && (
                         <button
@@ -1846,8 +1848,6 @@ export function App() {
             const ready = target?.state.current && target.lifecycle === 'connected' && !busy;
             const model = target?.state.modelRoute?.modelId;
             const effort = target?.state.reasoningEffort;
-            const variants =
-              settingsCatalog?.models?.find((m: Json) => m.modelId === model)?.variants ?? [];
             const apply = async (operation: string, params: Json) => {
               const result = await mutate(operation, { sessionId: settingsTarget, ...params });
               setSettingsMessage(
@@ -1864,75 +1864,22 @@ export function App() {
             };
             return (
               <>
-                <p>
-                  Session {short(settingsTarget)} · observed model: {model ?? 'not reported'} ·
-                  effort default: {effort ?? 'provider default'}
-                </p>
-                <p className="muted">
-                  Model changes apply at the next model call, including within a running turn.
-                  Effort changes apply to subsequent turns. Existing transcript and approvals are
-                  retained.
+                <p className="settings-summary">
+                  Session {short(settingsTarget)} <span>·</span> {model ?? 'Provider model'}{' '}
+                  <span>·</span> {effort ? `${effort} effort` : 'Model default effort'}
                 </p>
                 {settingsMessage && <p role="status">{settingsMessage}</p>}
                 {!settingsCatalog ? (
-                  <p>Loading available models...</p>
+                  !settingsMessage && <p>Loading available models...</p>
                 ) : (
-                  <>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void apply('setModel', {
-                          modelId: new FormData(e.currentTarget).get('model'),
-                        });
-                      }}
-                    >
-                      <label htmlFor="change-model">Session model</label>
-                      <select
-                        id="change-model"
-                        name="model"
-                        key={`${settingsTarget}:${model}`}
-                        defaultValue={model}
-                        disabled={!ready}
-                      >
-                        {settingsCatalog.models.map((m: Json) => (
-                          <option key={m.modelId} value={m.modelId}>
-                            {m.displayLabel ?? m.modelId}
-                          </option>
-                        ))}
-                      </select>
-                      <button disabled={!ready || !settingsCatalog.models.length}>
-                        Apply model
-                      </button>
-                    </form>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void apply('setEffort', {
-                          reasoningEffort: new FormData(e.currentTarget).get('effort'),
-                        });
-                      }}
-                    >
-                      <label htmlFor="change-effort">Reasoning effort</label>
-                      <select
-                        id="change-effort"
-                        name="effort"
-                        key={`${settingsTarget}:${model}:${effort}`}
-                        defaultValue={effort ?? ''}
-                        required
-                        disabled={!ready || !variants.length}
-                      >
-                        <option value="" disabled>
-                          Select effort
-                        </option>
-                        {variants.map((v: string) => (
-                          <option key={v} value={v}>
-                            {v}
-                          </option>
-                        ))}
-                      </select>
-                      <button disabled={!ready || !variants.length}>Apply effort</button>
-                    </form>
-                  </>
+                  <SessionSettings
+                    key={settingsTarget}
+                    catalog={settingsCatalog}
+                    model={model}
+                    effort={effort}
+                    ready={!!ready}
+                    apply={apply}
+                  />
                 )}
               </>
             );
