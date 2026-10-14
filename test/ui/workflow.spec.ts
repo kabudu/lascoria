@@ -46,6 +46,8 @@ test('real Muse implementation, tests and review through React and the native Ru
   });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const bridge = resolve('src-tauri/target/debug/spatial-constellation-desktop');
+  let emptyCatalog = false;
+  let failCatalog = false;
   let holdTranscript = false;
   let failStatus = false;
   let releaseTranscript: (() => void) | undefined;
@@ -57,6 +59,8 @@ test('real Muse implementation, tests and review through React and the native Ru
         ? { operation: 'status', params: {}, id: 'ui-connect' }
         : args;
     try {
+      if (input.operation === 'models' && failCatalog)
+        throw new Error('Fixture catalog unavailable');
       if (input.operation === 'status' && failStatus) throw new Error('Fixture connection lost');
       const { stdout } = await exec(bridge, ['--bridge-json', JSON.stringify(input)], {
         env,
@@ -72,6 +76,7 @@ test('real Muse implementation, tests and review through React and the native Ru
         });
         transcriptReturned = true;
       }
+      if (input.operation === 'models' && emptyCatalog) return { ...data.result, models: [] };
       return data.result;
     } catch (e: any) {
       if (e.stdout) {
@@ -229,9 +234,12 @@ test('real Muse implementation, tests and review through React and the native Ru
     );
     await page.getByRole('button', { name: 'Expand Sessions panel', exact: true }).click();
     await page.setViewportSize({ width: 800, height: 700 });
-    const smallPanel = (await inspectorWindow.boundingBox())!;
-    expect(smallPanel.x).toBeGreaterThanOrEqual(8);
-    expect(smallPanel.x + smallPanel.width).toBeLessThanOrEqual(792);
+    await expect
+      .poll(async () => {
+        const smallPanel = (await inspectorWindow.boundingBox())!;
+        return smallPanel.x >= 8 && smallPanel.x + smallPanel.width <= 792;
+      })
+      .toBe(true);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
 
@@ -412,15 +420,56 @@ test('real Muse implementation, tests and review through React and the native Ru
     );
     expect(testItem.visibleOutput).toContain('PASS sum(2,3)=5');
     await page.locator('.session-card').first().click();
+    await request(directory, 'setEffort', { sessionId: sessions[0], reasoningEffort: 'low' });
+    emptyCatalog = true;
+    await page.getByRole('button', { name: 'Session model & effort', exact: true }).click();
+    await expect(page.getByText(/This session has no selectable models/)).toBeVisible();
+    await expect(page.getByLabel('Session model', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    emptyCatalog = false;
+    failCatalog = true;
+    await page.getByRole('button', { name: 'Session model & effort', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('Fixture catalog unavailable');
+    await expect(page.getByText('Loading available models...')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    failCatalog = false;
     await page.getByRole('button', { name: 'Session model & effort', exact: true }).click();
     await page.getByLabel('Session model', { exact: true }).selectOption('stage-b-alternate');
+    const settingsCatalog = await request(directory, 'models', { sessionId: sessions[0] });
+    const alternate = settingsCatalog.models.find(
+      (model: any) => model.modelId === 'stage-b-alternate',
+    );
+    await expect(
+      page.getByRole('slider', { name: 'Reasoning effort', exact: true }),
+    ).toHaveAttribute('aria-valuetext', alternate.defaultReasoningEffort ?? 'medium');
+    await expect(page.getByRole('button', { name: 'Apply effort', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Apply model', exact: true }).click();
     await expect
       .poll(async () => (await status()).sessions[0].state.modelRoute.modelId)
       .toBe('stage-b-alternate');
-    await page.getByLabel('Reasoning effort', { exact: true }).selectOption('low');
+    await expect(
+      page.getByRole('slider', { name: 'Reasoning effort', exact: true }),
+    ).toHaveAttribute('aria-valuetext', alternate.defaultReasoningEffort ?? 'medium');
+    await page.setViewportSize({ width: 390, height: 844 });
+    const settingsDialog = page.getByRole('dialog');
+    expect(
+      await settingsDialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).toBe(true);
+    const settingsAccessibility = await new AxeBuilder({ page }).include('dialog').analyze();
+    expect(settingsAccessibility.violations).toEqual([]);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByRole('slider', { name: 'Reasoning effort', exact: true }).focus();
+    await page.getByRole('slider', { name: 'Reasoning effort', exact: true }).press('Home');
+    await page.getByRole('slider', { name: 'Reasoning effort', exact: true }).press('ArrowRight');
+    await expect(page.getByLabel('Reasoning effort', { exact: true })).toHaveAttribute(
+      'aria-valuetext',
+      'low',
+    );
+    await page.getByRole('slider', { name: 'Reasoning effort', exact: true }).press('ArrowRight');
     await page.getByRole('button', { name: 'Apply effort', exact: true }).click();
-    await expect.poll(async () => (await status()).sessions[0].state.reasoningEffort).toBe('low');
+    await expect
+      .poll(async () => (await status()).sessions[0].state.reasoningEffort)
+      .toBe('medium');
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
 
     holdTranscript = true;

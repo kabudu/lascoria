@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refine inspector spacing and session settings with a labelled effort slider, model-specific defaults and explicit unavailable states.
+
 - Share a bounded Node SDK broker across independent Muse hosts to reduce ten-session control-plane memory; retain visible single-host and broker-wide recovery.
 - Avoid repeated idle snapshot allocation with authenticated conditional status reads and unchanged GUI state retention.
 - Add catalog-backed mid-session model and reasoning-effort controls with durable native setting commands.
