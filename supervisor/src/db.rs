@@ -10,7 +10,7 @@ pub fn now_ms() -> u128 {
         .as_millis()
 }
 
-pub struct Db(pub Connection);
+pub struct Db(pub Connection, String);
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let db = Connection::open(path)?;
@@ -28,7 +28,10 @@ impl Db {
           CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )?;
         db.execute_batch("PRAGMA user_version=2;")?;
-        Ok(Self(db))
+        Ok(Self(db, uuid::Uuid::new_v4().to_string()))
+    }
+    pub fn version(&self) -> String {
+        format!("{}:{}", self.1, self.0.total_changes())
     }
     pub fn put(&self, table: &str, id: &str, value: &Value) -> Result<()> {
         if ![

@@ -1,32 +1,240 @@
-use crate::db::Db;
-use anyhow::{Context, Result, bail};
+use crate::{db::Db, dedicated::Dedicated};
+use anyhow::{Context, Result, bail, ensure};
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     path::Path,
     process::Stdio,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     process::{Child, ChildStdin, Command},
     sync::oneshot,
-    task::JoinHandle,
     time::timeout,
 };
 use tokio_util::codec::{FramedRead, LinesCodec};
-
-type Pending = Arc<Mutex<HashMap<String, oneshot::Sender<Value>>>>;
 pub type SharedDb = Arc<Mutex<Db>>;
+type Pending = Arc<Mutex<HashMap<String, (String, oneshot::Sender<Value>)>>>;
+type Slots = Arc<Mutex<HashMap<String, (String, u64)>>>;
 
-pub struct Worker {
-    pub child: Child,
-    stdin: Option<ChildStdin>,
+pub struct Broker {
+    db: SharedDb,
+    child: tokio::sync::Mutex<Child>,
+    stdin: tokio::sync::Mutex<Option<ChildStdin>>,
+    alive: Arc<AtomicBool>,
     pending: Pending,
-    reader: JoinHandle<()>,
-    stderr: JoinHandle<()>,
+    slots: Slots,
+}
+impl Broker {
+    pub async fn spawn(node: &str, script: &Path, db: SharedDb) -> Result<Arc<Self>> {
+        let mut child = Command::new(node)
+            .arg(script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .context("Start shared SDK broker")?;
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut stderr = child.stderr.take().unwrap();
+        let tail = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let error_tail = tail.clone();
+        tokio::spawn(async move {
+            let mut buffer = [0; 1024];
+            while let Ok(n) = stderr.read(&mut buffer).await {
+                if n == 0 {
+                    break;
+                }
+                let mut tail = error_tail.lock().unwrap();
+                tail.extend_from_slice(&buffer[..n]);
+                let surplus = tail.len().saturating_sub(8192);
+                tail.drain(..surplus);
+            }
+        });
+        let alive = Arc::new(AtomicBool::new(true));
+        let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+        let slots: Slots = Arc::new(Mutex::new(HashMap::new()));
+        let broker = Arc::new(Self {
+            db: db.clone(),
+            child: tokio::sync::Mutex::new(child),
+            stdin: tokio::sync::Mutex::new(Some(stdin)),
+            alive: alive.clone(),
+            pending: pending.clone(),
+            slots: slots.clone(),
+        });
+        let dead_broker = Arc::downgrade(&broker);
+        tokio::spawn(async move {
+            let mut frames =
+                FramedRead::new(stdout, LinesCodec::new_with_max_length(4 * 1024 * 1024));
+            let mut reason = json!({"kind":"brokerEof"});
+            while let Some(frame) = frames.next().await {
+                let frame: Value =
+                    match frame.ok().and_then(|line| serde_json::from_str(&line).ok()) {
+                        Some(value) => value,
+                        None => {
+                            reason = json!({"kind":"invalidBrokerFrame"});
+                            break;
+                        }
+                    };
+                let key = frame["slot"].as_str().unwrap_or("");
+                let target = slots.lock().unwrap().get(key).cloned();
+                match frame["kind"].as_str() {
+                    Some("response") => {
+                        let id = frame["id"].as_str().unwrap_or("");
+                        let mut waiting = pending.lock().unwrap();
+                        if waiting.get(id).is_some_and(|(slot, _)| slot == key)
+                            && let Some((_, tx)) = waiting.remove(id)
+                        {
+                            let _ = tx.send(frame);
+                        }
+                    }
+                    Some("state") => {
+                        let database = db.lock().unwrap();
+                        // Check liveness under the same lock as interruption persistence.
+                        // A frame already read before shutdown must not restore current state.
+                        if !alive.load(Ordering::SeqCst) {
+                            continue;
+                        }
+                        if let Some((session, generation)) = target
+                            && let Err(error) = database.state(
+                                &session,
+                                generation,
+                                frame["state"].clone(),
+                                &Value::Null,
+                                &frame["facts"],
+                            )
+                        {
+                            reason = json!({"kind":"persistenceFailure","error":error.to_string()});
+                            break;
+                        }
+                    }
+                    Some("death") => {
+                        if let Some((session, generation)) = target {
+                            if let Err(error) = db.lock().unwrap().interrupt(
+                                &session,
+                                generation,
+                                frame["exit"].clone(),
+                            ) {
+                                reason =
+                                    json!({"kind":"persistenceFailure","error":error.to_string()});
+                                break;
+                            }
+                            pending.lock().unwrap().retain(|_, (slot, _)| slot != key);
+                        }
+                    }
+                    _ => {
+                        reason = json!({"kind":"unknownBrokerFrame"});
+                        break;
+                    }
+                }
+            }
+            alive.store(false, Ordering::SeqCst);
+            pending.lock().unwrap().clear();
+            reason["stderrTail"] =
+                json!(String::from_utf8_lossy(&tail.lock().unwrap()).to_string());
+            for (session, generation) in slots.lock().unwrap().values() {
+                if let Err(error) =
+                    db.lock()
+                        .unwrap()
+                        .interrupt(session, *generation, reason.clone())
+                {
+                    eprintln!("Persist broker interruption: {error}");
+                }
+            }
+            if let Some(broker) = dead_broker.upgrade() {
+                broker.stop().await;
+            }
+        });
+        Ok(broker)
+    }
+    pub fn alive(&self) -> bool {
+        self.alive.load(Ordering::SeqCst)
+    }
+    async fn call(
+        &self,
+        key: &str,
+        session: &str,
+        generation: u64,
+        operation: &str,
+        request: Value,
+    ) -> Result<Value> {
+        ensure!(self.alive(), "SDK broker unavailable");
+        let id = request["id"]
+            .as_str()
+            .context("Missing broker request ID")?
+            .to_string();
+        let (tx, rx) = oneshot::channel();
+        let line = format!(
+            "{}\n",
+            json!({"id":id,"slot":key,"sessionId":session,"generation":generation,"operation":operation,"request":request})
+        );
+        if line.len() > 65536 {
+            return Ok(
+                json!({"kind":"response","id":id,"error":{"rejected":true,"message":"SDK request exceeds broker frame budget"}}),
+            );
+        }
+        self.pending
+            .lock()
+            .unwrap()
+            .insert(id.clone(), (key.to_string(), tx));
+        let result = timeout(Duration::from_secs(15), async {
+            {
+                let mut guard = self.stdin.lock().await;
+                let input = guard.as_mut().context("Broker stdin closed")?;
+                input.write_all(line.as_bytes()).await?;
+                input.flush().await?;
+            }
+            Ok::<Value, anyhow::Error>(rx.await?)
+        })
+        .await;
+        self.pending.lock().unwrap().remove(&id);
+        match result {
+            Ok(result) => result,
+            Err(_) => bail!("SDK context timed out; outcome unknown"),
+        }
+    }
+    pub async fn stop(&self) {
+        if self.alive.swap(false, Ordering::SeqCst) {
+            self.pending.lock().unwrap().clear();
+            for (session, generation) in self.slots.lock().unwrap().values() {
+                if let Err(error) = self.db.lock().unwrap().interrupt(
+                    session,
+                    *generation,
+                    json!({"kind":"brokerStopping"}),
+                ) {
+                    eprintln!("Persist broker shutdown: {error}");
+                }
+            }
+        }
+        self.stdin.lock().await.take();
+        let mut child = self.child.lock().await;
+        if timeout(Duration::from_secs(15), child.wait())
+            .await
+            .is_err()
+        {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+        }
+    }
+}
+enum Backend {
+    Dedicated(Dedicated),
+    Shared {
+        broker: Arc<Broker>,
+        key: String,
+        session: String,
+        generation: u64,
+    },
+}
+pub struct Worker {
+    backend: Backend,
     pub ready: Value,
 }
 impl Worker {
@@ -36,164 +244,113 @@ impl Worker {
         db: SharedDb,
         session: String,
         generation: u64,
+        pool: &mut Option<Arc<Broker>>,
     ) -> Result<Self> {
-        let mut child = Command::new(node)
-            .arg(script)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .context("Start Node SDK worker")?;
-        let stdin = child.stdin.take().unwrap();
-        let stdout = child.stdout.take().unwrap();
-        let mut stderr_pipe = child.stderr.take().unwrap();
-        let stderr_tail = Arc::new(Mutex::new(Vec::new()));
-        let tail = stderr_tail.clone();
-        let stderr = tokio::spawn(async move {
-            let mut chunk = [0u8; 1024];
-            while let Ok(n) = stderr_pipe.read(&mut chunk).await {
-                if n == 0 {
-                    break;
-                }
-                let mut tail = tail.lock().unwrap();
-                tail.extend_from_slice(&chunk[..n]);
-                let surplus = tail.len().saturating_sub(8192);
-                if surplus > 0 {
-                    tail.drain(..surplus);
-                }
+        if std::env::var_os("SCH_WORKER").is_some()
+            || std::env::var_os("SCH_DEDICATED_WORKERS").is_some()
+        {
+            let worker = Dedicated::spawn(node, script, db, session, generation).await?;
+            return Ok(Self {
+                ready: worker.ready.clone(),
+                backend: Backend::Dedicated(worker),
+            });
+        }
+        if pool.as_ref().is_none_or(|broker| !broker.alive()) {
+            if let Some(old) = pool.take() {
+                old.stop().await;
             }
-        });
-        let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
-        let waiting = pending.clone();
-        let (ready_tx, ready_rx) = oneshot::channel();
-        let reader = tokio::spawn(async move {
-            let mut ready_tx = Some(ready_tx);
-            let mut lines =
-                FramedRead::new(stdout, LinesCodec::new_with_max_length(4 * 1024 * 1024));
-            let mut reason = json!({"kind":"workerEof"});
-            while let Some(line) = lines.next().await {
-                let frame: Value = match line.ok().and_then(|line| serde_json::from_str(&line).ok())
-                {
-                    Some(value) => value,
-                    None => {
-                        reason = json!({"kind":"invalidWorkerFrame"});
-                        break;
-                    }
-                };
-                match frame["kind"].as_str() {
-                    Some("ready" | "fatal") => {
-                        if let Some(tx) = ready_tx.take() {
-                            let _ = tx.send(frame);
-                        }
-                    }
-                    Some("response") => {
-                        if let Some(id) = frame["id"].as_str()
-                            && let Some(tx) = waiting.lock().unwrap().remove(id)
-                        {
-                            let _ = tx.send(frame);
-                        }
-                    }
-                    Some("state") => {
-                        if let Err(error) = db.lock().unwrap().state(
-                            &session,
-                            generation,
-                            frame["state"].clone(),
-                            &frame["event"],
-                            &frame["facts"],
-                        ) {
-                            reason =
-                                json!({"kind":"persistenceFailure", "error":error.to_string()});
-                            break;
-                        }
-                    }
-                    Some("death") => {
-                        reason = frame["exit"].clone();
-                    }
-                    _ => {
-                        reason = json!({"kind":"unknownWorkerFrame"});
-                        break;
-                    }
-                }
-            }
-            waiting.lock().unwrap().clear();
-            reason["stderrTail"] =
-                json!(String::from_utf8_lossy(&stderr_tail.lock().unwrap()).to_string());
-            if let Err(error) = db.lock().unwrap().interrupt(&session, generation, reason) {
-                eprintln!("Persist worker interruption: {error}");
-            }
-        });
+            *pool = Some(Broker::spawn(node, &script.with_file_name("broker.js"), db).await?);
+        }
+        let broker = pool.as_ref().unwrap().clone();
+        let key = format!("{session}:{generation}");
+        broker
+            .slots
+            .lock()
+            .unwrap()
+            .insert(key.clone(), (session.clone(), generation));
         let mut worker = Self {
-            child,
-            stdin: Some(stdin),
-            pending,
-            reader,
-            stderr,
             ready: Value::Null,
+            backend: Backend::Shared {
+                broker: broker.clone(),
+                key: key.clone(),
+                session: session.clone(),
+                generation,
+            },
         };
-        match timeout(Duration::from_secs(12), ready_rx).await {
-            Ok(Ok(ready)) if ready["kind"] == "ready" => {
-                worker.ready = ready;
+        let result = broker
+            .call(
+                &key,
+                &session,
+                generation,
+                "open",
+                json!({"id":uuid::Uuid::new_v4().to_string()}),
+            )
+            .await;
+        match result {
+            Ok(frame) if frame.get("error").is_none() && frame["result"]["kind"] == "ready" => {
+                worker.ready = frame["result"].clone();
                 Ok(worker)
             }
-            outcome => {
+            other => {
                 worker.stop().await;
-                bail!("SDK worker handshake failed: {outcome:?}");
+                bail!("SDK context handshake failed: {other:?}")
             }
         }
     }
     pub async fn call(&mut self, request: Value) -> Result<Value> {
-        let id = request["id"]
-            .as_str()
-            .context("Worker request ID missing")?
-            .to_string();
-        let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap().insert(id.clone(), tx);
-        let line = format!("{request}\n");
-        let result = timeout(Duration::from_secs(15), async {
-            self.stdin
-                .as_mut()
-                .context("Worker stdin closed")?
-                .write_all(line.as_bytes())
-                .await?;
-            self.stdin
-                .as_mut()
-                .context("Worker stdin closed")?
-                .flush()
-                .await?;
-            Ok::<Value, anyhow::Error>(rx.await?)
-        })
-        .await;
-        self.pending.lock().unwrap().remove(&id);
-        match result {
-            Ok(result) => result,
-            Err(_) => {
-                self.stop().await;
-                bail!("SDK worker timed out; outcome unknown");
+        match &mut self.backend {
+            Backend::Dedicated(worker) => worker.call(request).await,
+            Backend::Shared {
+                broker,
+                key,
+                session,
+                generation,
+            } => {
+                let result = broker
+                    .call(key, session, *generation, "call", request)
+                    .await;
+                if result.is_err() {
+                    self.stop().await;
+                }
+                result
             }
         }
     }
     pub async fn stop(&mut self) {
-        // Closing stdin invokes the worker's bounded Muse drain. Kill only after that budget.
-        drop(self.stdin.take());
-        if timeout(Duration::from_secs(4), self.child.wait())
-            .await
-            .is_err()
-        {
-            let _ = self.child.kill().await;
-            let _ = self.child.wait().await;
-        }
-        if timeout(Duration::from_secs(1), &mut self.reader)
-            .await
-            .is_err()
-        {
-            self.reader.abort();
-        }
-        if timeout(Duration::from_secs(1), &mut self.stderr)
-            .await
-            .is_err()
-        {
-            self.stderr.abort();
+        match &mut self.backend {
+            Backend::Dedicated(worker) => worker.stop().await,
+            Backend::Shared {
+                broker,
+                key,
+                session,
+                generation,
+            } => {
+                if broker.alive() {
+                    let closed = broker
+                        .call(
+                            key,
+                            session,
+                            *generation,
+                            "close",
+                            json!({"id":uuid::Uuid::new_v4().to_string()}),
+                        )
+                        .await;
+                    if !closed
+                        .as_ref()
+                        .is_ok_and(|frame| frame.get("error").is_none())
+                    {
+                        broker.stop().await;
+                    }
+                }
+                if let Err(error) = broker.db.lock().unwrap().interrupt(
+                    session,
+                    *generation,
+                    json!({"kind":"contextClosed"}),
+                ) {
+                    eprintln!("Persist context close: {error}");
+                }
+                broker.slots.lock().unwrap().remove(key);
+            }
         }
     }
 }

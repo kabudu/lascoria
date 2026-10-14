@@ -23,7 +23,9 @@ export interface SessionRow {
   };
   handshake?: Json;
 }
+export type StatusReply = Status | { unchanged: true; version: string; pid: number };
 export interface Status {
+  version?: string;
   features?: string[];
   pid: number;
   sessions: SessionRow[];

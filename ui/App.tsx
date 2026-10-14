@@ -16,7 +16,17 @@ import {
   freeCanvasFrame,
   zoomAtPoint,
 } from './model';
-import type { Status, SessionRow, Task, Prefs, Artifact, Evidence, Item, Json } from './types';
+import type {
+  Status,
+  StatusReply,
+  SessionRow,
+  Task,
+  Prefs,
+  Artifact,
+  Evidence,
+  Item,
+  Json,
+} from './types';
 const empty: Status = { pid: 0, sessions: [], commands: [] };
 const text = (value: Json) => (typeof value === 'string' ? value : JSON.stringify(value, null, 2));
 const short = (value: string) => value.slice(-8);
@@ -34,10 +44,17 @@ export function App() {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
+  const [settingsTarget, setSettingsTarget] = useState('');
+  const [settingsCatalog, setSettingsCatalog] = useState<Json>(null);
+  const [settingsMessage, setSettingsMessage] = useState('');
+  const settingsRequest = useRef('');
   const [diagnosticReport, setDiagnosticReport] = useState('');
   const navigationStart = useRef<number | null>(null);
   const bootStart = useRef(performance.now());
   const bootMeasured = useRef(false);
+  const snapshotVersion = useRef<string | undefined>(undefined);
+  const snapshotRequest = useRef(0);
+  const snapshotAccepted = useRef(0);
   const cameraFrame = useRef<number | null>(null);
   const [nodePreview, setNodePreview] = useState<{ id: string; x: number; y: number } | null>(null);
   const nodeDrag = useRef<{
@@ -54,7 +71,9 @@ export function App() {
   const [mapWidth, setMapWidth] = useState(600);
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [modal, setModal] = useState<'start' | 'stop' | 'palette' | 'diagnostics' | null>(null),
+  const [modal, setModal] = useState<
+      'start' | 'stop' | 'palette' | 'diagnostics' | 'settings' | null
+    >(null),
     [tab, setTab] = useState('transcript');
   const [review, setReview] = useState<{
     artifacts: Artifact[];
@@ -126,15 +145,27 @@ export function App() {
     };
   }, [candidate?.id, session?.id]);
   const available = connected && !!session?.state.current && session.lifecycle === 'connected';
-  async function refresh() {
-    const value = await request<Status>('status');
+  function acceptStatus(value: StatusReply, order: number) {
+    if ('unchanged' in value) return;
+    const current = snapshotVersion.current?.split(':');
+    const next = value.version?.split(':');
+    if (current && next && current[0] === next[0] && BigInt(next[1]) < BigInt(current[1])) return;
+    if ((!current || !next || current[0] !== next[0]) && order < snapshotAccepted.current) return;
+    snapshotAccepted.current = Math.max(snapshotAccepted.current, order);
+    snapshotVersion.current = value.version;
     setStatus(value);
+  }
+  async function refresh() {
+    const order = ++snapshotRequest.current;
+    const value = await request<Status>('status');
+    acceptStatus(value, order);
     setConnected(true);
     return value;
   }
   async function boot() {
     try {
-      setStatus(await connect());
+      const order = ++snapshotRequest.current;
+      acceptStatus(await connect(), order);
       setConnected(true);
       const saved = await request('presentation/get');
       revision.current = saved.revision;
@@ -157,10 +188,15 @@ export function App() {
     const poll = async () => {
       try {
         if (!cancelled) {
-          const value = await request<Status>('status');
+          const order = ++snapshotRequest.current;
+          const value = await request<StatusReply>(
+            'status',
+            snapshotVersion.current ? { since: snapshotVersion.current } : {},
+          );
           if (!cancelled) {
-            setStatus(value);
+            acceptStatus(value, order);
             setConnected(true);
+            setError((previous) => (previous.startsWith('Disconnected:') ? '' : previous));
           }
         }
       } catch (e) {
@@ -1345,6 +1381,30 @@ export function App() {
                         Open owning turn
                       </button>
                     )}
+                  <button
+                    disabled={
+                      !available ||
+                      busy ||
+                      task?.provenance === 'native' ||
+                      !status.features?.includes('sessionSettings')
+                    }
+                    onClick={async () => {
+                      const token = crypto.randomUUID();
+                      settingsRequest.current = token;
+                      setSettingsTarget(session.id);
+                      setSettingsCatalog(null);
+                      setSettingsMessage('');
+                      setModal('settings');
+                      try {
+                        const catalog = await request('models', { sessionId: session.id });
+                        if (settingsRequest.current === token) setSettingsCatalog(catalog);
+                      } catch (error) {
+                        if (settingsRequest.current === token) setSettingsMessage(String(error));
+                      }
+                    }}
+                  >
+                    Session model &amp; effort
+                  </button>
                   <div className="tabs" role="tablist">
                     {['transcript', 'diff', 'evidence'].map((name) => (
                       <button
@@ -1772,17 +1832,117 @@ export function App() {
                 ? 'Stop execution and quit'
                 : modal === 'diagnostics'
                   ? 'Performance diagnostics'
-                  : 'Command palette'}
+                  : modal === 'settings'
+                    ? 'Session model and effort'
+                    : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'settings' &&
+          (() => {
+            const target = status.sessions.find((s) => s.id === settingsTarget);
+            const ready = target?.state.current && target.lifecycle === 'connected' && !busy;
+            const model = target?.state.modelRoute?.modelId;
+            const effort = target?.state.reasoningEffort;
+            const variants =
+              settingsCatalog?.models?.find((m: Json) => m.modelId === model)?.variants ?? [];
+            const apply = async (operation: string, params: Json) => {
+              const result = await mutate(operation, { sessionId: settingsTarget, ...params });
+              setSettingsMessage(
+                !result
+                  ? 'Request outcome unknown; inspect the journal before retrying.'
+                  : result.status === 'rejected'
+                    ? (result.error?.message ?? 'Muse refused this setting.')
+                    : result.status === 'outcomeUnknown'
+                      ? 'Outcome unknown; inspect the journal before retrying.'
+                      : operation === 'setModel'
+                        ? 'Model change admitted. It takes effect at the next model-call boundary.'
+                        : 'Effort default saved for subsequent turns. The running turn keeps its resolved effort.',
+              );
+            };
+            return (
+              <>
+                <p>
+                  Session {short(settingsTarget)} · observed model: {model ?? 'not reported'} ·
+                  effort default: {effort ?? 'provider default'}
+                </p>
+                <p className="muted">
+                  Model changes apply at the next model call, including within a running turn.
+                  Effort changes apply to subsequent turns. Existing transcript and approvals are
+                  retained.
+                </p>
+                {settingsMessage && <p role="status">{settingsMessage}</p>}
+                {!settingsCatalog ? (
+                  <p>Loading available models...</p>
+                ) : (
+                  <>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void apply('setModel', {
+                          modelId: new FormData(e.currentTarget).get('model'),
+                        });
+                      }}
+                    >
+                      <label htmlFor="change-model">Session model</label>
+                      <select
+                        id="change-model"
+                        name="model"
+                        key={`${settingsTarget}:${model}`}
+                        defaultValue={model}
+                        disabled={!ready}
+                      >
+                        {settingsCatalog.models.map((m: Json) => (
+                          <option key={m.modelId} value={m.modelId}>
+                            {m.displayLabel ?? m.modelId}
+                          </option>
+                        ))}
+                      </select>
+                      <button disabled={!ready || !settingsCatalog.models.length}>
+                        Apply model
+                      </button>
+                    </form>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void apply('setEffort', {
+                          reasoningEffort: new FormData(e.currentTarget).get('effort'),
+                        });
+                      }}
+                    >
+                      <label htmlFor="change-effort">Reasoning effort</label>
+                      <select
+                        id="change-effort"
+                        name="effort"
+                        key={`${settingsTarget}:${model}:${effort}`}
+                        defaultValue={effort ?? ''}
+                        required
+                        disabled={!ready || !variants.length}
+                      >
+                        <option value="" disabled>
+                          Select effort
+                        </option>
+                        {variants.map((v: string) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                      <button disabled={!ready || !variants.length}>Apply effort</button>
+                    </form>
+                  </>
+                )}
+              </>
+            );
+          })()}
         {modal === 'diagnostics' && (
           <>
             <p className="muted">
               Bounded process-local timings. Navigation measures React commit, not display paint.
-              IPC includes transport and queue time. Worker measurements exclude Muse.
+              IPC includes transport and queue time. SDK RSS excludes Muse; sessions sharing a
+              process ID share that memory.
             </p>
             <label>
               Diagnostic report

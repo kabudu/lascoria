@@ -1,4 +1,5 @@
 mod db;
+mod dedicated;
 mod metrics;
 mod review;
 mod worker;
@@ -24,13 +25,14 @@ use tokio::{
 };
 use tokio_util::codec::{Framed, LinesCodec};
 use uuid::Uuid;
-use worker::{SharedDb, Worker};
+use worker::{Broker, SharedDb, Worker};
 
 struct Actor {
     db: SharedDb,
     workers: HashMap<String, Worker>,
     node: String,
     script: PathBuf,
+    broker: Option<Arc<Broker>>,
 }
 impl Actor {
     fn row(&self, id: &str) -> Result<Value> {
@@ -65,6 +67,7 @@ impl Actor {
             self.db.clone(),
             id.clone(),
             generation,
+            &mut self.broker,
         )
         .await?;
         {
@@ -219,7 +222,7 @@ impl Actor {
             let db = self.db.lock().unwrap();
             let commands = db.all("commands")?;
             return Ok(
-                json!({"pid":std::process::id(),"features":["modelSelection","diagnostics"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -251,7 +254,7 @@ impl Actor {
             .await
             .context("Review inspection timed out")?;
         }
-        if operation == "transcript" || operation == "output" {
+        if operation == "transcript" || operation == "output" || operation == "models" {
             let session = params["sessionId"].as_str().context("Session required")?;
             ensure!(
                 self.row(session)?["state"]["current"] == true,
@@ -262,7 +265,7 @@ impl Actor {
                 .get_mut(session)
                 .context("Worker unavailable")?
                 .call(
-                    json!({"id":Uuid::new_v4().to_string(),"operation":if operation == "output" {"readOutput"} else {"inspect"},"params":params}),
+                    json!({"id":Uuid::new_v4().to_string(),"operation":if operation == "output" {"readOutput"} else if operation == "models" {"models"} else {"inspect"},"params":params}),
                 )
                 .await?;
             ensure!(
@@ -298,7 +301,15 @@ impl Actor {
         }
         ensure!(
             [
-                "start", "turn", "steer", "cancel", "decide", "answer", "resume"
+                "start",
+                "turn",
+                "steer",
+                "cancel",
+                "decide",
+                "answer",
+                "resume",
+                "setModel",
+                "setEffort"
             ]
             .contains(&operation),
             "Unsupported operation"
@@ -408,6 +419,9 @@ impl Actor {
         for (_, mut worker) in self.workers.drain() {
             worker.stop().await;
         }
+        if let Some(broker) = self.broker.take() {
+            broker.stop().await;
+        }
     }
 }
 
@@ -445,7 +459,10 @@ async fn connection(
         // Snapshot reads remain available while the serialized command actor is recovering.
         if request["operation"] == "status" {
             let db = db.lock().unwrap();
-            return Ok(json!({"pid":std::process::id(),"features":["modelSelection","diagnostics"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            if request["params"]["since"].as_str().is_some_and(|version| version == db.version()) {
+                return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
+            }
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
         let (tx, rx) = oneshot::channel();
         sender
@@ -560,6 +577,7 @@ async fn main() -> Result<()> {
         workers: HashMap::new(),
         node,
         script,
+        broker: None,
     };
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let mut tick = interval(Duration::from_secs(1));
