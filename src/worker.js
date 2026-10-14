@@ -14,6 +14,8 @@ let opening = false;
 let acceptedReceipt;
 let staleReason;
 let runtime;
+let modelRoute;
+const diagnostics = { snapshots: 0, snapshotTotalMs: 0, snapshotMaxMs: 0 };
 const gaps = [];
 const itemProvenance = new Map();
 function rememberSource(event) {
@@ -68,6 +70,19 @@ const send = (value, flushed) => {
     process.exit(1);
 };
 function snapshot() {
+  const start = performance.now();
+  const value = buildSnapshot();
+  const elapsed = performance.now() - start;
+  diagnostics.snapshots++;
+  diagnostics.snapshotTotalMs += elapsed;
+  diagnostics.snapshotMaxMs = Math.max(diagnostics.snapshotMaxMs, elapsed);
+  return {
+    ...value,
+    modelRoute,
+    diagnostics: { ...diagnostics, rssBytes: process.memoryUsage.rss() },
+  };
+}
+function buildSnapshot() {
   const fold = runtime?.session?.fold;
   // Cold replay and live gap repair may discover items in different insertion orders.
   // Keep content, provenance and provisional text in the same presentation window.
@@ -265,14 +280,19 @@ async function execute(message) {
     sessionId = params.sessionId;
     runtime.attach(sessionId, []);
     let initialRoute = {};
+    if (operation === 'start' && params.modelId && (process.env.SCH_PROVIDER ?? 'echo') === 'echo')
+      throw new ValidationError('Explicit model selection is unavailable for the echo provider');
     if (operation === 'start' && (process.env.SCH_PROVIDER ?? 'echo') !== 'echo') {
       const catalog = await runtime.request('model/list', {});
       const defaults = catalog.models.filter((model) => model.isDefault);
-      if (defaults.length !== 1 || !catalog.providerId)
+      if ((!params.modelId && defaults.length !== 1) || !catalog.providerId)
         throw new ValidationError(
           'Muse must advertise one default model before starting a live session',
         );
-      initialRoute = { providerId: catalog.providerId, modelId: defaults[0].modelId };
+      initialRoute = {
+        providerId: catalog.providerId,
+        modelId: params.modelId ?? defaults[0].modelId,
+      };
     }
     const result = await runtime.command(
       operation === 'start' ? 'session/start' : 'session/resume',
@@ -281,6 +301,7 @@ async function execute(message) {
         : { sessionId, excludeItems: true },
       commandId,
     );
+    modelRoute = { providerId: result.session.providerId, modelId: result.session.modelId };
     acceptedReceipt = result;
     if (operation === 'resume') {
       await runtime.request('view/unsubscribe', { sessionId });

@@ -1,0 +1,268 @@
+// Real supervisor + real Muse echo runtime. No paid provider or user state.
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir, cpus, platform, release, arch } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
+import { request } from '../src/client.js';
+const exec = promisify(execFile);
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+const seconds = Number(process.env.SCH_BENCH_IDLE_SECONDS ?? 300);
+if (!Number.isInteger(seconds) || seconds < 1 || seconds > 600)
+  throw Error('Idle seconds must be 1..600');
+const output = resolve(process.env.SCH_BENCH_OUTPUT ?? '.dev/benchmarks/stage-c/runtime.json');
+const root = await mkdtemp(join(tmpdir(), 'sch-benchmark-'));
+const directory = join(root, 'state');
+const workspace = join(root, 'workspace');
+await mkdir(workspace);
+await exec('git', ['init', '-q', workspace]);
+const env = {
+  ...process.env,
+  SCH_STATE_DIR: directory,
+  SCH_PROVIDER: 'echo',
+  XDG_CONFIG_HOME: join(root, 'config'),
+  XDG_DATA_HOME: join(root, 'data'),
+  XDG_CACHE_HOME: join(root, 'cache'),
+};
+delete env.META_API_KEY;
+const daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
+  env,
+  stdio: ['ignore', 'ignore', 'pipe'],
+});
+let spawnError;
+daemon.on('error', (error) => {
+  spawnError = error;
+});
+const running = () => daemon.exitCode === null && daemon.signalCode === null;
+let stderr = '';
+daemon.stderr.on('data', (chunk) => {
+  stderr = (stderr + chunk).slice(-4096);
+});
+const quantile = (xs, q) => [...xs].sort((a, b) => a - b)[Math.ceil(xs.length * q) - 1] ?? null;
+const summary = (xs) => ({
+  count: xs.length,
+  p50Ms: quantile(xs, 0.5),
+  p95Ms: quantile(xs, 0.95),
+  maxMs: Math.max(...xs),
+});
+async function processes() {
+  const { stdout } = await exec('ps', ['-axo', 'pid=,ppid=,rss=,time=,comm=']);
+  const all = stdout
+    .trim()
+    .split('\n')
+    .map((line) => {
+      const [pid, ppid, rss, time, ...name] = line.trim().split(/\s+/);
+      const parts = time.split(':').map(Number);
+      const cpuSeconds = parts.reduce((sum, n) => sum * 60 + n, 0);
+      return {
+        pid: Number(pid),
+        ppid: Number(ppid),
+        rssBytes: Number(rss) * 1024,
+        cpuSeconds,
+        name: name.join(' ').split('/').at(-1),
+      };
+    });
+  const ids = new Set([daemon.pid]);
+  for (let i = 0; i < all.length; i++) {
+    let added = false;
+    for (const p of all)
+      if (ids.has(p.ppid) && !ids.has(p.pid)) {
+        ids.add(p.pid);
+        added = true;
+      }
+    if (!added) break;
+  }
+  return all.filter((p) => ids.has(p.pid));
+}
+let report;
+try {
+  const deadline = Date.now() + 10000;
+  for (;;) {
+    try {
+      await request(directory, 'status', {}, undefined, 500);
+      break;
+    } catch {
+      if (spawnError) throw spawnError;
+      if (Date.now() > deadline) throw Error('Readiness: ' + stderr);
+      await delay(100);
+    }
+  }
+  console.log('Starting ten isolated echo sessions');
+  const ids = [];
+  const startTimes = [];
+  for (let i = 0; i < 10; i++) {
+    const start = performance.now();
+    const r = await request(directory, 'start', { workspace });
+    if (r.status !== 'applied') throw Error('Start not applied');
+    ids.push(r.sessionId);
+    startTimes.push(performance.now() - start);
+    await request(directory, 'turn', {
+      sessionId: r.sessionId,
+      text: 'Stage C bounded echo benchmark',
+    });
+  }
+  const verify = (state) => {
+    assert.deepEqual(
+      state.sessions.map((s) => s.id),
+      ids,
+    );
+    for (const row of state.sessions) {
+      assert.equal(row.generation, 1);
+      assert.equal(row.lifecycle, 'connected');
+      assert.equal(row.state.current, true);
+      assert.equal(row.state.activeTurnId ?? null, null);
+      assert.equal(row.state.turns.at(-1)?.terminal, 'completed');
+    }
+  };
+  for (let i = 0; i < 100; i++) {
+    const state = await request(directory, 'status');
+    if (
+      state.sessions.every((s) => s.state.current && !s.state.activeTurnId && s.state.turns?.length)
+    ) {
+      verify(state);
+      break;
+    }
+    if (i === 99) throw Error('Echo turns did not settle');
+    await delay(100);
+  }
+  const latency = [];
+  const burstStart = performance.now();
+  let failures = 0;
+  let maximumResponseBytes = 0;
+  // Three seconds, 100 scheduled snapshot reads/sec, at most four in flight.
+  const inFlight = new Set();
+  for (let n = 0; n < 300; n++) {
+    await delay(Math.max(0, burstStart + n * 10 - performance.now()));
+    if (inFlight.size >= 4) await Promise.race(inFlight);
+    const job = (async () => {
+      const start = performance.now();
+      try {
+        const result = await request(directory, 'status');
+        verify(result);
+        maximumResponseBytes = Math.max(
+          maximumResponseBytes,
+          Buffer.byteLength(JSON.stringify(result)),
+        );
+      } catch {
+        failures++;
+      } finally {
+        latency.push(performance.now() - start);
+      }
+    })();
+    inFlight.add(job);
+    job.finally(() => inFlight.delete(job));
+  }
+  await Promise.all(inFlight);
+  const burstElapsedMs = performance.now() - burstStart;
+  console.log(`Idle resource observation: ${seconds} seconds`);
+  const baseline = await processes();
+  const idleStart = performance.now();
+  const samples = [];
+  for (let i = 0; i < seconds; i++) {
+    await delay(1000);
+    samples.push(await processes());
+  }
+  verify(await request(directory, 'status'));
+  const elapsedSeconds = (performance.now() - idleStart) / 1000;
+  const last = samples.at(-1);
+  const baselineById = new Map(baseline.map((p) => [p.pid, p]));
+  const cpu = (predicate) =>
+    (last
+      .filter(predicate)
+      .reduce(
+        (n, p) => n + Math.max(0, p.cpuSeconds - (baselineById.get(p.pid)?.cpuSeconds ?? 0)),
+        0,
+      ) /
+      elapsedSeconds) *
+    100;
+  const rss = (predicate) =>
+    samples.reduce((n, s) => n + s.filter(predicate).reduce((a, p) => a + p.rssBytes, 0), 0) /
+    samples.length;
+  const stableProcessTree = samples.every(
+    (sample) => sample.length === baseline.length && sample.every((p) => baselineById.has(p.pid)),
+  );
+  const control = (p) => p.pid === daemon.pid || p.ppid === daemon.pid;
+  report = {
+    schemaVersion: 1,
+    kind: 'real-supervisor-real-muse-echo',
+    reference: {
+      platform: platform(),
+      release: release(),
+      arch: arch(),
+      cpu: cpus()[0].model,
+      node: process.version,
+      commit: (await exec('git', ['rev-parse', 'HEAD'])).stdout.trim(),
+      dirtyCheckout: Boolean((await exec('git', ['status', '--porcelain'])).stdout.trim()),
+      buildMode: 'debug',
+      muse: (await exec(env.MUSE_BIN ?? 'muse', ['--version'])).stdout.trim(),
+    },
+    workload: {
+      sessions: 10,
+      snapshotRequests: 300,
+      targetReadsPerSecond: 100,
+      maxInFlight: 4,
+      idleSeconds: seconds,
+    },
+    start: summary(startTimes),
+    snapshot: summary(latency),
+    burst: {
+      elapsedMs: burstElapsedMs,
+      achievedReadsPerSecond: (300 / burstElapsedMs) * 1000,
+      failures,
+      maximumResponseBytes,
+    },
+    idle: {
+      elapsedSeconds,
+      sampleCount: samples.length,
+      controlCpuPercentOneCore: cpu(control),
+      controlMeanRssBytes: rss(control),
+      fullTreeCpuPercentOneCore: cpu(() => true),
+      fullTreeMeanRssBytes: rss(() => true),
+      processTree: last,
+    },
+    diagnostics: await request(directory, 'diagnostics'),
+    gates: {
+      stableProcessTree,
+      idleControlCpu: cpu(control) < 1,
+      idleControlRss: rss(control) < 300_000_000,
+      fullFiveMinuteObservation: seconds >= 300,
+      snapshotP95Under100ms: quantile(latency, 0.95) < 100,
+      noErrors: failures === 0,
+    },
+    limitations: [
+      'CPU uses ps cumulative time at platform resolution; direct children of the supervisor are classified as SDK workers.',
+      'No GUI, live-provider latency, native view-update stream, 100000-item runtime history or developer usefulness trial is represented. Snapshot requests are reads, not Muse view updates.',
+    ],
+  };
+  await mkdir(dirname(output), { recursive: true });
+  await writeFile(output, JSON.stringify(report, null, 2) + '\n');
+  console.log(JSON.stringify(report.gates));
+} finally {
+  try {
+    const state = await request(directory, 'status', {}, undefined, 1000);
+    await request(
+      directory,
+      'stop',
+      { sessions: state.sessions.map((s) => s.id) },
+      undefined,
+      10000,
+    );
+  } catch {
+    daemon.kill('SIGTERM');
+  }
+  if (running()) {
+    await Promise.race([new Promise((r) => daemon.once('exit', r)), delay(10000)]);
+    if (running()) daemon.kill('SIGKILL');
+  }
+  await rm(root, { recursive: true, force: true });
+}
+if (
+  report &&
+  (!report.gates.noErrors ||
+    !report.gates.stableProcessTree ||
+    report.burst.achievedReadsPerSecond < 90 ||
+    (process.env.SCH_BENCH_ENFORCE === '1' && !Object.values(report.gates).every(Boolean)))
+)
+  process.exitCode = 1;

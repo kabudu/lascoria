@@ -15,7 +15,7 @@ Start a session from an existing Git repository, then inspect the task map/list,
 
 ## Run the diagnostic client
 
-Prerequisites: macOS, Rust 1.97+, Node.js 24+, and Muse Code 1.4.6 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.6 and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
+Prerequisites: macOS, Rust 1.97+, Node.js 24+, and Muse Code 1.4.8 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.8 and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
 
 ```sh
 npm ci
@@ -56,7 +56,7 @@ npm run check
 npm test
 ```
 
-The suite requires the real Muse 1.4.6 binary. It uses temporary repositories and isolated XDG configuration/data directories. Its scripted model binds only to loopback, uses a dummy credential, and exercises real Muse tools and approvals without a paid provider. It also uses explicit fault fixtures for lost acknowledgements and incompatible handshakes. Test-owned processes and temporary data are cleaned up.
+The suite requires the real Muse 1.4.8 binary. It uses temporary repositories and isolated XDG configuration/data directories. Its scripted model binds only to loopback, uses a dummy credential, and exercises real Muse tools and approvals without a paid provider. It also uses explicit fault fixtures for lost acknowledgements and incompatible handshakes. Test-owned processes and temporary data are cleaned up.
 
 [Stage A requirements, evidence, and limits](docs/stage-a.md) distinguish real runtime proof from injected scenarios. [Architecture decisions](docs/architecture.md) describe the Rust/Node boundary and later SDK replacement option. [Revised product plan](docs/Spatial_Constellation_Harness_Revised_Plan.docx) remains the source plan; the Rust ownership decision in the architecture document supersedes its provisional Node supervisor choice.
 
@@ -65,3 +65,5 @@ The constellation canvas fills the workspace. Drag empty canvas space to pan, or
 Use Zoom in/out or the percentage button to reset to 100%. Fit to view frames visible nodes in the largest free area around the current panels and controls. Drag any map node to pin its position, or focus it and use Shift+arrow keys to move it; plain arrow keys still navigate between nodes. Zoom, camera and pinned positions persist across reopening.
 
 Two-finger scrolling pans the canvas. Pinch, or hold Ctrl/Cmd while using the wheel, to zoom around the cursor. Canvas input is coalesced to animation frames; native trackpad momentum is preserved without an extra inertial animation. Scroll over a floating panel to scroll that panel instead.
+
+Stage C has started with local diagnostics, repeatable runtime/UI benchmarks and explicit Muse Wonder selection for new sessions. See [Stage C measurements and remaining gates](docs/stage-c.md). Run `npm run benchmark:runtime` for the five-minute runtime observation or `npm run benchmark:ui` for the synthetic projection benchmark. Resource budget misses remain visible in the JSON report.

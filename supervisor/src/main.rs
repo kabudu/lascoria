@@ -1,4 +1,5 @@
 mod db;
+mod metrics;
 mod review;
 mod worker;
 
@@ -14,7 +15,7 @@ use std::{
     os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
     net::{UnixListener, UnixStream},
@@ -218,7 +219,7 @@ impl Actor {
             let db = self.db.lock().unwrap();
             let commands = db.all("commands")?;
             return Ok(
-                json!({"pid":std::process::id(),"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"features":["modelSelection","diagnostics"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -329,6 +330,16 @@ impl Actor {
                 self.db.lock().unwrap().all("sessions")?.len() < 10,
                 "Session limit reached"
             );
+            if let Some(model) = params.get("modelId") {
+                ensure!(
+                    model.as_str().is_some_and(|id| !id.is_empty()
+                        && id.len() <= 200
+                        && id
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"-_.:/".contains(&b))),
+                    "Invalid model ID"
+                );
+            }
             let workspace =
                 fs::canonicalize(params["workspace"].as_str().context("Workspace required")?)?;
             ensure!(workspace.is_dir(), "Workspace must be a directory");
@@ -341,7 +352,10 @@ impl Actor {
                 self.save(&row)?;
                 return Err(error);
             }
-            let wire = json!({"sessionId":session,"workspace":workspace});
+            let mut wire = json!({"sessionId":session,"workspace":workspace});
+            if let Some(model) = params.get("modelId") {
+                wire["modelId"] = model.clone();
+            }
             let result = self
                 .dispatch(id, operation, params, &session, Some(wire))
                 .await?;
@@ -401,12 +415,14 @@ struct Call {
     request: Value,
     response: oneshot::Sender<Result<Value>>,
     delivered: oneshot::Receiver<()>,
+    enqueued: Instant,
 }
 async fn connection(
     stream: UnixStream,
     token: String,
     sender: mpsc::Sender<Call>,
     db: SharedDb,
+    metrics: Arc<Mutex<metrics::Metrics>>,
 ) -> Result<()> {
     ensure!(
         stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
@@ -414,6 +430,7 @@ async fn connection(
     );
     let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(65536));
     let (delivered_tx, delivered_rx) = oneshot::channel();
+    let mut started = None;
     let response: Result<Value> = async {
         let line = timeout(Duration::from_secs(5), framed.next())
             .await?
@@ -423,10 +440,12 @@ async fn connection(
             request["version"] == 1 && request["token"] == token,
             "Invalid version or authentication"
         );
+        started = Some(Instant::now());
+        if request["operation"] == "diagnostics" { return Ok(metrics.lock().unwrap().snapshot()); }
         // Snapshot reads remain available while the serialized command actor is recovering.
         if request["operation"] == "status" {
             let db = db.lock().unwrap();
-            return Ok(json!({"pid":std::process::id(),"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"features":["modelSelection","diagnostics"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
         let (tx, rx) = oneshot::channel();
         sender
@@ -434,16 +453,26 @@ async fn connection(
                 request,
                 response: tx,
                 delivered: delivered_rx,
+                enqueued: Instant::now(),
             })
             .context("Supervisor request queue full")?;
         timeout(Duration::from_secs(60), rx).await??
     }
     .await;
+    let failed = response.is_err();
     let payload = match response {
         Ok(result) => json!({"version":1,"result":result}),
         Err(error) => json!({"version":1,"error":error.to_string()}),
     };
-    timeout(Duration::from_secs(5), framed.send(payload.to_string())).await??;
+    let payload = payload.to_string();
+    if let Some(started) = started {
+        metrics.lock().unwrap().record(
+            started.elapsed().as_secs_f64() * 1000.0,
+            failed,
+            payload.len(),
+        );
+    }
+    timeout(Duration::from_secs(5), framed.send(payload)).await??;
     let _ = delivered_tx.send(());
     Ok(())
 }
@@ -535,6 +564,8 @@ async fn main() -> Result<()> {
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let mut tick = interval(Duration::from_secs(1));
     println!("{}", json!({"pid":std::process::id(),"socket":socket_path}));
+    let metrics = Arc::new(Mutex::new(metrics::Metrics::new()));
+    let accept_metrics = metrics.clone();
     let accept_db = actor.db.clone();
     let accept_task = tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
@@ -542,9 +573,10 @@ async fn main() -> Result<()> {
                 let sender = sender.clone();
                 let token = token.clone();
                 let db = accept_db.clone();
+                let metrics = accept_metrics.clone();
                 tokio::spawn(async move {
                     let _permit = permit;
-                    if let Err(error) = connection(stream, token, sender, db).await {
+                    if let Err(error) = connection(stream, token, sender, db, metrics).await {
                         eprintln!("IPC: {error}");
                     }
                 });
@@ -557,6 +589,7 @@ async fn main() -> Result<()> {
             _ = term.recv() => break,
             _ = tick.tick() => { if let Err(error) = actor.recovery_tick().await { eprintln!("Recovery: {error}"); } }
             Some(call) = requests.recv() => {
+                metrics.lock().unwrap().record_queue(call.enqueued.elapsed().as_secs_f64() * 1000.0);
                 let result = actor.handle(call.request).await;
                 let stop = result.as_ref().is_ok_and(|value| value["stopping"] == true);
                 let _ = call.response.send(result);

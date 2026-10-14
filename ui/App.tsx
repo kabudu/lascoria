@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { recordTiming, timingSnapshot } from './diagnostics';
 import { useCanvasGestures } from './useCanvasGestures';
 import { FloatingPanel } from './FloatingPanel';
 import type { PanelLayout } from './FloatingPanel';
@@ -33,6 +34,10 @@ export function App() {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
+  const [diagnosticReport, setDiagnosticReport] = useState('');
+  const navigationStart = useRef<number | null>(null);
+  const bootStart = useRef(performance.now());
+  const bootMeasured = useRef(false);
   const cameraFrame = useRef<number | null>(null);
   const [nodePreview, setNodePreview] = useState<{ id: string; x: number; y: number } | null>(null);
   const nodeDrag = useRef<{
@@ -49,7 +54,7 @@ export function App() {
   const [mapWidth, setMapWidth] = useState(600);
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [modal, setModal] = useState<'start' | 'stop' | 'palette' | null>(null),
+  const [modal, setModal] = useState<'start' | 'stop' | 'palette' | 'diagnostics' | null>(null),
     [tab, setTab] = useState('transcript');
   const [review, setReview] = useState<{
     artifacts: Artifact[];
@@ -174,6 +179,8 @@ export function App() {
     };
   }, []);
   function updatePrefs(patch: Partial<Prefs>) {
+    if (patch.selection !== undefined || patch.sessionId !== undefined)
+      navigationStart.current = performance.now();
     dirty.current = true;
     const previous = latestPrefs.current;
     const next = {
@@ -191,6 +198,22 @@ export function App() {
     latestPrefs.current = next;
     setPrefs(next);
   }
+
+  useLayoutEffect(() => {
+    if (navigationStart.current !== null) {
+      recordTiming('navigationCommit', performance.now() - navigationStart.current);
+      navigationStart.current = null;
+    }
+    if (
+      !bootMeasured.current &&
+      connected &&
+      loaded.current &&
+      (!session || session.state.current)
+    ) {
+      recordTiming('warmAttachCommit', performance.now() - bootStart.current);
+      bootMeasured.current = true;
+    }
+  });
 
   function queueCamera(patch: Pick<Prefs, 'zoom' | 'canvasOffset' | 'viewport'>) {
     // The close flush sees the final input immediately, even before its frame.
@@ -533,6 +556,41 @@ export function App() {
             {prefs.theme === 'light' ? 'Dark' : 'Light'}
           </button>
           <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
+          <button
+            disabled={!status.features?.includes('diagnostics')}
+            title={
+              status.features?.includes('diagnostics')
+                ? 'Local performance report'
+                : 'Restart the supervisor to enable diagnostics'
+            }
+            onClick={async () => {
+              setDiagnosticReport('Loading diagnostics...');
+              setModal('diagnostics');
+              try {
+                const supervisor = await request('diagnostics');
+                setDiagnosticReport(
+                  JSON.stringify(
+                    {
+                      schemaVersion: 1,
+                      capturedAt: new Date().toISOString(),
+                      ui: timingSnapshot(),
+                      supervisor,
+                      workers: status.sessions.map((s) => ({
+                        modelRoute: s.state.modelRoute,
+                        ...s.state.diagnostics,
+                      })),
+                    },
+                    null,
+                    2,
+                  ),
+                );
+              } catch (e) {
+                setDiagnosticReport(`Diagnostics unavailable: ${String(e)}`);
+              }
+            }}
+          >
+            Diagnostics
+          </button>
           <button onClick={() => setModal('stop')}>Quit &amp; stop</button>
         </div>
       </header>
@@ -557,6 +615,7 @@ export function App() {
                 onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
               >
                 <span className="eyebrow">{s.workspace.split('/').at(-1)}</span>
+                {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
                 <strong>{prefs.sessionLabels?.[s.id] || short(s.id)}</strong>
                 {prefs.sessionLabels?.[s.id] && <small>{short(s.id)}</small>}
                 <span>
@@ -1711,18 +1770,36 @@ export function App() {
               ? 'Start a Muse session'
               : modal === 'stop'
                 ? 'Stop execution and quit'
-                : 'Command palette'}
+                : modal === 'diagnostics'
+                  ? 'Performance diagnostics'
+                  : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'diagnostics' && (
+          <>
+            <p className="muted">
+              Bounded process-local timings. Navigation measures React commit, not display paint.
+              IPC includes transport and queue time. Worker measurements exclude Muse.
+            </p>
+            <label>
+              Diagnostic report
+              <textarea readOnly rows={18} value={diagnosticReport} />
+            </label>
+          </>
+        )}
         {modal === 'start' && (
           <form
             onSubmit={async (e) => {
               e.preventDefault();
               const form = new FormData(e.currentTarget);
-              const result = await mutate('start', { workspace: String(form.get('workspace')) });
+              const modelId = String(form.get('model') ?? '');
+              const result = await mutate('start', {
+                workspace: String(form.get('workspace')),
+                ...(modelId ? { modelId } : {}),
+              });
               if (result && result.status === 'applied') {
                 updatePrefs({ sessionId: result.sessionId, selection: undefined });
                 setModal(null);
@@ -1735,6 +1812,23 @@ export function App() {
               Existing repository path
               <input name="workspace" required placeholder="/Users/you/projects/repository" />
             </label>
+            <label htmlFor="session-model">Model</label>
+            <select
+              id="session-model"
+              name="model"
+              defaultValue=""
+              disabled={!status.features?.includes('modelSelection')}
+            >
+              <option value="">Muse catalog default</option>
+              <option value="muse-wonder-1.0">Muse Wonder 1.0</option>
+              <option value="muse-spark-1.3">Muse Spark 1.3</option>
+            </select>
+            {!status.features?.includes('modelSelection') && (
+              <p className="muted">
+                This supervisor predates model selection. Restart it to enable explicit model
+                choices; existing sessions keep their routes.
+              </p>
+            )}
             <label>
               Initial task
               <textarea
@@ -1745,7 +1839,8 @@ export function App() {
               />
             </label>
             <p className="muted">
-              Live sessions use Muse's advertised catalog default model. Muse controls tool
+              The default follows Muse's catalog. Explicit models require provider access; failures
+              remain visible. Model selection applies to this new session. Muse controls tool
               permissions. Closing this window leaves the supervisor and sessions running.
             </p>
             <button className="primary" disabled={busy}>

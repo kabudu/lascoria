@@ -213,6 +213,7 @@ export async function provider(root, options = {}) {
     JSON.stringify({
       schema_version: 1,
       endpoint_transport: { base_url: `http://127.0.0.1:${server.address().port}`, auth: 'bearer' },
+      permissions: { schema_version: 1, default_profile: ':ask-me' },
       run: { reminder_roster: { agents: [] }, approval_judge: 'off' },
     }),
   );

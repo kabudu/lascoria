@@ -11,9 +11,9 @@ Diagnostic CLI / Tauri + React + TypeScript desktop client
     authenticated local Unix socket, API version 1
 Rust supervisor
     private NDJSON stdin/stdout, one worker per top-level session
-Node SDK worker (@muse-code/sdk 1.4.6)
+Node SDK worker (@muse-code/sdk 1.4.8)
     official MSP connection and authoritative SDK Session fold
-Muse Code 1.4.6 (muse serve)
+Muse Code 1.4.8 (muse serve)
     tools, permissions, agent execution and durable logs
 ```
 
@@ -29,7 +29,7 @@ Rust is the single UUIDv7 command-ID source for these SDK connections. IDs are p
 
 Admission is distinct from application. Matching server-authored command facts can mark a command applied. On interruption, unresolved sending/accepted commands become outcome unknown. Recovery can reconcile them from matching authoritative history facts; absent proof leaves them unknown. No external operation is automatically resubmitted. `applied` means the control operation was applied, not that its task passed tests or was accepted by a user. A turn's native terminal is exposed separately in `state.turns`.
 
-On recovery, the worker resumes the durable session, temporarily unsubscribes, pages authoritative history through `view/page`, constructs a fresh SDK fold, and subscribes from its observed last cursor. This avoids SDK 1.4.6's unavailable snapshot-ingestion path. The actual binary is required to honor its page and subscription contracts; pruned or oversized history fails visibly. Opening/rebuilding state is not presented as current.
+On recovery, the worker resumes the durable session, temporarily unsubscribes, pages authoritative history through `view/page`, constructs a fresh SDK fold, and subscribes from its observed last cursor. This uses an explicit paged rebuild instead of relying on snapshot ingestion. The actual binary is required to honor its page and subscription contracts; pruned or oversized history fails visibly. Opening/rebuilding state is not presented as current.
 
 The SDK owns item revisions, duplicate delivery, unknown item kinds, pending approvals, structured questions, and turn state. The supervisor stores a disposable bounded diagnostic snapshot, not a second execution fold. Worker generations prevent an old reader's EOF or late state from replacing a new worker's state.
 

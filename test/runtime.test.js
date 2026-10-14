@@ -101,6 +101,6 @@ test(
     );
     const ephemeral = await open(['--no-session-log']);
     assert.equal(ephemeral.profile.kind, 'ephemeral');
-    assert.equal(first.handshake.serverInfo.version, '1.4.6');
+    assert.equal(first.handshake.serverInfo.version, '1.4.8');
   },
 );

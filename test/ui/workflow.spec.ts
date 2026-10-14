@@ -106,10 +106,20 @@ test('real Muse implementation, tests and review through React and the native Ru
     await ready();
     await page.goto('/');
     await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    const beforeInvalid = (await status()).sessions.length;
+    await expect(
+      request(directory, 'start', { workspace, modelId: '../bad model' }),
+    ).rejects.toThrow('Invalid model ID');
+    expect((await status()).sessions.length).toBe(beforeInvalid);
+    const diagnostic = await request(directory, 'diagnostics');
+    expect(diagnostic.failures).toBeGreaterThanOrEqual(1);
+    expect(diagnostic.sampleLimit).toBe(256);
     const sessions: string[] = [];
     for (const marker of ['STAGE_B_IMPLEMENT', 'STAGE_B_TEST', 'STAGE_B_DELEGATE']) {
       await page.getByRole('button', { name: 'New session', exact: true }).click();
       await page.getByLabel('Existing repository path').fill(workspace);
+      if (marker === 'STAGE_B_IMPLEMENT')
+        await page.getByLabel('Model', { exact: true }).selectOption('muse-wonder-1.0');
       await page.getByLabel('Initial task').fill(marker);
       await page.getByRole('button', { name: 'Start session', exact: true }).click();
       await expect.poll(async () => (await status()).sessions.length).toBe(sessions.length + 1);
@@ -121,11 +131,14 @@ test('real Muse implementation, tests and review through React and the native Ru
               (c: any) => c.operation === 'start' && c.sessionId === createdSession,
             )?.result?.session?.modelId,
         )
-        .toBe('stage-a-fixture');
+        .toBe(marker === 'STAGE_B_IMPLEMENT' ? 'muse-wonder-1.0' : 'stage-a-fixture');
       const startReceipt = (await status()).commands.find(
         (c: any) => c.operation === 'start' && c.sessionId === createdSession,
       );
       expect(startReceipt.result.session.providerId).toBe('meta');
+      expect((await status()).sessions.at(-1).state.modelRoute.modelId).toBe(
+        marker === 'STAGE_B_IMPLEMENT' ? 'muse-wonder-1.0' : 'stage-a-fixture',
+      );
 
       if (marker === 'STAGE_B_IMPLEMENT') {
         await expect(

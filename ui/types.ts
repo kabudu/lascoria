@@ -24,6 +24,7 @@ export interface SessionRow {
   handshake?: Json;
 }
 export interface Status {
+  features?: string[];
   pid: number;
   sessions: SessionRow[];
   commands: Json[];

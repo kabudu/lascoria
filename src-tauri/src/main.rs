@@ -17,6 +17,7 @@ fn directory() -> PathBuf {
 async fn request(operation: &str, params: Value, id: String) -> Result<Value, String> {
     if ![
         "status",
+        "diagnostics",
         "start",
         "turn",
         "steer",

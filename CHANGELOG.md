@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Start Stage C with bounded local diagnostics and repeatable runtime and UI projection benchmarks, including resource-budget reporting.
+- Add explicit Wonder/Spark selection for new live sessions and authoritative model labels after resume.
+- Pin Muse SDK/runtime compatibility to 1.4.8 and keep scripted-provider permission posture deterministic.
+
 - Add trackpad pinch handling, cursor-centred Ctrl/Cmd+wheel zoom and frame-coalesced canvas panning, with floating-panel scroll isolation.
 
 - Add persistent canvas zoom, fit-to-view around floating panels, and direct node dragging with zoom-aware coordinates and keyboard movement.
