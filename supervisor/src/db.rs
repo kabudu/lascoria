@@ -30,6 +30,26 @@ impl Db {
         db.execute_batch("PRAGMA user_version=3;")?;
         Ok(Self(db, uuid::Uuid::new_v4().to_string()))
     }
+    /// Inspect only auth-failure IDs and command timestamps, never materialize retained transcripts.
+    pub fn auth_failed_since(&self, epoch: u64) -> Result<bool> {
+        let mut failed_query = self.0.prepare("SELECT json_extract(t.value, '$.commandId') FROM sessions s, json_each(s.value, '$.state.turns') t WHERE json_extract(t.value, '$.error.kind') = 'authRequired'")?;
+        let failed: std::collections::HashSet<String> = failed_query
+            .query_map([], |row| row.get::<_, Option<String>>(0))?
+            .filter_map(|row| row.transpose())
+            .collect::<rusqlite::Result<_>>()?;
+        if failed.is_empty() {
+            return Ok(false);
+        }
+        let mut commands = self.0.prepare("SELECT json_extract(value, '$.commandId') FROM commands WHERE json_extract(value, '$.createdAtMillis') >= ?1")?;
+        for id in commands.query_map([i64::try_from(epoch)?], |row| {
+            row.get::<_, Option<String>>(0)
+        })? {
+            if id?.is_some_and(|id| failed.contains(&id)) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
     pub fn version(&self) -> String {
         format!("{}:{}", self.1, self.0.total_changes())
     }

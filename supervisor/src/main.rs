@@ -1,3 +1,4 @@
+mod auth;
 mod db;
 mod dedicated;
 mod metrics;
@@ -242,7 +243,7 @@ impl Actor {
             let db = self.db.lock().unwrap();
             let commands = db.all("commands")?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -601,6 +602,7 @@ async fn connection(
     sender: mpsc::Sender<Call>,
     db: SharedDb,
     metrics: Arc<Mutex<metrics::Metrics>>,
+    auth: Arc<tokio::sync::Mutex<auth::Auth>>,
 ) -> Result<()> {
     ensure!(
         stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
@@ -619,6 +621,7 @@ async fn connection(
             "Invalid version or authentication"
         );
         started = Some(Instant::now());
+        if request["operation"] == "account/status" { return auth.lock().await.status().await; }
         if request["operation"] == "diagnostics" { return Ok(metrics.lock().unwrap().snapshot()); }
         // Snapshot reads bypass session command lanes, including during recovery.
         if request["operation"] == "status" {
@@ -626,7 +629,7 @@ async fn connection(
             if request["params"]["since"].as_str().is_some_and(|version| version == db.version()) {
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
         let (tx, rx) = oneshot::channel();
         sender
@@ -755,6 +758,23 @@ async fn main() -> Result<()> {
         broker: broker.clone(),
         target,
     };
+    let mut account = auth::Auth::new(db.clone())?;
+    if auth::managed(&db)
+        && let Err(error) = account.status().await
+    {
+        eprintln!("Account status unavailable: {error}");
+    }
+    let account_ready = account.ready.clone();
+    let account = Arc::new(tokio::sync::Mutex::new(account));
+    let monitor_account = account.clone();
+    let account_monitor = tokio::spawn(async move {
+        let mut timer = interval(Duration::from_secs(30));
+        timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            timer.tick().await;
+            let _ = monitor_account.lock().await.status().await;
+        }
+    });
     let global = Lane::new(make_actor(None));
     let lanes = Arc::new(Mutex::new(HashMap::new()));
     for row in db.lock().unwrap().all("sessions")? {
@@ -774,6 +794,7 @@ async fn main() -> Result<()> {
     let metrics = Arc::new(Mutex::new(metrics::Metrics::new()));
     let accept_metrics = metrics.clone();
     let accept_db = db.clone();
+    let accept_account = account.clone();
     let accept_task = tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
             if let Ok(permit) = permits.clone().try_acquire_owned() {
@@ -781,9 +802,12 @@ async fn main() -> Result<()> {
                 let token = token.clone();
                 let db = accept_db.clone();
                 let metrics = accept_metrics.clone();
+                let account = accept_account.clone();
                 tokio::spawn(async move {
                     let _permit = permit;
-                    if let Err(error) = connection(stream, token, sender, db, metrics).await {
+                    if let Err(error) =
+                        connection(stream, token, sender, db, metrics, account).await
+                    {
                         eprintln!("IPC: {error}");
                     }
                 });
@@ -802,6 +826,7 @@ async fn main() -> Result<()> {
                 }
             }
             _ = tick.tick() => {
+                if !account_ready.load(std::sync::atomic::Ordering::SeqCst) { continue; }
                 let candidates: Vec<_> = {
                     let rows = db.lock().unwrap().all("sessions")?;
                     let lanes = lanes.lock().unwrap();
@@ -820,6 +845,40 @@ async fn main() -> Result<()> {
                 }
             }
             Some(call) = requests.recv() => {
+                if call.request["operation"].as_str().is_some_and(|op| op.starts_with("account/")) {
+                    let operation = call.request["operation"].as_str().unwrap();
+                    if let Err(error) = auth::validate(operation, &call.request["params"]) {
+                        let _ = call.response.send(Err(error)); continue;
+                    }
+                    if let Err(error) = account.lock().await.validate_transition(operation) {
+                        let _ = call.response.send(Err(error)); continue;
+                    }
+                    if operation == "account/logout"
+                        && let Err(error) = account.lock().await.prepare_logout() {
+                        let _ = call.response.send(Err(error)); continue;
+                    }
+                    let changes_route = account.lock().await.changes_route(operation);
+                    if changes_route {
+                        // Account changes are barriers. Never journal secret-bearing requests.
+                        while let Some(done) = tasks.join_next().await {
+                            if let Ok(Some(id)) = done { in_flight.remove(&id); }
+                        }
+                        account_ready.store(false, std::sync::atomic::Ordering::SeqCst);
+                        let actors: Vec<_> = lanes.lock().unwrap().values().cloned().collect();
+                        let mut stopping = JoinSet::new();
+                        for lane in actors { stopping.spawn(async move { lane.actor.lock().await.stop().await; }); }
+                        while let Some(result) = stopping.join_next().await { if let Err(error) = result { eprintln!("Account host drain failed: {error}"); } }
+                        if let Some(broker) = broker.lock().await.take() { broker.stop().await; }
+                        let database = db.lock().unwrap();
+                        for mut row in database.all("sessions")? {
+                            if row["lifecycle"] != "archived" { row["attempts"] = json!(0); database.put("sessions", row["id"].as_str().unwrap(), &row)?; }
+                        }
+                    }
+                    let operation = call.request["operation"].as_str().unwrap();
+                    let result = account.lock().await.handle(operation, call.request["params"].clone()).await;
+                    let _ = call.response.send(result);
+                    continue;
+                }
                 if call.request["operation"] == "stop" {
                     // A shutdown is a barrier: finish admitted work before validating affected sessions.
                     while let Some(done) = tasks.join_next().await {
@@ -829,6 +888,11 @@ async fn main() -> Result<()> {
                     let stop = result.as_ref().is_ok_and(|value| value["stopping"] == true);
                     let _ = call.response.send(result);
                     if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
+                    continue;
+                }
+                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "answer", "decide"].iter().any(|op| call.request["operation"] == *op)
+                    && !account_ready.load(std::sync::atomic::Ordering::SeqCst) {
+                    let _ = call.response.send(Err(anyhow::anyhow!("Sign in or reconnect your Muse account before continuing")));
                     continue;
                 }
                 let id = call.request["id"].as_str().map(str::to_owned);
@@ -920,6 +984,9 @@ async fn main() -> Result<()> {
     if let Some(broker) = broker.lock().await.take() {
         broker.stop().await;
     }
+    account_monitor.abort();
+    let _ = account_monitor.await;
+    account.lock().await.stop().await;
     fs::remove_file(socket_path)?;
     drop(lock);
     Ok(())

@@ -1771,3 +1771,75 @@ main {
   text-align: left;
   overflow-wrap: anywhere;
 }
+
+.account-panel {
+  display: grid;
+  gap: 1.4rem;
+}
+.account-summary h3 {
+  margin: 0.4rem 0;
+  font-size: 1.5rem;
+}
+.account-summary p,
+.account-choice p {
+  margin-bottom: 0;
+}
+.account-choice {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 1.25rem;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.account-choice h3 {
+  margin: 0;
+}
+.account-flow {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+}
+.account-code {
+  display: block;
+  font:
+    600 1.65rem ui-monospace,
+    monospace;
+  letter-spacing: 0.18em;
+  margin: 1rem 0;
+}
+.account-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-top: 0.8rem;
+}
+.account-api {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+.account-api form {
+  display: grid;
+  gap: 0.7rem;
+}
+.account-api form button {
+  justify-self: start;
+}
+.account-confirm {
+  padding: 1rem;
+  border: 1px solid var(--error);
+  border-radius: 12px;
+}
+.account-confirm h3 {
+  margin-top: 0;
+}
+@media (max-width: 700px) {
+  .account-choice {
+    grid-template-columns: 1fr;
+  }
+  .account-choice button {
+    justify-self: start;
+  }
+}

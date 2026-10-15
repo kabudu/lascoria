@@ -36,7 +36,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     MUSE_BIN: process.env.MUSE_BIN ?? 'muse',
     SCH_STATE_DIR: directory,
     SCH_PROVIDER: 'meta',
-    META_API_KEY: 'stage-a-loopback-only', // Fixed fake credential; never use the user's Keychain login.
+    ...model.env, // Environment-only fake credential; never migrate into the user's Keychain.
     XDG_CONFIG_HOME: join(root, 'config'),
     XDG_DATA_HOME: join(root, 'data'),
     XDG_CACHE_HOME: join(root, 'cache'),
