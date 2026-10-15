@@ -40,7 +40,11 @@ function workflowSummary(value: string) {
 }
 export function App() {
   const [status, setStatus] = useState<Status>(empty),
-    [prefs, setPrefs] = useState<Prefs>({ theme: 'light', view: 'map' });
+    [prefs, setPrefs] = useState<Prefs>({
+      theme: 'light',
+      view: 'map',
+      canvasControlsCollapsed: true,
+    });
   const [connected, setConnected] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
@@ -49,6 +53,7 @@ export function App() {
   const [settingsCatalog, setSettingsCatalog] = useState<Json>(null);
   const [settingsMessage, setSettingsMessage] = useState('');
   const settingsRequest = useRef('');
+  const workspaceMenu = useRef<HTMLDetailsElement>(null);
   const [diagnosticReport, setDiagnosticReport] = useState('');
   const navigationStart = useRef<number | null>(null);
   const bootStart = useRef(performance.now());
@@ -173,7 +178,12 @@ export function App() {
       if (dirty.current) {
         throw new Error('Unsaved layout retained. Save it before reconnecting.');
       }
-      latestPrefs.current = { theme: 'light', view: 'map', ...saved.value };
+      latestPrefs.current = {
+        theme: 'light',
+        view: 'map',
+        canvasControlsCollapsed: true,
+        ...saved.value,
+      };
       setPrefs(latestPrefs.current);
       loaded.current = true;
       setError('');
@@ -442,7 +452,20 @@ export function App() {
     lastCommand.current = { id, operation, params };
     try {
       const result = await request(operation, params, id);
-      setNotice(`${operation}: ${result.status ?? 'saved'} · request ${id}`);
+      const names: Record<string, string> = {
+        start: 'Session',
+        turn: 'Task',
+        steer: 'Steering',
+        cancel: 'Cancellation',
+        decide: 'Permission decision',
+        answer: 'Answer',
+        resume: 'Recovery',
+        setModel: 'Model change',
+        setEffort: 'Effort change',
+        'artifact/capture': 'Diff capture',
+        'evidence/record': 'Evidence',
+      };
+      setNotice(`${names[operation] ?? operation} · ${result.status ?? 'saved'}`);
       if (operation !== 'stop') await refresh();
       if (operation === 'turn' && result.result?.turnId)
         updatePrefs({
@@ -485,6 +508,21 @@ export function App() {
   const items = (history ?? (task?.childSessionId ? [] : (session?.state.items ?? []))).filter(
     (i) => task?.childSessionId || !task?.turnId || i.turnId === task.turnId,
   );
+  const transcriptItems = items.filter(
+    (item) =>
+      prefs.showRuntimeReminders ||
+      item.kind !== 'reminderChild' ||
+      item.itemId === task?.item?.itemId ||
+      ['failed', 'rejected'].includes(item.status),
+  );
+  const itemLabels: Record<string, string> = {
+    userMessage: 'You',
+    agentMessage: 'Muse',
+    reminderChild: 'Background activity',
+    toolCall: 'Tool execution',
+    workflow: 'Workflow',
+    plan: 'Plan',
+  };
   const visible = nodes.filter(
     (n) =>
       (n.item?.kind !== 'reminderChild' ||
@@ -574,6 +612,48 @@ export function App() {
       ...latestPrefs.current.panels?.inspector,
       collapsed: false,
     });
+  useEffect(() => {
+    if (!/ · (accepted|applied|saved)$/.test(notice)) return;
+    const timer = setTimeout(() => setNotice(''), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      const menu = workspaceMenu.current;
+      if (menu?.open && !menu.contains(event.target as Node)) menu.open = false;
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, []);
+  const isHistoricalInterruption = (entry: (typeof queue)[number]) =>
+    entry.kind === 'interruption' && 'historical' in entry && entry.historical === true;
+  const renderAttention = (entry: (typeof queue)[number]) => (
+    <button
+      key={entry.id}
+      className="attention-row"
+      onClick={() => {
+        updatePrefs({ sessionId: entry.sessionId, selection: entry.target });
+        setTab(entry.kind === 'review' ? 'diff' : 'transcript');
+        openInspector();
+      }}
+    >
+      <span className={`attention-icon ${entry.kind}`}>
+        {entry.kind === 'approval'
+          ? '!'
+          : entry.kind === 'question'
+            ? '?'
+            : entry.kind === 'review'
+              ? '↗'
+              : '×'}
+      </span>
+      <span>
+        <small>
+          {entry.kind} · {short(entry.sessionId)}
+        </small>
+        <strong>{entry.label}</strong>
+      </span>
+    </button>
+  );
   return (
     <div className="shell">
       <header className="topbar">
@@ -587,48 +667,72 @@ export function App() {
           <button onClick={() => setModal('palette')} aria-label="Open command palette">
             ⌘ K
           </button>
-          <button
-            onClick={() => updatePrefs({ theme: prefs.theme === 'light' ? 'dark' : 'light' })}
-          >
-            {prefs.theme === 'light' ? 'Dark' : 'Light'}
-          </button>
-          <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
-          <button
-            disabled={!status.features?.includes('diagnostics')}
-            title={
-              status.features?.includes('diagnostics')
-                ? 'Local performance report'
-                : 'Restart the supervisor to enable diagnostics'
-            }
-            onClick={async () => {
-              setDiagnosticReport('Loading diagnostics...');
-              setModal('diagnostics');
-              try {
-                const supervisor = await request('diagnostics');
-                setDiagnosticReport(
-                  JSON.stringify(
-                    {
-                      schemaVersion: 1,
-                      capturedAt: new Date().toISOString(),
-                      ui: timingSnapshot(),
-                      supervisor,
-                      workers: status.sessions.map((s) => ({
-                        modelRoute: s.state.modelRoute,
-                        ...s.state.diagnostics,
-                      })),
-                    },
-                    null,
-                    2,
-                  ),
-                );
-              } catch (e) {
-                setDiagnosticReport(`Diagnostics unavailable: ${String(e)}`);
+          <details
+            className="workspace-menu"
+            ref={workspaceMenu}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && event.currentTarget.open) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector('summary')?.focus();
               }
             }}
+            onBlur={(event) => {
+              if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node))
+                event.currentTarget.open = false;
+            }}
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest('button')) event.currentTarget.open = false;
+            }}
           >
-            Diagnostics
-          </button>
-          <button onClick={() => setModal('stop')}>Quit &amp; stop</button>
+            <summary aria-label="Workspace menu">•••</summary>
+            <div className="workspace-menu-items">
+              <span className="eyebrow">Workspace</span>
+              <button
+                onClick={() => updatePrefs({ theme: prefs.theme === 'light' ? 'dark' : 'light' })}
+              >
+                {prefs.theme === 'light' ? 'Dark' : 'Light'}
+              </button>
+              <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
+              <button
+                disabled={!status.features?.includes('diagnostics')}
+                title={
+                  status.features?.includes('diagnostics')
+                    ? 'Local performance report'
+                    : 'Restart the supervisor to enable diagnostics'
+                }
+                onClick={async () => {
+                  setDiagnosticReport('Loading diagnostics...');
+                  setModal('diagnostics');
+                  try {
+                    const supervisor = await request('diagnostics');
+                    setDiagnosticReport(
+                      JSON.stringify(
+                        {
+                          schemaVersion: 1,
+                          capturedAt: new Date().toISOString(),
+                          ui: timingSnapshot(),
+                          supervisor,
+                          workers: status.sessions.map((s) => ({
+                            modelRoute: s.state.modelRoute,
+                            ...s.state.diagnostics,
+                          })),
+                        },
+                        null,
+                        2,
+                      ),
+                    );
+                  } catch (e) {
+                    setDiagnosticReport(`Diagnostics unavailable: ${String(e)}`);
+                  }
+                }}
+              >
+                Diagnostics
+              </button>
+              <button onClick={() => setModal('stop')}>Quit &amp; stop</button>
+            </div>
+          </details>
         </div>
       </header>
       <aside className="sidebar">
@@ -651,10 +755,9 @@ export function App() {
                 className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
                 onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
               >
-                <span className="eyebrow">{s.workspace.split('/').at(-1)}</span>
+                <span className="eyebrow">SESSION · {short(s.id)}</span>
                 {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
-                <strong>{prefs.sessionLabels?.[s.id] || short(s.id)}</strong>
-                {prefs.sessionLabels?.[s.id] && <small>{short(s.id)}</small>}
+                <strong>{prefs.sessionLabels?.[s.id] || s.workspace.split('/').at(-1)}</strong>
                 <span>
                   {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
                   {queue.filter((q) => q.sessionId === s.id).length} attention
@@ -678,33 +781,17 @@ export function App() {
             {queue.length === 0 ? (
               <p className="muted">Nothing needs attention.</p>
             ) : (
-              queue.map((entry) => (
-                <button
-                  key={entry.id}
-                  className="attention-row"
-                  onClick={() => {
-                    updatePrefs({ sessionId: entry.sessionId, selection: entry.target });
-                    setTab(entry.kind === 'review' ? 'diff' : 'transcript');
-                    openInspector();
-                  }}
-                >
-                  <span className={`attention-icon ${entry.kind}`}>
-                    {entry.kind === 'approval'
-                      ? '!'
-                      : entry.kind === 'question'
-                        ? '?'
-                        : entry.kind === 'review'
-                          ? '↗'
-                          : '×'}
-                  </span>
-                  <span>
-                    <small>
-                      {entry.kind} · {short(entry.sessionId)}
-                    </small>
-                    <strong>{entry.label}</strong>
-                  </span>
-                </button>
-              ))
+              <>
+                {queue.filter((entry) => !isHistoricalInterruption(entry)).map(renderAttention)}
+                {queue.some(isHistoricalInterruption) && (
+                  <details className="attention-history">
+                    <summary>
+                      Runtime history <span>{queue.filter(isHistoricalInterruption).length}</span>
+                    </summary>
+                    {queue.filter(isHistoricalInterruption).map(renderAttention)}
+                  </details>
+                )}
+              </>
             )}
           </section>
         </FloatingPanel>
@@ -725,20 +812,33 @@ export function App() {
             New session
           </button>
         </div>
-        {error && (
-          <div className="banner error" role="alert">
-            {error}
-            <button onClick={() => void boot()}>Reconnect</button>
-          </div>
-        )}
-        {notice && (
-          <div className="banner" role="status">
-            {notice}
-            <button aria-label="Dismiss notification" onClick={() => setNotice('')}>
-              ×
-            </button>
-          </div>
-        )}
+        <div className="notification-stack" role="region" aria-label="Workspace notifications">
+          {error && (
+            <div className="banner error" role="alert">
+              {error}
+              <button onClick={() => void boot()}>Reconnect</button>
+            </div>
+          )}
+          {notice && (
+            <div className="banner" role="status">
+              {notice}
+              <button aria-label="Dismiss notification" onClick={() => setNotice('')}>
+                ×
+              </button>
+            </div>
+          )}
+          {session && !available && (
+            <div className="banner error">
+              State is unavailable. Controls are disabled until recovery completes.
+              <button
+                disabled={busy}
+                onClick={() => void mutate('resume', { sessionId: session.id })}
+              >
+                Recover session
+              </button>
+            </div>
+          )}
+        </div>
         {!session ? (
           <section className="empty-state">
             <span className="large-mark">✳</span>
@@ -753,149 +853,166 @@ export function App() {
           </section>
         ) : (
           <>
-            {!available && (
-              <div className="banner error">
-                State is unavailable. Controls are disabled until recovery completes.
-                <button
-                  disabled={busy}
-                  onClick={() => void mutate('resume', { sessionId: session.id })}
-                >
-                  Recover session
-                </button>
-              </div>
-            )}
             <div className="workspace-grid">
               <section className="task-surface">
-                <div className="surface-toolbar">
-                  <button
-                    onClick={() => {
-                      mapRef.current?.scrollTo({ left: 0, top: 0 });
-                      updatePrefs({ canvasOffset: { x: 0, y: 0 }, viewport: { x: 0, y: 0 } });
-                    }}
-                  >
-                    Recenter canvas
-                  </button>
-                  <button
-                    disabled={prefs.view === 'list' || zoom <= 0.02}
-                    aria-label="Zoom out"
-                    onClick={() => changeZoom(zoom / 1.25)}
-                  >
-                    −
-                  </button>
-                  <button
-                    disabled={prefs.view === 'list'}
-                    aria-label="Reset zoom to 100 percent"
-                    onClick={() => changeZoom(1)}
-                  >
-                    {Math.round(zoom * 100)}%
-                  </button>
-                  <button
-                    disabled={prefs.view === 'list' || zoom >= 2}
-                    aria-label="Zoom in"
-                    onClick={() => changeZoom(zoom * 1.25)}
-                  >
-                    +
-                  </button>
-                  <button
-                    disabled={prefs.view === 'list' || !visible.length}
-                    onClick={() => {
-                      const element = mapRef.current;
-                      if (!element) return;
-                      const canvas = element.getBoundingClientRect();
-                      const obstacles = [
-                        ...document.querySelectorAll(
-                          '.floating-panel, .surface-toolbar, .surface-foot, .layout-controls',
-                        ),
-                      ].map((panel) => {
-                        const box = panel.getBoundingClientRect();
-                        return {
-                          x: box.left - canvas.left,
-                          y: box.top - canvas.top,
-                          width: box.width,
-                          height: box.height,
-                        };
-                      });
-                      const frame = freeCanvasFrame(
-                        element.clientWidth,
-                        element.clientHeight,
-                        obstacles,
-                      );
-                      if (!frame.width) {
-                        setNotice('Move or collapse a panel to make room for fit-to-view.');
-                        return;
-                      }
-                      const points = visible.map((node, index) => position(node, index));
-                      const fit = fitConstellation(
-                        points,
-                        element.clientWidth,
-                        element.clientHeight,
-                        frame,
-                      );
-                      if (
-                        points.some(
-                          (point) =>
-                            point.x * fit.zoom + fit.offset.x < frame.x ||
-                            (point.x + 220) * fit.zoom + fit.offset.x > frame.x + frame.width ||
-                            point.y * fit.zoom + fit.offset.y < frame.y ||
-                            (point.y + 140) * fit.zoom + fit.offset.y > frame.y + frame.height,
-                        )
-                      ) {
-                        setNotice(
-                          'Move or collapse a panel to fit all visible nodes at the minimum zoom.',
-                        );
-                        return;
-                      }
-                      updatePrefs({
-                        zoom: fit.zoom,
-                        canvasOffset: fit.offset,
-                        viewport: { x: 0, y: 0 },
-                      });
-                    }}
-                  >
-                    Fit to view
-                  </button>
-                  <div className="segmented">
+                <div
+                  className={`surface-toolbar ${prefs.canvasControlsCollapsed ? 'is-collapsed' : ''}`}
+                  role="region"
+                  aria-label="Canvas controls"
+                >
+                  <div className="canvas-dock-heading">
+                    <span className="eyebrow">
+                      Canvas{' '}
+                      <span className="dock-zoom">
+                        · {prefs.view === 'list' ? 'List' : `${Math.round(zoom * 100)}%`}
+                      </span>
+                    </span>
                     <button
-                      aria-pressed={prefs.view !== 'list'}
-                      onClick={() => updatePrefs({ view: 'map' })}
+                      aria-label={
+                        prefs.canvasControlsCollapsed
+                          ? 'Expand canvas controls'
+                          : 'Collapse canvas controls'
+                      }
+                      aria-expanded={!prefs.canvasControlsCollapsed}
+                      disabled={!loaded.current}
+                      onClick={() =>
+                        updatePrefs({ canvasControlsCollapsed: !prefs.canvasControlsCollapsed })
+                      }
                     >
-                      Task map
-                    </button>
-                    <button
-                      aria-pressed={prefs.view === 'list'}
-                      onClick={() => updatePrefs({ view: 'list' })}
-                    >
-                      List
+                      {prefs.canvasControlsCollapsed ? 'Show tools' : 'Hide tools'}
                     </button>
                   </div>
-                  <label className="search">
-                    <span>Search tasks</span>
-                    <input
-                      value={prefs.search ?? ''}
-                      onChange={(e) => updatePrefs({ search: e.target.value })}
-                      placeholder="Filter tasks…"
-                    />
-                  </label>
-                  <label className="runtime-filter">
-                    <input
-                      type="checkbox"
-                      checked={prefs.showRuntimeReminders ?? false}
-                      onChange={(event) =>
-                        updatePrefs({ showRuntimeReminders: event.target.checked })
+                  <div className="canvas-tools" hidden={!!prefs.canvasControlsCollapsed}>
+                    <button
+                      onClick={() => {
+                        mapRef.current?.scrollTo({ left: 0, top: 0 });
+                        updatePrefs({ canvasOffset: { x: 0, y: 0 }, viewport: { x: 0, y: 0 } });
+                      }}
+                    >
+                      Recenter canvas
+                    </button>
+                    <button
+                      disabled={prefs.view === 'list' || zoom <= 0.02}
+                      aria-label="Zoom out"
+                      onClick={() => changeZoom(zoom / 1.25)}
+                    >
+                      −
+                    </button>
+                    <button
+                      disabled={prefs.view === 'list'}
+                      aria-label="Reset zoom to 100 percent"
+                      onClick={() => changeZoom(1)}
+                    >
+                      {Math.round(zoom * 100)}%
+                    </button>
+                    <button
+                      disabled={prefs.view === 'list' || zoom >= 2}
+                      aria-label="Zoom in"
+                      onClick={() => changeZoom(zoom * 1.25)}
+                    >
+                      +
+                    </button>
+                    <button
+                      disabled={prefs.view === 'list' || !visible.length}
+                      onClick={() => {
+                        const element = mapRef.current;
+                        if (!element) return;
+                        const canvas = element.getBoundingClientRect();
+                        const obstacles = [
+                          ...document.querySelectorAll(
+                            '.floating-panel, .surface-toolbar, .surface-foot, .layout-controls',
+                          ),
+                        ].map((panel) => {
+                          const box = panel.getBoundingClientRect();
+                          return {
+                            x: box.left - canvas.left,
+                            y: box.top - canvas.top,
+                            width: box.width,
+                            height: box.height,
+                          };
+                        });
+                        const frame = freeCanvasFrame(
+                          element.clientWidth,
+                          element.clientHeight,
+                          obstacles,
+                        );
+                        if (!frame.width) {
+                          setNotice('Move or collapse a panel to make room for fit-to-view.');
+                          return;
+                        }
+                        const points = visible.map((node, index) => position(node, index));
+                        const fit = fitConstellation(
+                          points,
+                          element.clientWidth,
+                          element.clientHeight,
+                          frame,
+                        );
+                        if (
+                          points.some(
+                            (point) =>
+                              point.x * fit.zoom + fit.offset.x < frame.x ||
+                              (point.x + 220) * fit.zoom + fit.offset.x > frame.x + frame.width ||
+                              point.y * fit.zoom + fit.offset.y < frame.y ||
+                              (point.y + 140) * fit.zoom + fit.offset.y > frame.y + frame.height,
+                          )
+                        ) {
+                          setNotice(
+                            'Move or collapse a panel to fit all visible nodes at the minimum zoom.',
+                          );
+                          return;
+                        }
+                        updatePrefs({
+                          zoom: fit.zoom,
+                          canvasOffset: fit.offset,
+                          viewport: { x: 0, y: 0 },
+                        });
+                      }}
+                    >
+                      Fit to view
+                    </button>
+                    <div className="segmented">
+                      <button
+                        aria-pressed={prefs.view !== 'list'}
+                        onClick={() => updatePrefs({ view: 'map' })}
+                      >
+                        Task map
+                      </button>
+                      <button
+                        aria-pressed={prefs.view === 'list'}
+                        onClick={() => updatePrefs({ view: 'list' })}
+                      >
+                        List
+                      </button>
+                    </div>
+                    <label className="search">
+                      <span>Search tasks</span>
+                      <input
+                        value={prefs.search ?? ''}
+                        onChange={(e) => updatePrefs({ search: e.target.value })}
+                        placeholder="Filter tasks…"
+                      />
+                    </label>
+                    <label className="runtime-filter">
+                      <input
+                        type="checkbox"
+                        checked={prefs.showRuntimeReminders ?? false}
+                        onChange={(event) =>
+                          updatePrefs({ showRuntimeReminders: event.target.checked })
+                        }
+                      />
+                      Runtime reminders
+                    </label>
+                    <button
+                      onClick={() =>
+                        updatePrefs({
+                          collapsed: nodes.filter((n) => n.status === 'completed').map((n) => n.id),
+                        })
                       }
-                    />
-                    Runtime reminders
-                  </label>
-                  <button
-                    onClick={() =>
-                      updatePrefs({
-                        collapsed: nodes.filter((n) => n.status === 'completed').map((n) => n.id),
-                      })
-                    }
-                  >
-                    Collapse completed
-                  </button>
-                  <button onClick={() => updatePrefs({ collapsed: [] })}>Expand</button>
+                    >
+                      Collapse completed
+                    </button>
+                    <button onClick={() => updatePrefs({ collapsed: [] })}>Expand</button>
+                  </div>
                 </div>
                 {prefs.view === 'list' ? (
                   <ul className="task-list" aria-label="Task list">
@@ -1171,144 +1288,6 @@ export function App() {
                   </span>
                   <span>Solid: native parentage · Dashed: user assertion</span>
                 </div>
-                {task && (
-                  <details className="layout-controls">
-                    <summary>Task label, notes and relationships</summary>
-                    <label>
-                      Session display label
-                      <input
-                        value={prefs.sessionLabels?.[session.id] ?? ''}
-                        maxLength={100}
-                        onChange={(event) =>
-                          updatePrefs({
-                            sessionLabels: {
-                              ...prefs.sessionLabels,
-                              [session.id]: event.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Task label
-                      <input
-                        key={task.id + 'label'}
-                        value={prefs.labels?.[task.id] ?? task.label}
-                        onChange={(e) =>
-                          updatePrefs({
-                            labels: { ...prefs.labels, [task.id]: e.target.value.slice(0, 200) },
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Annotation
-                      <textarea
-                        key={task.id + 'annotation'}
-                        value={prefs.annotations?.[task.id] ?? ''}
-                        onChange={(e) =>
-                          updatePrefs({
-                            annotations: {
-                              ...prefs.annotations,
-                              [task.id]: e.target.value.slice(0, 2000),
-                            },
-                          })
-                        }
-                      />
-                    </label>
-                    <div className="row">
-                      <button
-                        onClick={() => {
-                          const p = position(
-                            task,
-                            visible.findIndex((n) => n.id === task.id),
-                          );
-                          updatePrefs({
-                            positions: { ...prefs.positions, [task.id]: { x: p.x + 20, y: p.y } },
-                          });
-                        }}
-                      >
-                        Pin / move right
-                      </button>
-                      <button
-                        onClick={() => {
-                          const p = position(
-                            task,
-                            visible.findIndex((n) => n.id === task.id),
-                          );
-                          updatePrefs({
-                            positions: { ...prefs.positions, [task.id]: { x: p.x, y: p.y + 20 } },
-                          });
-                        }}
-                      >
-                        Move down
-                      </button>
-                    </div>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const data = new FormData(e.currentTarget);
-                        updatePrefs({
-                          edges: [
-                            ...(prefs.edges ?? []),
-                            {
-                              id: crypto.randomUUID(),
-                              from: task.id,
-                              to: String(data.get('target')),
-                              kind: String(data.get('kind')),
-                              provenance: 'userAsserted',
-                              revision: 1,
-                            },
-                          ],
-                        });
-                      }}
-                    >
-                      <label>
-                        Relationship
-                        <select name="kind">
-                          <option>depends on</option>
-                          <option>handed off to</option>
-                        </select>
-                      </label>
-                      <label>
-                        Target task
-                        <select name="target">
-                          {status.sessions
-                            .flatMap((s) => tasks(s, prefs))
-                            .filter((n) => n.id !== task.id)
-                            .map((n) => (
-                              <option key={n.id} value={n.id}>
-                                {n.label}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <button disabled={status.sessions.flatMap((s) => tasks(s, prefs)).length < 2}>
-                        Record user assertion
-                      </button>
-                    </form>
-                    <ul>
-                      {prefs.edges
-                        ?.filter((e) => e.from === task.id)
-                        .map((e) => (
-                          <li key={e.id}>
-                            {e.kind}{' '}
-                            {status.sessions
-                              .flatMap((s) => tasks(s, prefs))
-                              .find((n) => n.id === e.to)?.label ?? e.to}{' '}
-                            · user asserted r{e.revision}
-                            <button
-                              onClick={() =>
-                                updatePrefs({ edges: prefs.edges?.filter((v) => v.id !== e.id) })
-                              }
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        ))}
-                    </ul>
-                  </details>
-                )}
               </section>
               <FloatingPanel
                 title="Task inspector"
@@ -1323,7 +1302,7 @@ export function App() {
                 <section className="inspector" aria-label="Selected task inspector">
                   <div className="inspector-heading">
                     <p className="eyebrow">SELECTED TASK</p>
-                    <h2>{task?.label ?? 'No tasks yet'}</h2>
+                    <h2 title={task?.label}>{task?.label ?? 'No tasks yet'}</h2>
                     <p className="muted">
                       {task?.provenance === 'native'
                         ? 'Native Muse item'
@@ -1352,10 +1331,13 @@ export function App() {
                               ? 'Mark completion inspected'
                               : 'Mark failure seen'}
                           </button>
-                          <p className="muted">
-                            Inspection acknowledgement is presentation state. Verification and
-                            acceptance use evidence.
-                          </p>
+                          <details className="inspection-note">
+                            <summary>About inspection</summary>
+                            <p className="muted">
+                              Inspection acknowledgement is presentation state. Verification and
+                              acceptance use evidence.
+                            </p>
+                          </details>
                         </div>
                       )}
                     {task?.error && (
@@ -1474,10 +1456,27 @@ export function App() {
                             {history !== null ? 'Next / first page' : 'Browse history'}
                           </button>
                         </div>
-                        {items.map((item) => (
-                          <article key={item.itemId} className="transcript-item">
+                        <label className="transcript-background">
+                          <input
+                            type="checkbox"
+                            checked={prefs.showRuntimeReminders ?? false}
+                            onChange={(event) =>
+                              updatePrefs({ showRuntimeReminders: event.target.checked })
+                            }
+                          />
+                          Show background activity
+                          {items.length !== transcriptItems.length
+                            ? ` (${items.length - transcriptItems.length} hidden)`
+                            : ''}
+                        </label>
+                        {transcriptItems.map((item) => (
+                          <article
+                            key={item.itemId}
+                            className="transcript-item"
+                            data-kind={item.kind}
+                          >
                             <header>
-                              <strong>{item.tool ?? item.kind}</strong>
+                              <strong>{item.tool ?? itemLabels[item.kind] ?? item.kind}</strong>
                               <small>
                                 {item.status} · r{item.revision}
                               </small>
@@ -1496,6 +1495,9 @@ export function App() {
                             </pre>
                             <details>
                               <summary>Native provenance</summary>
+                              <small>
+                                {item.itemId} {item.recordedAt ?? 'provisional'}
+                              </small>
                               <pre>
                                 {text(
                                   session.state.itemProvenance?.[item.itemId] ??
@@ -1535,9 +1537,6 @@ export function App() {
                                 <pre>{item.visibleOutput}</pre>
                               </details>
                             )}
-                            <small className="muted">
-                              {item.itemId} {item.recordedAt ?? 'provisional'}
-                            </small>
                           </article>
                         ))}
                         {items.length === 0 && (
@@ -1684,6 +1683,157 @@ export function App() {
                       </>
                     )}
                   </div>
+                  {task && (
+                    <details className="layout-controls">
+                      <summary>Task label, notes and relationships</summary>
+                      <label>
+                        Session display label
+                        <input
+                          value={prefs.sessionLabels?.[session.id] ?? ''}
+                          maxLength={100}
+                          onChange={(event) =>
+                            updatePrefs({
+                              sessionLabels: {
+                                ...prefs.sessionLabels,
+                                [session.id]: event.target.value,
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Task label
+                        <input
+                          key={task.id + 'label'}
+                          value={prefs.labels?.[task.id] ?? task.label}
+                          onChange={(e) =>
+                            updatePrefs({
+                              labels: {
+                                ...prefs.labels,
+                                [task.id]: e.target.value.slice(0, 200),
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Annotation
+                        <textarea
+                          key={task.id + 'annotation'}
+                          value={prefs.annotations?.[task.id] ?? ''}
+                          onChange={(e) =>
+                            updatePrefs({
+                              annotations: {
+                                ...prefs.annotations,
+                                [task.id]: e.target.value.slice(0, 2000),
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                      <div className="row">
+                        <button
+                          onClick={() => {
+                            const p = position(
+                              task,
+                              visible.findIndex((n) => n.id === task.id),
+                            );
+                            updatePrefs({
+                              positions: {
+                                ...prefs.positions,
+                                [task.id]: { x: p.x + 20, y: p.y },
+                              },
+                            });
+                          }}
+                        >
+                          Pin / move right
+                        </button>
+                        <button
+                          onClick={() => {
+                            const p = position(
+                              task,
+                              visible.findIndex((n) => n.id === task.id),
+                            );
+                            updatePrefs({
+                              positions: {
+                                ...prefs.positions,
+                                [task.id]: { x: p.x, y: p.y + 20 },
+                              },
+                            });
+                          }}
+                        >
+                          Move down
+                        </button>
+                      </div>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const data = new FormData(e.currentTarget);
+                          updatePrefs({
+                            edges: [
+                              ...(prefs.edges ?? []),
+                              {
+                                id: crypto.randomUUID(),
+                                from: task.id,
+                                to: String(data.get('target')),
+                                kind: String(data.get('kind')),
+                                provenance: 'userAsserted',
+                                revision: 1,
+                              },
+                            ],
+                          });
+                        }}
+                      >
+                        <label>
+                          Relationship
+                          <select name="kind">
+                            <option>depends on</option>
+                            <option>handed off to</option>
+                          </select>
+                        </label>
+                        <label>
+                          Target task
+                          <select name="target">
+                            {status.sessions
+                              .flatMap((s) => tasks(s, prefs))
+                              .filter((n) => n.id !== task.id)
+                              .map((n) => (
+                                <option key={n.id} value={n.id}>
+                                  {n.label}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                        <button
+                          disabled={status.sessions.flatMap((s) => tasks(s, prefs)).length < 2}
+                        >
+                          Record user assertion
+                        </button>
+                      </form>
+                      <ul>
+                        {prefs.edges
+                          ?.filter((e) => e.from === task.id)
+                          .map((e) => (
+                            <li key={e.id}>
+                              {e.kind}{' '}
+                              {status.sessions
+                                .flatMap((s) => tasks(s, prefs))
+                                .find((n) => n.id === e.to)?.label ?? e.to}{' '}
+                              · user asserted r{e.revision}
+                              <button
+                                onClick={() =>
+                                  updatePrefs({
+                                    edges: prefs.edges?.filter((v) => v.id !== e.id),
+                                  })
+                                }
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          ))}
+                      </ul>
+                    </details>
+                  )}
                   <div className="command-area">
                     <details>
                       <summary>Runtime and interruption history</summary>

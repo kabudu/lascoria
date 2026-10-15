@@ -72,6 +72,7 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
     await page.getByRole('button', { name: 'Next / first page' }).click();
     expect(largestPage).toBe(100);
     await page.waitForTimeout(2000);
+    await page.getByLabel('Workspace menu', { exact: true }).click();
     await page.getByRole('button', { name: 'Diagnostics', exact: true }).click();
     const report = JSON.parse(await page.getByLabel('Diagnostic report').inputValue());
     expect(report.ui.navigationCommit.samples).toBeGreaterThanOrEqual(30);
@@ -100,11 +101,29 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
     await writeFile(info.outputPath('benchmark.json'), JSON.stringify(result, null, 2));
     await page.getByRole('button', { name: 'Close dialog' }).click();
     status.features = [];
+    await page.getByLabel('Workspace menu', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Diagnostics', exact: true })).toBeDisabled();
+    await page.getByLabel('Workspace menu', { exact: true }).click();
     await page.getByRole('button', { name: 'New session', exact: true }).click();
     await expect(page.getByLabel('Model', { exact: true })).toBeDisabled();
     await expect(
       page.getByText('This supervisor predates model selection.', { exact: false }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    status.sessions[0].state.current = false;
+    status.sessions[0].lifecycle = 'interrupted';
+    status.sessions[0].interruptions = [{ kind: 'crash', atMillis: 1 }];
+    await page.getByRole('button', { name: 'Expand Attention panel', exact: true }).click();
+    const attentionPanel = page.getByRole('region', { name: 'Attention panel', exact: true });
+    await expect(
+      attentionPanel.getByRole('button', { name: /Execution state unavailable/ }),
+    ).toBeVisible();
+    await expect(
+      attentionPanel.getByRole('button', { name: /Runtime interruption: crash/ }),
+    ).toHaveCount(0);
+    await attentionPanel.locator('summary').filter({ hasText: 'Runtime history' }).click();
+    await expect(
+      attentionPanel.getByRole('button', { name: /Runtime interruption: crash/ }),
     ).toBeVisible();
   } finally {
     clearInterval(timer);

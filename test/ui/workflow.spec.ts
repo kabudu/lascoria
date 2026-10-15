@@ -113,6 +113,14 @@ test('real Muse implementation, tests and review through React and the native Ru
     await ready();
     await page.goto('/');
     await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await page.getByLabel('Workspace menu', { exact: true }).click();
+    await page.getByRole('button', { name: 'Diagnostics', exact: true }).focus();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.workspace-menu')).toHaveJSProperty('open', false);
+    await expect(page.getByLabel('Workspace menu', { exact: true })).toBeFocused();
+    await page.getByLabel('Workspace menu', { exact: true }).click();
+    await page.getByText('Supervisor connected', { exact: true }).click();
+    await expect(page.locator('.workspace-menu')).toHaveJSProperty('open', false);
     failStatus = true;
     await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toBeVisible();
     failStatus = false;
@@ -182,6 +190,43 @@ test('real Muse implementation, tests and review through React and the native Ru
         .toBe('completed');
       sessions.push(createdSession);
     }
+    failStatus = true;
+    await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Recover session', exact: true })).toBeVisible();
+    const errorBounds = await page
+      .locator('.notification-stack .banner.error')
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const box = element.getBoundingClientRect();
+          return { top: box.top, bottom: box.bottom };
+        }),
+      );
+    expect(errorBounds).toHaveLength(2);
+    expect(errorBounds[0].bottom).toBeLessThanOrEqual(errorBounds[1].top);
+    failStatus = false;
+    await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Recover session', exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Expand canvas controls', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Recenter canvas', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand canvas controls', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Canvas controls', exact: true })).toHaveCSS(
+      'top',
+      '12px',
+    );
+    await page.getByRole('button', { name: 'Collapse canvas controls', exact: true }).click();
+    await expect
+      .poll(
+        async () => (await request(directory, 'presentation/get')).value.canvasControlsCollapsed,
+      )
+      .toBe(true);
+    await page.reload();
+    await expect(page.locator('.session-card').nth(2)).toHaveClass(/selected/);
+    await expect(
+      page.getByRole('button', { name: 'Expand canvas controls', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Expand canvas controls', exact: true }).click();
     await expect
       .poll(
         async () => {
@@ -207,6 +252,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toBeHidden();
     await page.getByRole('button', { name: 'Expand Task inspector panel', exact: true }).click();
     await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toBeVisible();
+    await page.getByLabel('Workspace menu', { exact: true }).click();
     await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
     const sessionsHandle = page.getByRole('button', { name: 'Move Sessions panel', exact: true });
     const handleBounds = (await sessionsHandle.boundingBox())!;
@@ -241,6 +287,7 @@ test('real Muse implementation, tests and review through React and the native Ru
       })
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByLabel('Workspace menu', { exact: true }).click();
     await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
 
     const canvas = page.getByRole('region', { name: 'Constellation canvas', exact: true });
@@ -255,11 +302,12 @@ test('real Muse implementation, tests and review through React and the native Ru
       });
     const beforeWheel = await cameraState();
     const anchor = { x: 600, y: 500 };
+    const wheelCanvasBounds = (await canvas.boundingBox())!;
     await canvas.dispatchEvent('wheel', {
       ctrlKey: true,
       deltaY: -100,
-      clientX: anchor.x,
-      clientY: anchor.y + 68,
+      clientX: anchor.x + wheelCanvasBounds.x,
+      clientY: anchor.y + wheelCanvasBounds.y,
       bubbles: true,
       cancelable: true,
     });
@@ -292,12 +340,17 @@ test('real Muse implementation, tests and review through React and the native Ru
     expect((await cameraState()).y).toBeCloseTo(beforeBurst.y - 100, 2);
     const beforePinch = await cameraState();
     await canvas.evaluate((element, anchor) => {
+      const bounds = element.getBoundingClientRect();
       for (const [type, scale] of [
         ['gesturestart', 1],
         ['gesturechange', 1.25],
       ] as const) {
         const event = new Event(type, { bubbles: true, cancelable: true });
-        Object.assign(event, { scale, clientX: anchor.x, clientY: anchor.y + 68 });
+        Object.assign(event, {
+          scale,
+          clientX: anchor.x + bounds.left,
+          clientY: anchor.y + bounds.top,
+        });
         element.dispatchEvent(event);
       }
       // A duplicate wheel stream during WebKit pinch must not zoom twice.
@@ -592,7 +645,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     await expect(page.getByText(/depends on STAGE_B_TEST/)).toBeVisible();
 
     await page.getByRole('button', { name: 'List', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Dark', exact: true })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect
       .poll(async () => {
         const p = await request(directory, 'presentation/get');
@@ -608,7 +661,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     page = await context.newPage();
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Task map', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Dark', exact: true })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect(page.getByRole('button', { name: /Implement addition/ }).first()).toBeVisible();
     await expect(page.locator('.session-card').first()).toContainText('Implementation');
     expect((await status()).pid).toBe(daemon.pid);
@@ -677,6 +730,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     await expect(page.locator('.command-area textarea')).toHaveValue('');
     await page.locator('.session-card').nth(1).click();
     await expect(page.locator('.command-area textarea')).toHaveValue('Independent unsent draft');
+    await page.getByLabel('Workspace menu', { exact: true }).click();
     await page.getByRole('button', { name: 'Quit & stop', exact: true }).click();
     await expect(page.getByRole('dialog')).toContainText('registered sessions');
     await page.getByRole('button', { name: 'Stop all sessions', exact: true }).click();

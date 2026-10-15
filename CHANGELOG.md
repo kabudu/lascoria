@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reorganize the light workspace with a persistent compact canvas dock, workspace utilities menu, quieter floating panels, actionable attention and progressive transcript detail.
+
 - Refine inspector spacing and session settings with a labelled effort slider, model-specific defaults and explicit unavailable states.
 
 - Share a bounded Node SDK broker across independent Muse hosts to reduce ten-session control-plane memory; retain visible single-host and broker-wide recovery.
