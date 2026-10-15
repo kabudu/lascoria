@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Specify subscription allowance in Settings, a non-interrupting local `/usage` view, and a session-scoped searchable Muse slash-skill picker as release requirements.
+
 - Consolidate release-readiness gates for Muse installation onboarding, signed platform GitHub updates, the planned repository rename, packaging, lifecycle, accessibility and developer/token-efficiency work.
 
 - Gracefully cancel active turns before account host shutdown, retain cancellation evidence across recovery, and verify detached background completion and same-session continuation.

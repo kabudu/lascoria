@@ -67,6 +67,28 @@ Source: [Stage C](stage-c.md) and its [memory follow-up](stage-c-memory.md). His
 - [ ] Test unavailable Muse/runtime, authentication, permissions, network failures, disk-full/locked Keychain, malformed/incompatible history and exhausted resource limits with clear recovery actions and no secret-bearing errors.
 - [ ] Add privacy-safe diagnostic export/support information with explicit preview/redaction boundaries. Define log retention and ensure installed builds do not depend on ignored development artifacts.
 
+### R8 — Subscription usage in Settings and non-interrupting `/usage`
+
+- [ ] Add **Settings → Account & usage** with subscription tier, separate current-window and weekly used/remaining percentage bars, reset countdowns plus absolute local reset times, last-observed timestamp, refresh and clear unavailable/stale states. Include a compact optional workspace indicator; keep detailed information out of the main canvas by default.
+- [ ] Read native `usage/read` and observe `usage/changed` through a bounded read-only path independent of model commands, session mutation queues and slow recovery. Opening/refreshing usage must not start, steer, cancel, interrupt or restart a turn/host, generate inference, create a transcript message or change the selected billing route. Do not invoke the interactive CLI's `/usage` screen.
+- [ ] Intercept the exact local `/usage` command in the composer and command palette to open the same usage view, including while a model, tool or subagent is active. Preserve the existing task draft, selected session, pending approvals/questions and keyboard focus on dismissal. Partial matching must not consume ordinary text or a skill invocation accidentally.
+- [ ] Treat subscription readings as account/host observations, not per-session allocations: never add identical quota windows from multiple hosts. Display the freshest valid observation for the current account, invalidate on account changes, and preserve its freshness timestamp. Unknown/absent usage is not 0% used or 100% available; over-quota readings remain visible even when remaining percentage is clamped to zero.
+- [ ] Keep subscription allowance separate from task tokens, model context occupancy and API billing estimates. Exact remaining requests/tokens, renewal dates and payment balances are shown only if the provider supplies them. Background refresh cannot promise fresher data than Muse's last observation, and must not send a synthetic prompt to obtain a number.
+- [ ] Validate native/live availability on subscription, no-observation, stale/offline, API-key and signed-out states; rapid open/close and multiple sessions; foreground streaming, tools, subagents and waiting approvals/questions. Assert no extra model calls or cancellation/restart events and unchanged active turn identity.
+
+The installed SDK exposes tier, current-window duration/used percentage/reset and weekly used percentage/reset with `observedAtMs`. Muse documents that the served usage query reads observed windows without spending a prompt: [Muse changelog](https://dev.meta.ai/docs/muse-code/changelog). These fields support a clear allowance dashboard; they do not establish access to full account billing information. The UI is not implemented yet.
+
+### R9 — Native Muse slash-command and skill picker
+
+- [ ] Typing `/` at a command position in the composer opens an anchored, height-bounded, scrollable and searchable picker. Show supported Lascoria commands separately from Muse skills, with name, concise description, source badge (built-in/user/project/plugin) and argument hint when supplied. Support keyboard arrows, Enter/Tab selection, Escape dismissal, mouse selection and screen-reader announcements; keep the highlighted row in view.
+- [ ] Discover user-invocable skills through per-session native `skill/list`, respecting the selected workspace, plugin state, activation and native name resolution. Show actual available built-in skills rather than a hardcoded marketing list; exclude non-user-invocable entries. Handle qualified plugin selectors, duplicate display names, reserved local commands and conflicts without silently invoking another skill.
+- [ ] Selecting a skill inserts the exact native selector into the draft, ready for optional arguments; it does not execute automatically, expand the skill body in React or submit a model turn. On explicit submission, use Muse's native typed invocation path and preserve normal permissions and provenance. Do not manufacture a separate Lascoria interpretation of the skill instructions.
+- [ ] Opening, filtering or selecting while a turn runs must not interrupt it. Retain the selection in the next-turn draft; any immediate steering/queueing action requires an explicit supported interaction and validated native semantics. Loading/reloading the list uses bounded queries, not prompts; invalidate the session-scoped cache when native skill state changes or session/workspace changes.
+- [ ] Show requested skill invocation separately from observed skill use. Attribute execution/loading only when Muse reports the corresponding tool/event evidence, retaining source/session provenance. Missing evidence is unknown, not proof that a skill did or did not run.
+- [ ] Validate built-in, user, project and plugin skills, empty/unavailable catalogs, disabled/conflicting selectors, arguments, session switching, long lists, keyboard/accessibility, active-turn non-interruption and a real native skill invocation. Negotiate any experimental capability required by the pinned Muse version; SDK type declarations alone are not runtime proof.
+
+References: [native skill discovery](https://meta-models.github.io/muse-code-sdk/next/generated/msp/methods/skill-list/), [skills in SDK sessions](https://meta-models.github.io/muse-code-sdk/next/guides/plugins/concepts/plugins-in-sdk-sessions/). Discovery and typed invocation are supported by Muse; Lascoria's picker and explicit usage UI are not implemented yet.
+
 ## Developer-workflow priorities to scope before calling it a daily-driver release
 
 These are known gaps from [daily coding workflow](daily-coding-workflow.md), not promises that every feature must ship in the first public preview. Decide an explicit preview scope and label unsupported actions rather than hide them.
@@ -75,7 +97,7 @@ These are known gaps from [daily coding workflow](daily-coding-workflow.md), not
 - [ ] **D2 — Editing and terminal:** open in the user's editor, file/diff navigation and a defined interactive-terminal story. An embedded editor/PTY is an option; the present runner is bounded and non-interactive.
 - [ ] **D3 — Find and retain work:** global/session transcript search, export, archive browsing and a continuation path for archived work without accidental duplication or deletion.
 - [ ] **D4 — Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
-- [ ] **D5 — Muse capabilities:** verify skill discovery/activation and clear native skill-use attribution when Muse reports it. Do not infer a skill ran merely because a prompt mentions it. Define the exposed plugin/MCP/settings workflow and supported scope.
+- [ ] **D5 — Muse capabilities:** skill discovery/invocation/attribution is a release requirement under R9. Separately define the exposed activation-management, plugin/MCP/settings workflow and supported scope.
 
 ## Token-efficiency follow-up
 
@@ -98,5 +120,5 @@ Requested for consideration in the preceding discussion; these policies are not 
 2. R5 durable drafts/data lifecycle, while retaining existing account/recovery behaviour.
 3. R4 rename/link/CI preparation while keeping public visibility as a separate deliberate action.
 4. R3 signed GitHub release/update pipeline and real upgrade tests, with the active-work contract enforced.
-5. R6/R7 remaining performance, usability, accessibility and failure gates; agree which D-items block the intended preview. T1 instrumentation can proceed before optimisation policies.
+5. R8/R9 usage and slash-skill UX; T1 token instrumentation can share the observation plumbing while preserving quota/token distinctions. R6/R7 remaining performance, usability, accessibility and failure gates; agree which D-items block the intended preview before optimisation policies.
 6. Public preview only after the chosen target matrix and acceptance gates pass. Add other platforms only with their own installed/native/live validation.
