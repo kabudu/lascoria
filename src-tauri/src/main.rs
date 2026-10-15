@@ -167,24 +167,46 @@ async fn open_account_browser(url: String) -> Result<(), String> {
     {
         return Err("Muse returned an unsupported browser login address".into());
     }
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        tokio::process::Command::new(if cfg!(target_os = "macos") {
-            "/usr/bin/open"
-        } else if cfg!(windows) {
-            "explorer.exe"
-        } else {
-            "xdg-open"
-        })
-        .arg(url)
-        .kill_on_drop(true)
-        .status(),
-    )
-    .await
-    .map_err(|_| "Opening your browser timed out")?
-    .map_err(|_| "Could not open your browser")?;
-    if !result.success() {
-        return Err("Could not open your browser".into());
+    #[cfg(windows)]
+    {
+        // ShellExecute opens the registered HTTPS handler without cmd.exe or Explorer parsing.
+        let address: Vec<u16> = url.encode_utf16().chain(Some(0)).collect();
+        let verb: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
+        let result = unsafe {
+            windows_sys::Win32::UI::Shell::ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                address.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+            )
+        } as isize;
+        if result <= 32 {
+            return Err(
+                "Could not open your browser. Open the Muse verification page manually".into(),
+            );
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::process::Command::new(if cfg!(target_os = "macos") {
+                "/usr/bin/open"
+            } else {
+                "xdg-open"
+            })
+            .arg(url)
+            .kill_on_drop(true)
+            .status(),
+        )
+        .await
+        .map_err(|_| "Opening your browser timed out")?
+        .map_err(|_| "Could not open your browser")?;
+        if !result.success() {
+            return Err("Could not open your browser".into());
+        }
     }
     Ok(())
 }

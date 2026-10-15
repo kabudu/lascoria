@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Add pinned Muse installation onboarding with verified vendor downloads, progress, cancellation, existing-runtime selection and SDK compatibility checks.
-- Package Node, supervisor and official SDK resources independently of the source checkout; add Windows native IPC, protected local state, Credential Manager storage, browser handoff and bounded test-process cleanup.
+- Package Node, supervisor and official SDK resources independently of the source checkout; add Windows native IPC, protected local state, Credential Manager storage, browser handoff and bounded test-process cleanup; correct Windows resource paths, HTTPS browser handoff and repository labels.
 - Persist session drafts with revision checks and retry-safe writes; flush drafts before native close/quit and restore them after reload.
 - Show current work, tool activity, pending answers/permissions and reconnecting state directly on constellation nodes, with reduced-motion support.
 - Rename the private repository to `kabudu/lascoria`, add native-foundation CI for macOS/Windows/Linux and maintain a release implementation checklist with explicit validation gaps.
