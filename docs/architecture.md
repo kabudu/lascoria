@@ -62,3 +62,9 @@ References: [official Muse SDK](https://github.com/meta-models/muse-code-sdk), [
 [Stage C memory and settings](stage-c-memory.md) describes shared-broker recovery, process-scoped RSS and native mid-session model/effort controls. Dedicated workers remain available for diagnostic comparison.
 
 [Lascoria daily coding workflow](daily-coding-workflow.md) adds developer-operated workspace execution, managed Git worktrees and schema-3 archival. These are distinct from Muse execution and human-attested evidence.
+
+## Account coordination
+
+The [account coordinator](accounts.md) owns managed credential selection outside the session journal. Browser login uses app-owned Muse metadata with a potentially shared Muse Keychain credential; API keys use macOS Keychain and enter SDK process environments only in explicitly selected API mode. A persistent official-SDK account host plus bounded background observation outlives GUI windows and individual session hosts. Credential changes drain session work, stop affected hosts and gate recovery; logout is durable and a retained API key never silently reactivates. The experimental account API and provider renewal limits are documented separately from session protocol guarantees.
+
+A [Rust-native SDK assessment](rust-sdk-assessment.md) recommends a measured experimental MSP adapter, with Node retained as the conformance reference. No backend migration is implied by the account flow.

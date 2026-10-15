@@ -33,7 +33,9 @@ pub struct Broker {
 }
 impl Broker {
     pub async fn spawn(node: &str, script: &Path, db: SharedDb) -> Result<Arc<Self>> {
-        let mut child = Command::new(node)
+        let mut command = Command::new(node);
+        crate::auth::configure(&mut command, &db).await?;
+        let mut child = command
             .arg(script)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

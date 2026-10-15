@@ -16,6 +16,13 @@ fn directory() -> PathBuf {
 }
 async fn request(operation: &str, params: Value, id: String) -> Result<Value, String> {
     if ![
+        "account/status",
+        "account/login",
+        "account/cancel",
+        "account/logout",
+        "account/setKey",
+        "account/useKey",
+        "account/forgetKey",
         "workspace/inspect",
         "workspace/files",
         "workspace/file",
@@ -103,7 +110,9 @@ async fn connect_supervisor() -> Result<Value, String> {
     let binary = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../supervisor/target/debug/constellation-supervisor");
     let mut cmd = std::process::Command::new(binary);
-    cmd.stdin(Stdio::null())
+    cmd.env("SCH_AUTH_MANAGED", "1")
+        .env("SCH_PROVIDER", "meta")
+        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     use std::os::unix::process::CommandExt;
@@ -128,6 +137,31 @@ async fn connect_supervisor() -> Result<Value, String> {
         }
     }
     Err("Supervisor unavailable. Run the diagnostic supervisor to inspect startup.".into())
+}
+#[tauri::command]
+async fn open_account_browser(url: String) -> Result<(), String> {
+    // The host-provided verification URL is untrusted input, never a general shell command.
+    if !url.starts_with("https://auth.meta.com/oauth/device/")
+        || url.len() > 2048
+        || !url.is_ascii()
+        || url.contains(['\n', '\r', '\0'])
+    {
+        return Err("Muse returned an unsupported browser login address".into());
+    }
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new("/usr/bin/open")
+            .arg(url)
+            .kill_on_drop(true)
+            .status(),
+    )
+    .await
+    .map_err(|_| "Opening your browser timed out")?
+    .map_err(|_| "Could not open your browser")?;
+    if !result.success() {
+        return Err("Could not open your browser".into());
+    }
+    Ok(())
 }
 unsafe extern "C" {
     #[link_name = "setsid"]
@@ -160,7 +194,8 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             supervisor_request,
-            connect_supervisor
+            connect_supervisor,
+            open_account_browser
         ])
         .run(tauri::generate_context!())
         .expect("Tauri application failed");

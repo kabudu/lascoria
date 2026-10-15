@@ -37,7 +37,9 @@ impl Dedicated {
         session: String,
         generation: u64,
     ) -> Result<Self> {
-        let mut child = Command::new(node)
+        let mut command = Command::new(node);
+        crate::auth::configure(&mut command, &db).await?;
+        let mut child = command
             .arg(script)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

@@ -33,11 +33,13 @@ npm start -- status
 
 `up` launches the Rust service independently and reconnects if it already exists. `supervisor` runs it in the foreground for diagnostics. The default provider is credential-free `echo`; set `SCH_PROVIDER=meta` before launching the service to use your configured provider. Live sessions explicitly select the provider and default model advertised by Muse's native catalog, so workflow children have a recorded parent route. The desktop offers explicit model selection for new sessions and model/effort settings for existing sessions; the diagnostic start command uses the catalog default unless `modelId` is supplied. Existing sessions retain their recorded route. Muse owns credentials, permissions, and its sandbox. The harness does not disable them.
 
-### Subscription account login
+### Muse account and API key
 
-Lascoria's SDK host can use your normal Muse browser-account login. Run `muse login`, approve the official Meta device-code page, and wait for Muse to report that model access is verified. Restart the affected session host with `resume` (or start a new session) to pick up the changed credential.
+The macOS desktop offers browser subscription login and secure API-key configuration on first launch and from **Muse account** in the header/menu. Browser login takes precedence over a saved key. A subscription failure never silently activates API billing. Logout stops Muse hosts and remains logged out after restart; **Forget API key** separately removes the Keychain entry. See [account policy, lifecycle and validation](docs/accounts.md).
 
-Muse gives `META_API_KEY` precedence over a stored API key, and a stored key precedence over browser-account authentication. An API-key billing error does not establish a subscription billing problem. For subscription trials, use Muse's browser-login flow and ensure no environment API key overrides it; do not automatically import a key as an authentication fix. The harness does not read or manage credentials itself. See [Muse authentication](https://dev.meta.ai/docs/muse-code/auth).
+The supervisor retains an account host independently of the window, restores persisted login before session recovery and observes credential state in the background. Muse owns OAuth and supported renewal; revoked or expired access can still require **Reconnect Muse**. An open window is not a guarantee of indefinite provider authorization.
+
+Unmanaged diagnostic runs still use Muse's ordinary browser/environment credential rules. For those runs, `muse login` refreshes the CLI credential, and `resume` restarts the affected host. Muse's default environment/stored-key precedence differs from Lascoria's managed subscription-first policy; an API-key billing error is not a subscription billing result. Existing diagnostic supervisors are not silently migrated when a window attaches.
 
 Copy the returned session ID into the next request:
 

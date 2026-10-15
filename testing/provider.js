@@ -232,14 +232,10 @@ export async function provider(root, options = {}) {
       run: { reminder_roster: { agents: [] }, approval_judge: 'off' },
     }),
   );
-  await writeFile(
-    join(config, 'auth.json'),
-    JSON.stringify({
-      schema_version: 1,
-      providers: { meta: { api_key: 'stage-a-loopback-only' } },
-    }),
-  );
+  // Never write legacy inline credentials: Muse may migrate them into the OS Keychain.
+  // A test must be environment-only, even when its XDG configuration is isolated.
   return {
+    env: { META_API_KEY: 'stage-a-loopback-only' },
     requests,
     beginBurst: releaseBurst,
     burstFinished,

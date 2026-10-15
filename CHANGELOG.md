@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add native Muse browser sign-in, subscription-first routing, separate macOS Keychain API-key storage, durable logout and background account observation without automatic paid fallback.
+- Keep Bézier connectors visibly curved when nodes are aligned; retain native/user relationship styles.
+- Assess a Rust-native interactive MSP adapter for packaging and fault isolation, retaining Node until conformance and live recovery parity pass.
+
 - Isolate session commands and recovery with bounded FIFO lanes; retain serialized session admission, global request-ID protection and durable no-replay semantics. Add a repeatable concurrent Muse trial and native-host isolation coverage.
 
 - Verify native Wonder question/resumption, implementation, diff capture and independent tests using Muse browser-account login; document API-key precedence for subscription trials.

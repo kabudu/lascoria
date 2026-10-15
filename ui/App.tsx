@@ -1,3 +1,5 @@
+import { Account } from './Account';
+import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
 import { SessionSettings } from './SessionSettings';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -53,6 +55,50 @@ export function App() {
   const inspectorTabs = status.features?.includes('taskWorkspaces')
     ? ['transcript', 'diff', 'evidence', 'workspace']
     : ['transcript', 'diff', 'evidence'];
+  const [account, setAccount] = useState<AccountStatus | null>(null);
+  const accountOnboarded = useRef(false);
+  const accountRequest = useRef(0);
+  const accountAccepted = useRef(0);
+  async function refreshAccount() {
+    const order = ++accountRequest.current;
+    try {
+      const next = await request<AccountStatus>('account/status');
+      if (order < accountAccepted.current) return;
+      accountAccepted.current = order;
+      setAccount(next);
+      if (next.managed && !next.authenticated && !accountOnboarded.current) {
+        accountOnboarded.current = true;
+        setModal('account');
+      }
+    } catch (error) {
+      if (order >= accountAccepted.current) {
+        accountAccepted.current = order;
+        setAccount((previous) =>
+          previous ? { ...previous, authenticated: false, unavailable: true } : null,
+        );
+      }
+      throw error;
+    }
+  }
+  useEffect(() => {
+    if (!connected || !status.features?.includes('accounts')) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function pollAccount() {
+      try {
+        if (!cancelled) await refreshAccount();
+      } catch {
+        /* Account screen exposes reconnect without claiming a live credential. */
+      } finally {
+        if (!cancelled) timer = setTimeout(pollAccount, 2000);
+      }
+    }
+    void pollAccount();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [connected, status.features?.includes('accounts')]);
   const [showArchived, setShowArchived] = useState(false);
   const [settingsTarget, setSettingsTarget] = useState('');
   const [settingsCatalog, setSettingsCatalog] = useState<Json>(null);
@@ -83,7 +129,7 @@ export function App() {
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [modal, setModal] = useState<
-      'start' | 'stop' | 'palette' | 'diagnostics' | 'settings' | null
+      'start' | 'stop' | 'palette' | 'diagnostics' | 'settings' | 'account' | null
     >(null),
     [tab, setTab] = useState('transcript');
   const [review, setReview] = useState<{
@@ -681,6 +727,22 @@ export function App() {
           <span className={`connection ${connected ? 'live' : ''}`}>
             {connected ? 'Supervisor connected' : 'Disconnected'}
           </span>
+          <button
+            className="account-status"
+            disabled={!status.features?.includes('accounts')}
+            onClick={() => {
+              void refreshAccount().catch(() => {});
+              setModal('account');
+            }}
+          >
+            {account?.managed
+              ? account.authenticated
+                ? account.mode === 'subscription'
+                  ? 'Muse subscription'
+                  : 'API billing'
+                : 'Sign in'
+              : 'Muse account'}
+          </button>
           <button onClick={() => setModal('palette')} aria-label="Open command palette">
             ⌘ K
           </button>
@@ -706,6 +768,15 @@ export function App() {
             <summary aria-label="Workspace menu">•••</summary>
             <div className="workspace-menu-items">
               <span className="eyebrow">Workspace</span>
+              <button
+                disabled={!status.features?.includes('accounts')}
+                onClick={() => {
+                  void refreshAccount().catch(() => {});
+                  setModal('account');
+                }}
+              >
+                Muse account
+              </button>
               <button
                 onClick={() => updatePrefs({ theme: prefs.theme === 'light' ? 'dark' : 'light' })}
               >
@@ -1163,7 +1234,7 @@ export function App() {
                             return [
                               <path
                                 key={node.id}
-                                d={`M ${a.x + 110} ${a.y + 114} C ${a.x + 110} ${a.y + 150}, ${b.x + 110} ${b.y - 36}, ${b.x + 110} ${b.y}`}
+                                d={`M ${a.x + 110} ${a.y + 114} C ${a.x + 110 + (Math.abs(a.x - b.x) < 30 ? 24 : 0)} ${a.y + 150}, ${b.x + 110 + (Math.abs(a.x - b.x) < 30 ? 24 : 0)} ${b.y - 36}, ${b.x + 110} ${b.y}`}
                                 className="native-edge"
                               />,
                             ];
@@ -1174,13 +1245,24 @@ export function App() {
                             if (a < 0 || b < 0) return null;
                             const p = position(visible[a], a),
                               q = position(visible[b], b);
+                            const direction = q.x >= p.x ? 1 : -1;
+                            const startX = p.x + (direction > 0 ? 220 : 0);
+                            const endX = q.x + (direction > 0 ? 0 : 220);
+                            const handle = Math.max(
+                              24,
+                              Math.min(80, Math.abs(endX - startX) * 0.45),
+                            );
+                            const bow = Math.abs(p.y - q.y) < 30 ? -24 : 0;
                             return (
                               <g key={edge.id}>
                                 <path
-                                  d={`M ${p.x + 220} ${p.y + 55} C ${p.x + 300} ${p.y + 55}, ${q.x - 80} ${q.y + 55}, ${q.x} ${q.y + 55}`}
+                                  d={`M ${startX} ${p.y + 55} C ${startX + direction * handle} ${p.y + 55 + bow}, ${endX - direction * handle} ${q.y + 55 + bow}, ${endX} ${q.y + 55}`}
                                   className="asserted-edge"
                                 />
-                                <text x={(p.x + 220 + q.x) / 2} y={(p.y + q.y) / 2 + 45}>
+                                <text
+                                  x={(startX + endX) / 2}
+                                  y={bow ? Math.min(p.y, q.y) - 12 : (p.y + q.y) / 2 + 45}
+                                >
                                   {edge.kind} · user
                                 </text>
                               </g>
@@ -2035,20 +2117,23 @@ export function App() {
       <dialog ref={modalRef} onCancel={() => setModal(null)} aria-labelledby="dialog-heading">
         <div className="dialog-heading">
           <h2 id="dialog-heading">
-            {modal === 'start'
-              ? 'Start a Muse session'
-              : modal === 'stop'
-                ? 'Stop execution and quit'
-                : modal === 'diagnostics'
-                  ? 'Performance diagnostics'
-                  : modal === 'settings'
-                    ? 'Session model and effort'
-                    : 'Command palette'}
+            {modal === 'account'
+              ? 'Your Muse connection'
+              : modal === 'start'
+                ? 'Start a Muse session'
+                : modal === 'stop'
+                  ? 'Stop execution and quit'
+                  : modal === 'diagnostics'
+                    ? 'Performance diagnostics'
+                    : modal === 'settings'
+                      ? 'Session model and effort'
+                      : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'account' && <Account account={account} refresh={refreshAccount} />}
         {modal === 'settings' &&
           (() => {
             const target = status.sessions.find((s) => s.id === settingsTarget);
@@ -2103,6 +2188,9 @@ export function App() {
               <textarea readOnly rows={18} value={diagnosticReport} />
             </label>
           </>
+        )}
+        {modal === 'start' && account?.managed && !account.authenticated && (
+          <p role="alert">Sign in from Muse account before starting a session.</p>
         )}
         {modal === 'start' && (
           <form
@@ -2172,7 +2260,10 @@ export function App() {
               remain visible. Model selection applies to this new session. Muse controls tool
               permissions. Closing this window leaves the supervisor and sessions running.
             </p>
-            <button className="primary" disabled={busy}>
+            <button
+              className="primary"
+              disabled={busy || (account?.managed && !account.authenticated)}
+            >
               Start session
             </button>
           </form>

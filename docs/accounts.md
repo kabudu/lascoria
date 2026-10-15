@@ -1,0 +1,47 @@
+# Lascoria accounts
+
+Lascoria's macOS desktop now owns an explicit authentication policy. First launch and a saved logged-out state show **Continue with Muse** and an optional API-key form. The header and Workspace menu reopen the account screen. Offline inspection remains available when signed out; new authenticated work is rejected by the supervisor.
+
+## Subscription-first selection
+
+- Browser login selects `subscription`, even if an API key was previously configured. A saved key stays in Lascoria's macOS Keychain entry, inactive. Saving/replacing an inactive key does not restart session hosts.
+- API-key configuration selects `apiKey` only outside subscription mode. When a subscription needs reconnection, the user may explicitly choose API billing. A working subscription must be signed out before switching to API billing.
+- A failed/expired subscription never falls back to a key automatically. Native `authRequired` turn failures from the current credential epoch disable new authenticated work and expose **Reconnect Muse**. Historical failures from earlier epochs remain inspectable without blocking a fresh login.
+- Logout selects durable `loggedOut` before account-host cleanup, drains admitted calls, stops all session contexts and their broker, cancels pending device login and closes the account host. Automatic session recovery is disabled. The saved API key remains inactive, including after supervisor restart. **Forget API key** explicitly removes it; removing the active key also signs out.
+- If account-host cleanup fails, local logout remains enforced and the account screen offers **Finish signing out**. This is an app-local logout: Muse may share its encrypted browser credential with the CLI. Lascoria does not call the native account/logout method, which can revoke that shared session. Returning to Lascoria requires a completed new browser approval; a cached Muse login alone cannot unlock the app.
+
+This deliberately overrides [Muse's native API-key-first precedence](https://dev.meta.ai/docs/muse-code/auth). Managed SDK processes remove inherited `META_API_KEY` and `MUSE_AUTH_PATH`, use an app-owned `account-config` XDG configuration directory, and receive a vault key only in explicitly selected API mode. The account host always has no environment API key. Browser credentials and key material remain separate: Lascoria never writes its API key into Muse's browser credential store.
+
+The API key belongs to the Keychain service `dev.lascoria.credentials`, with an account derived from the canonical supervisor state-directory path. Different state directories therefore have different entries. Browser login uses Muse's supported credential storage with app-owned XDG metadata. A separate OS Keychain namespace is not established by that directory; the underlying Muse credential may be shared with the CLI. No OAuth token is copied into React, SQLite, layout preferences or diagnostic reports. The frontend receives only credential state, display identity and the short-lived browser verification challenge. The API-key password field clears on submission/unmount. API keys necessarily transit the owner-authenticated local IPC once and exist in the selected backend's environment in API mode; they never enter argv, command receipts, error payloads or the SDK session command protocol.
+
+## Login lifecycle and renewal limits
+
+The Rust supervisor owns one persistent Node/official-SDK account host independently of the window and session hosts. It uses the installed Muse 1.4.9 experimental `account/read`, `account/loginStart`, `account/loginCancel` methods, with experimental opt-in, the existing stable fingerprint check and an exact binary-version check. The account API is experimental; it is not advertised as a stable SDK facade. [Official account API](https://meta-models.github.io/muse-code-sdk/next/generated/msp/methods/account-loginstart/).
+
+Muse owns the RFC 8628 browser flow, credential persistence and any supported provider-side renewal. Lascoria does not implement a competing OAuth client, copy refresh tokens, manufacture expiry dates or send model requests as keep-alives. A bounded state read runs every 30 seconds while signed in and the supervisor is alive, even without a window; the open GUI polls every two seconds using the same two-second cache. A completed login can therefore enable retained-session recovery without the login dialog staying open. Credentials are read before recovery after supervisor restart, preventing premature unauthenticated resumes.
+
+A valid persisted login is restored without asking the user to approve another browser flow. Revocation, expired credentials, provider outages and incompatible retained permission profiles can still require user action. Keeping an app or SDK process alive cannot guarantee indefinite provider authorization. The live smoke establishes sign-in/logout/restart behavior, not unattended refresh across an actual provider expiry interval.
+
+Account transport calls time out after 15 seconds; SDK requests after ten. Keychain calls run off the async executor, have ten-second caller deadlines and one global blocking-operation permit. A timed-out OS call may still finish, so the UI asks the user to inspect/retry account settings; it never silently chooses another billing mode. Mode changes are barriers across bounded session work. Authentication requests are excluded from the durable command journal, so retrying login supersedes the prior flow rather than claiming ordinary command-ID deduplication. Stop/logout do not replay uncertain commands or restart interrupted turns.
+
+Only the Meta-owned `https://auth.meta.com/oauth/device/` verification destination can be opened by the native command. No arbitrary URL or shell command is accepted. No system credential store fallback writes plaintext secrets. Secure account storage is currently macOS-only, matching this native development target.
+
+## Compatibility and development
+
+The desktop starts a new supervisor with `SCH_AUTH_MANAGED=1` and provider `meta`. A pre-existing diagnostic supervisor remains attached in its existing mode, so upgrading the window does not silently replace active credentials. Choose **Muse account** to enter managed mode, which pauses existing hosts before changing routing. A saved account policy enables managed mode on subsequent supervisor starts regardless of the launch flag.
+
+Diagnostic CLI and isolated tests retain their previous `echo`/environment-based behavior when neither `SCH_AUTH_MANAGED=1` nor an account policy exists. Their explicit fake loopback keys are environment-only; fixtures never write legacy inline auth.json keys that Muse might migrate into shared credential storage. They do not become Lascoria's stored API key. CLI parsing deliberately has no secret-bearing account/setKey verb; use the password field rather than putting credentials in shell arguments. `SCH_ACCOUNT_WORKER` is a development fixture override, analogous to `SCH_WORKER`, and must never be controlled by repository content.
+
+This remains a source-checkout development unit: compatible Node/Muse executables and account-worker resources are required. The unsigned native build is not an installed/signed distribution guarantee. Browser-account compatibility and permission-reviewer availability remain Muse responsibilities; errors remain visible instead of bypassing permissions.
+
+## Validation boundaries
+
+The policy lifecycle test uses actual Rust IPC, the real macOS Keychain in a unique temporary namespace, controlled account/worker fixtures, process restart and durable reads. It covers key-first setup, subscription priority, inactive replacement, explicit API-mode refusal while signed in, credential-failure reconnection, logout suppression of recovery, restart persistence, removal and absence of secret material in SQLite/worker traffic. It cleans up its Keychain entry.
+
+The React account workflow uses the native Rust bridge and Keychain, with a controlled OAuth host and intercepted browser opening. It exercises onboarding, API-key entry and clearing, browser selection, subscription priority, logout/reload, light-mode accessibility and 800×600 layout. It is not a real OAuth proof; the separate native trial exercises the actual Meta browser device flow and live Wonder.
+
+### Native acceptance on 15 October 2026
+
+The rebuilt Tauri app completed Meta's browser device flow and a live `muse-wonder-1.0` turn while an intentionally invalid test API key remained saved and inactive. The key was then forgotten. A supervisor restart restored subscription access without another approval. The final app-local logout stopped session hosts and left recovery blocked; a new explicit browser approval enabled the retained session to complete `LIVE_LOGIN_RESUME_OK`. No actual API key or payment details were needed. The unsigned native app remains open on that session.
+
+Final validation: 7 Rust tests, 27 Node tests (including the real 1,536-tool native stream-saturation recovery), and all 4 React/native-bridge workflows passed. Formatting, TypeScript and Clippy passed. The real subscription remained active across the revised environment-only fixture suites. This supports the fixture-isolation fix; it does not establish the exact mechanism by which the earlier legacy auth-file fixture disturbed login. The aligned-edge curve and reverse-direction relationship attachments were inspected in the native canvas.
