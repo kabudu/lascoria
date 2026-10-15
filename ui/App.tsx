@@ -5,6 +5,7 @@ import { Usage } from './Usage';
 import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
+import { SessionRelay } from './SessionRelay';
 import { SessionSettings } from './SessionSettings';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recordTiming, timingSnapshot } from './diagnostics';
@@ -158,7 +159,15 @@ export function App() {
   const flushDraftsRef = useRef(flushDrafts);
   flushDraftsRef.current = flushDrafts;
   const [modal, setModal] = useState<
-      'start' | 'stop' | 'palette' | 'diagnostics' | 'settings' | 'account' | 'usage' | null
+      | 'start'
+      | 'stop'
+      | 'palette'
+      | 'diagnostics'
+      | 'settings'
+      | 'account'
+      | 'usage'
+      | 'relay'
+      | null
     >(null),
     [tab, setTab] = useState('transcript');
   const [review, setReview] = useState<{
@@ -844,6 +853,11 @@ export function App() {
               >
                 {prefs.theme === 'light' ? 'Dark' : 'Light'}
               </button>
+              {status.features?.includes('localRelay') && (
+                <button disabled={!session} onClick={() => setModal('relay')}>
+                  Local messages
+                </button>
+              )}
               <button
                 disabled={!session || !status.features?.includes('usage')}
                 onClick={() => setModal('usage')}
@@ -1581,6 +1595,11 @@ export function App() {
                   >
                     Session model &amp; effort
                   </button>
+                  {status.features?.includes('localRelay') && (
+                    <button className="quiet-action" onClick={() => setModal('relay')}>
+                      Connect sessions
+                    </button>
+                  )}
                   <div className="tabs" role="tablist">
                     {inspectorTabs.map((name) => (
                       <button
@@ -2251,24 +2270,34 @@ export function App() {
       <dialog ref={modalRef} onCancel={() => setModal(null)} aria-labelledby="dialog-heading">
         <div className="dialog-heading">
           <h2 id="dialog-heading">
-            {modal === 'usage'
-              ? 'Muse usage'
-              : modal === 'account'
-                ? 'Your Muse connection'
-                : modal === 'start'
-                  ? 'Start a Muse session'
-                  : modal === 'stop'
-                    ? 'Stop execution and quit'
-                    : modal === 'diagnostics'
-                      ? 'Performance diagnostics'
-                      : modal === 'settings'
-                        ? 'Session model and effort'
-                        : 'Command palette'}
+            {modal === 'relay'
+              ? 'Local session messages'
+              : modal === 'usage'
+                ? 'Muse usage'
+                : modal === 'account'
+                  ? 'Your Muse connection'
+                  : modal === 'start'
+                    ? 'Start a Muse session'
+                    : modal === 'stop'
+                      ? 'Stop execution and quit'
+                      : modal === 'diagnostics'
+                        ? 'Performance diagnostics'
+                        : modal === 'settings'
+                          ? 'Session model and effort'
+                          : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'relay' && session && (
+          <SessionRelay
+            key={session.id}
+            session={session}
+            sessions={status.sessions}
+            labels={prefs.sessionLabels ?? {}}
+          />
+        )}
         {modal === 'usage' && (
           <Usage
             key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}

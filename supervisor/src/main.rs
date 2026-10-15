@@ -2,6 +2,7 @@ mod auth;
 mod db;
 mod dedicated;
 mod metrics;
+mod relay;
 mod review;
 mod worker;
 mod workspace;
@@ -107,8 +108,17 @@ impl Actor {
         session: &str,
         wire: Option<Value>,
     ) -> Result<Value> {
-        let wire_id = Uuid::now_v7().to_string();
+        let reservation = self.db.lock().unwrap().get("commands", id)?;
+        let wire_id = reservation
+            .as_ref()
+            .filter(|c| c["relayReservation"] == true)
+            .and_then(|c| c["commandId"].as_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| Uuid::now_v7().to_string());
         let mut command = json!({"id":id,"operation":operation,"params":params,"sessionId":session,"commandId":wire_id,"status":"sending","createdAtMillis":db::now_ms()});
+        if let Some(reservation) = reservation.filter(|c| c["relayReservation"] == true) {
+            command["relayMessageId"] = reservation["relayMessageId"].clone();
+        }
         {
             let db = self.db.lock().unwrap();
             ensure!(
@@ -240,11 +250,49 @@ impl Actor {
             let db = self.db.lock().unwrap();
             let commands = db.all("commands")?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
         ensure!(params.is_object(), "Params must be an object");
+        if operation.starts_with("relay/") {
+            let id = request["id"].as_str().context("Request ID required")?;
+            ensure!(
+                !id.is_empty()
+                    && id.len() <= 90
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
+                "Invalid relay request ID"
+            );
+            if operation == "relay/deliver" {
+                let recipient = params["sessionId"].as_str().context("Recipient required")?;
+                let row = self.row(recipient)?;
+                // Existing delivery identities are reconciled even while a turn runs.
+                let existing = params["messageId"].as_str().map(|id| format!("relay_{id}"));
+                let admitted = match existing {
+                    Some(id) => self.db.lock().unwrap().get("commands", &id)?.is_some(),
+                    None => false,
+                };
+                if !admitted {
+                    workspace::idle(&self.db, &row)?;
+                }
+                let (command_id, wire, reserved) = relay::delivery(self.db.clone(), &params)?;
+                if !reserved {
+                    return self
+                        .db
+                        .lock()
+                        .unwrap()
+                        .get("commands", &command_id)?
+                        .context("Missing relay command");
+                }
+                let session = wire["sessionId"].as_str().unwrap();
+                return self
+                    .dispatch(&command_id, "turn", wire.clone(), session, None)
+                    .await;
+            }
+            return relay::handle(self.db.clone(), operation, &params, id);
+        }
         if [
             "presentation/get",
             "presentation/save",
@@ -620,7 +668,7 @@ async fn connection(
             if request["params"]["since"].as_str().is_some_and(|version| version == db.version()) {
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
         let (tx, rx) = oneshot::channel();
         sender
@@ -844,7 +892,7 @@ async fn main() -> Result<()> {
                     if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
                     continue;
                 }
-                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "answer", "decide"].iter().any(|op| call.request["operation"] == *op)
+                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "answer", "decide", "relay/deliver"].iter().any(|op| call.request["operation"] == *op)
                     && !account_ready.load(std::sync::atomic::Ordering::SeqCst) {
                     let _ = call.response.send(Err(anyhow::anyhow!("Sign in or reconnect your Muse account before continuing")));
                     continue;
