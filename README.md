@@ -4,6 +4,8 @@
 
 Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.
 
+[Release-readiness backlog](docs/release-readiness.md) tracks Muse installation onboarding, signed GitHub updates, repository rename/publication preparation and remaining product gates.
+
 [Lascoria identity](docs/branding.md) documents the folded-wing mark, light-first palette, assets and compatibility boundaries.
 
 [Daily coding workflow](docs/daily-coding-workflow.md) describes isolated task worktrees, repository context, direct test execution, guarded commits/discard and session archival. Existing state and internal binary paths remain compatible with the former harness name.
