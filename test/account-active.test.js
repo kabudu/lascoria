@@ -85,6 +85,24 @@ test(
       status,
       (s) => s.sessions[0].state.activeTurnId === turnId && model.requests.length > 0,
     );
+    const beforeUsage = (await status()).sessions[0];
+    const modelCalls = model.requests.length;
+    const usage = await request(directory, 'usage', { sessionId });
+    assert.equal(typeof usage, 'object');
+    const skills = await request(directory, 'skills', { sessionId });
+    assert.ok(Array.isArray(skills.skills));
+    for (const text of ['/usage', '/lascoria-missing-skill-qa']) {
+      const refused = await request(directory, 'steer', { sessionId, turnId, text });
+      assert.equal(
+        refused.status,
+        'rejected',
+        'local or unknown shortcuts cannot become model prompts',
+      );
+    }
+    const afterUsage = (await status()).sessions[0];
+    assert.equal(afterUsage.state.activeTurnId, turnId);
+    assert.equal(afterUsage.generation, beforeUsage.generation);
+    assert.equal(model.requests.length, modelCalls, 'usage cannot invoke the model');
     await request(directory, 'account/logout');
     let state = (await status()).sessions[0];
     assert.equal(state.lifecycle, 'interrupted');

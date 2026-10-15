@@ -30,6 +30,8 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "status",
         "diagnostics",
         "models",
+        "usage",
+        "skills",
         "setModel",
         "setEffort",
         "start",

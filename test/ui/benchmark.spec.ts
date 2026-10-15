@@ -5,9 +5,14 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
   page,
 }, info) => {
   const { status, history } = stageCFixture();
+  status.features = [...(status.features ?? []), 'usage', 'skills'];
+  let usageReads = 0;
   let revision = 0,
     value: any = {
       theme: 'light',
+      zoom: 0.53,
+      canvasOffset: { x: 90, y: 12 },
+      positions: { 'session-0:turn-0': { x: 1600, y: 100 } },
       sessionId: 'session-0',
       panels: {
         sessions: { x: 16, y: 150, collapsed: true },
@@ -45,6 +50,28 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
           current: true,
         };
       }
+      case 'skills':
+        return {
+          skills: [
+            {
+              selector: 'fixture:review',
+              displayName: 'Review',
+              description: 'Review this workspace',
+              source: 'plugin',
+              argumentHint: '<scope>',
+            },
+          ],
+        };
+      case 'usage':
+        usageReads++;
+        return {
+          usage: {
+            tier: 'Fixture subscription',
+            observedAtMs: 1800000000000,
+            weekly: { usedPercent: 125, resetsAtMs: 1800100000000 },
+            window: { usedPercent: 20, resetsAtMs: 1800010000000, windowDurationMins: 300 },
+          },
+        };
       case 'diagnostics':
         return { fixture: true };
       default:
@@ -59,12 +86,60 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
   try {
     await page.goto('/');
     await expect(page.locator('.task-node')).toHaveCount(50);
+    const sceneGeometry = () =>
+      page.locator('.task-map').evaluate((map) => ({
+        transform: (map as HTMLElement).style.transform,
+        left: (map as HTMLElement).style.left,
+        top: (map as HTMLElement).style.top,
+        nodes: [...map.querySelectorAll<HTMLElement>('.task-node')].map((node) => ({
+          id: node.id,
+          left: node.style.left,
+          top: node.style.top,
+        })),
+      }));
+    const originalScene = await sceneGeometry();
+    for (const panel of ['Sessions', 'Attention', 'Task inspector']) {
+      await page.getByRole('button', { name: `Expand ${panel} panel`, exact: true }).click();
+      expect(await sceneGeometry()).toEqual(originalScene);
+      await page.getByRole('button', { name: `Collapse ${panel} panel`, exact: true }).click();
+      expect(await sceneGeometry()).toEqual(originalScene);
+    }
+
+    await page.getByLabel('Workspace menu', { exact: true }).click();
+    await page.getByRole('button', { name: 'Usage', exact: true }).click();
+    await expect(page.getByText('125% used · 0% remaining')).toBeVisible();
+    await expect(page.getByText('20% used · 80% remaining')).toBeVisible();
+    await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
+    await expect.poll(() => usageReads).toBe(2);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    expect(await sceneGeometry()).toEqual(originalScene);
+
     // Native user actions, measured by production instrumentation through React commits.
     for (let n = 0; n < 40; n++)
       await page
         .locator('.task-node')
         .nth(n % 50)
         .press('Enter');
+    const composer = page.getByRole('textbox', { name: 'New task for this session', exact: true });
+    await composer.fill('/');
+    const shortcuts = page.getByRole('region', { name: 'Muse shortcuts' });
+    await expect(shortcuts.getByRole('button', { name: /fixture:review/ })).toBeVisible();
+    await composer.press('ArrowDown');
+    await expect(shortcuts.getByRole('button', { name: /usage/ })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Tab');
+    await expect(composer).toHaveValue('/fixture:review ');
+    await expect(composer).toBeFocused();
+    await expect(shortcuts).toHaveCount(0);
+    await composer.fill('/');
+    await expect(shortcuts).toBeVisible();
+    await composer.press('Escape');
+    await expect(shortcuts).toHaveCount(0);
+    await composer.fill('');
+    await composer.fill('/');
+    await expect(shortcuts).toBeVisible();
+    await composer.fill('');
+
     // Open inspector with its collapse toggle after node clicks, and page history.
     const historyButton = page.getByRole('button', { name: 'Browse history', exact: true });
     await historyButton.click();

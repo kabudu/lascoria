@@ -49,6 +49,17 @@ export function MuseSetup({ onReady }: { onReady: (ready: boolean) => void }) {
       setBusy(false);
     }
   }
+  if (!runtime)
+    return (
+      <section className="runtime-setup" aria-label="Muse setup" aria-busy={!error}>
+        <p role="status">{error || 'Checking your Muse runtime…'}</p>
+        {error && (
+          <button disabled={busy} onClick={() => void action('runtime_status')}>
+            Retry runtime check
+          </button>
+        )}
+      </section>
+    );
   if (runtime?.ready)
     return (
       <details className="runtime-ready">

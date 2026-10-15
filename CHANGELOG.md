@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add read-only Muse subscription usage and a local `/usage` view, plus session-scoped slash-skill discovery and native typed invocation. Keep observations and explicit skill selection separate from model execution.
+- Preserve constellation scene positions and zoom/pan when floating panels expand or collapse, and show a checking state before offering Muse installation.
 - Add pinned Muse installation onboarding with verified vendor downloads, progress, cancellation, existing-runtime selection and SDK compatibility checks.
 - Package Node, supervisor and official SDK resources independently of the source checkout; add Windows native IPC, protected local state, Credential Manager storage, browser handoff and bounded test-process cleanup; correct Windows resource paths, HTTPS browser handoff and repository labels.
 - Persist session drafts with revision checks and retry-safe writes; flush drafts before native close/quit and restore them after reload.
