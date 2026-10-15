@@ -477,7 +477,7 @@ impl Actor {
                     .join("worktrees");
                 fs::create_dir_all(&parent)?;
                 let target = fs::canonicalize(&parent)?.join(&session);
-                let mut planned = json!({"id":session,"workspace":target,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false},"managedWorkspace":{"source":workspace,"path":target,"branch":format!("weftara/{session}")}});
+                let mut planned = json!({"id":session,"workspace":target,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false},"managedWorkspace":{"source":workspace,"path":target,"branch":format!("lascoria/{session}")}});
                 self.save(&planned)?;
                 match workspace::create(&workspace, &target, &session).await {
                     Ok(value) => managed = value,

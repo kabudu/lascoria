@@ -136,7 +136,12 @@ test('real Muse implementation, tests and review through React and the native Ru
     expect(diagnostic.sampleLimit).toBe(256);
     const sessions: string[] = [];
     for (const marker of ['STAGE_B_IMPLEMENT', 'STAGE_B_TEST', 'STAGE_B_DELEGATE']) {
-      await page.getByRole('button', { name: 'New session', exact: true }).click();
+      await page
+        .getByRole('button', {
+          name: marker === 'STAGE_B_IMPLEMENT' ? 'Start your first session' : 'New session',
+          exact: true,
+        })
+        .click();
       await page.getByLabel('Existing repository path').fill(workspace);
       await page.getByRole('checkbox', { name: 'Create an isolated task worktree' }).uncheck();
       if (marker === 'STAGE_B_IMPLEMENT')

@@ -1,3 +1,4 @@
+/* Lascoria: porcelain, ink and periwinkle. Green is reserved for successful work. */
 :root {
   font-family:
     Inter,
@@ -5,39 +6,37 @@
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
-  color: #e9eee9;
-  background: #111a18;
   font-synthesis: none;
-  --bg: #111a18;
-  --panel: #17221f;
-  --raised: #1e2b27;
-  --ink: #e9eee9;
-  --muted: #a5b4ab;
-  --line: #34473d;
-  --accent: #bdb7f4;
-  --accent-surface: #29263d;
-  --success: #9bceb0;
-  --attention: #e7bd79;
-  --accent-ink: #211c3c;
-  --error: #edb9a5;
+  --bg: #141522;
+  --panel: #1c1e2e;
+  --raised: #24273b;
+  --ink: #eeeef7;
+  --muted: #afb2c6;
+  --line: #3d4057;
+  --accent: #b8afff;
+  --accent-surface: #2c2845;
+  --success: #93c9ac;
+  --attention: #edc583;
+  --accent-ink: #201b3d;
+  --error: #f2b49e;
   color-scheme: dark;
-}
-:root[data-theme='light'] {
-  --bg: #f4f5ee;
-  --panel: #ffffff;
-  --raised: #eaf0e5;
-  --ink: #21382c;
-  --muted: #536658;
-  --line: #c6d2c4;
-  --accent: #5550a4;
-  --accent-surface: #eeedf7;
-  --success: #35735a;
-  --attention: #90631b;
-  --accent-ink: #fff;
-  --error: #8d3620;
-  color-scheme: light;
   color: var(--ink);
   background: var(--bg);
+}
+:root[data-theme='light'] {
+  --bg: #f6f5f2;
+  --panel: #fffefb;
+  --raised: #eeedf3;
+  --ink: #23283d;
+  --muted: #646779;
+  --line: #dddde5;
+  --accent: #5950a8;
+  --accent-surface: #eeecf8;
+  --success: #34725b;
+  --attention: #8c5f17;
+  --accent-ink: #fff;
+  --error: #963e2e;
+  color-scheme: light;
 }
 * {
   box-sizing: border-box;
@@ -97,6 +96,13 @@ label {
   font-size: 0.82rem;
   color: var(--muted);
   margin: 12px 0;
+}
+input[type='checkbox'] {
+  width: auto;
+  accent-color: var(--accent);
+}
+label.row input[type='checkbox'] {
+  margin: 0;
 }
 label input,
 label textarea,
@@ -204,9 +210,17 @@ summary {
   align-items: center;
   gap: 12px;
 }
-.mark {
-  color: var(--accent);
-  font-size: 2rem;
+.brand-mark {
+  display: block;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+.brand-name {
+  font-size: 1.3rem;
+  font-weight: 550;
+  letter-spacing: -0.045em;
+  line-height: 1;
 }
 .edition {
   font-size: 0.6rem;
@@ -698,17 +712,25 @@ main {
   font-size: 0.7rem;
 }
 .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
   text-align: center;
-  padding: 80px 20px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  padding: 100px 24px 40px;
+  background: var(--bg);
+}
+.empty-state .eyebrow {
+  font-size: 0.65rem;
+  margin-bottom: 0;
 }
 .large-mark {
-  font-size: 5rem;
-  color: var(--accent);
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 24px;
 }
-.empty-state h2 {
+.empty-state h1 {
   font-size: 1.5rem;
   font-weight: 500;
   margin: 18px;
@@ -1257,17 +1279,7 @@ main {
   }
 }
 
-/* Quiet workspace: a warm canvas, precise chrome and a clear content hierarchy. */
-:root[data-theme='light'] {
-  --bg: #f5f4f0;
-  --panel: #fffefa;
-  --raised: #efeee8;
-  --ink: #252e2b;
-  --muted: #636b66;
-  --line: #dedfd7;
-  --accent: #5550a4;
-  --error: #963e2e;
-}
+/* Precise chrome and a clear content hierarchy. */
 .topbar {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
@@ -1323,7 +1335,7 @@ main {
   display: block;
   padding: 0;
   border-radius: 14px;
-  box-shadow: 0 6px 24px #1b302008;
+  box-shadow: 0 6px 24px #23283d08;
 }
 .canvas-dock-heading {
   display: flex;
@@ -1378,8 +1390,8 @@ main {
 .floating-panel {
   border-radius: 16px;
   box-shadow:
-    0 8px 32px #273d2910,
-    0 1px 3px #273d2906;
+    0 8px 32px #23283d10,
+    0 1px 3px #23283d06;
 }
 .panel-heading {
   background: var(--panel);
@@ -1567,7 +1579,7 @@ main {
   border-radius: 12px;
 }
 .task-node {
-  box-shadow: 0 5px 18px #273d2908;
+  box-shadow: 0 5px 18px #23283d08;
 }
 @media (max-width: 1100px) {
   .surface-toolbar {
@@ -1627,7 +1639,7 @@ main {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: 0 14px 40px #2030281a;
+  box-shadow: 0 14px 40px #23283d1a;
 }
 .workspace-menu-items .eyebrow {
   font-size: 0.58rem;
@@ -1660,7 +1672,7 @@ main {
   right: auto;
   transform: translateX(-50%);
   width: min(480px, calc(100vw - 32px));
-  box-shadow: 0 10px 32px #2030281a;
+  box-shadow: 0 10px 32px #23283d1a;
   padding: 12px 16px;
 }
 .banner button {

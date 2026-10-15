@@ -100,7 +100,7 @@ pub async fn create(source: &Path, target: &Path, session: &str) -> Result<Value
         .await?
         .trim()
         .to_string();
-    let branch = format!("weftara/{}", session);
+    let branch = format!("lascoria/{}", session);
     let target_text = target.to_str().context("Workspace path must be UTF-8")?;
     git(
         source,
@@ -133,6 +133,7 @@ async fn content_fingerprint(root: &Path) -> Result<String> {
     paths.dedup();
     ensure!(paths.len() <= 2200, "Workspace file count exceeds budget");
     let mut digest = Sha256::new();
+    // Stable domain separator: changing branding must not invalidate existing previews/evidence.
     digest.update(b"weftara-workspace-v1");
     digest.update(head.as_bytes());
     let mut total = 0;

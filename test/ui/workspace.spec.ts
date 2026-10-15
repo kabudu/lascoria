@@ -7,10 +7,10 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { request } from '../../src/client.js';
 const exec = promisify(execFile);
-test('Weftara isolated task, context, direct tests, commit and archive through native bridge', async ({
+test('Lascoria isolated task, context, direct tests, commit and archive through native bridge', async ({
   browser,
 }) => {
-  const root = await mkdtemp(join(tmpdir(), 'weftara-ui-'));
+  const root = await mkdtemp(join(tmpdir(), 'lascoria-ui-'));
   const source = join(root, 'source'),
     directory = join(root, 'state');
   await mkdir(source);
@@ -65,7 +65,46 @@ test('Weftara isolated task, context, direct tests, commit and archive through n
     });
     const page = await context.newPage();
     await page.goto('/');
-    await expect(page.locator('.wordmark')).toContainText('WEFTARA');
+    await expect(page).toHaveTitle('Lascoria');
+    await expect(page.getByRole('link', { name: 'Lascoria workspace' })).toBeVisible();
+    await expect(page.locator('.wordmark')).toContainText('lascoria');
+    await expect(
+      page.getByRole('heading', { name: 'Give your agents room to work.' }),
+    ).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    expect(
+      await page
+        .locator('.brand-mark')
+        .evaluateAll((marks) =>
+          marks.every(
+            (mark) =>
+              (mark as HTMLImageElement).complete && (mark as HTMLImageElement).naturalWidth > 0,
+          ),
+        ),
+    ).toBe(true);
+    for (const theme of ['light', 'dark']) {
+      if (theme === 'dark') {
+        await page.getByLabel('Workspace menu').click();
+        await page.getByRole('button', { name: 'Dark', exact: true }).click();
+      }
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.setViewportSize({ width: 800, height: 600 });
+      await expect(
+        page.getByRole('button', { name: 'Start your first session', exact: true }),
+      ).toBeVisible();
+      await expect(page.locator('.floating-panel')).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      expect(
+        (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze())
+          .violations,
+      ).toEqual([]);
+      await page.screenshot({ path: `test-results/lascoria-welcome-${theme}.png` });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
+    await page.getByLabel('Workspace menu').click();
+    await page.getByRole('button', { name: 'Light', exact: true }).click();
     await page.getByRole('button', { name: 'Start your first session' }).click();
     await page.getByLabel('Existing repository path').fill(source);
     await expect(
@@ -79,8 +118,15 @@ test('Weftara isolated task, context, direct tests, commit and archive through n
         { timeout: 25000 },
       )
       .toBe('completed');
+    await expect(page.getByRole('heading', { name: 'source', exact: true })).toBeVisible();
+    await page.getByText('Task label, notes and relationships', { exact: true }).click();
+    await page.getByLabel('Session display label').fill('Lascoria interval planner');
+    await expect(
+      page.getByRole('heading', { name: 'Lascoria interval planner', exact: true }),
+    ).toBeVisible();
+    await page.getByText('Task label, notes and relationships', { exact: true }).click();
     await page.getByRole('tab', { name: 'workspace', exact: true }).click();
-    await expect(page.getByRole('heading', { name: /weftara\// })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /lascoria\// })).toBeVisible();
     await page.getByRole('button', { name: 'README.md', exact: true }).click();
     await page.getByRole('button', { name: 'Add file to task draft' }).click();
     await expect(page.getByLabel('New task for this session')).toHaveValue(

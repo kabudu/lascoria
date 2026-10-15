@@ -1,6 +1,6 @@
 # Stage A architecture decisions
 
-Recorded 12 October 2026; updated for Weftara task workspaces on 15 October 2026.
+Recorded 12 October 2026; updated for Lascoria task workspaces on 15 October 2026.
 
 ## Process boundaries
 
@@ -59,4 +59,4 @@ References: [official Muse SDK](https://github.com/meta-models/muse-code-sdk), [
 
 [Stage C memory and settings](stage-c-memory.md) describes shared-broker recovery, process-scoped RSS and native mid-session model/effort controls. Dedicated workers remain available for diagnostic comparison.
 
-[Weftara daily coding workflow](daily-coding-workflow.md) adds developer-operated workspace execution, managed Git worktrees and schema-3 archival. These are distinct from Muse execution and human-attested evidence.
+[Lascoria daily coding workflow](daily-coding-workflow.md) adds developer-operated workspace execution, managed Git worktrees and schema-3 archival. These are distinct from Muse execution and human-attested evidence.
