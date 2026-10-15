@@ -21,9 +21,17 @@ npm run desktop:dev
 
 Start a session from an existing Git repository, then inspect the task map/list, attention queue, transcript, captured diffs and revision-bound human evidence. Closing the GUI leaves the supervisor running. [Stage B scope, trust model and validation](docs/stage-b.md) describe the current development client and remaining release gates.
 
+## Installed-runtime preview
+
+Desktop builds package the supervisor, Node runtime, official Muse SDK and workers. First launch detects Muse and offers a private, pinned installation from Meta or an existing compatible binary. Downloads have size/checksum verification and a real protocol handshake; Muse installation and account sign-in are separate steps.
+
+macOS packaged onboarding has passed native install/cancel/retry/reopen checks. The Windows port includes local-only named pipes with a user/SYSTEM DACL, Credential Manager storage and test process-tree cleanup. Windows native launch and 11 runtime checks passed on a Windows 10 laptop, including a real Muse echo turn, Credential Manager, draft restart and descendant cleanup after timeout and supervisor crash. The user restored the official Muse binary after antivirus quarantine. Windows browser/live-provider UI acceptance is tracked separately. Linux native validation and signed installers/updaters remain release blockers. See the [running checklist](docs/implementation-progress.md) for current evidence, rather than treating compilation as platform acceptance.
+
+For a native development build, run `npm run desktop:build`. Cross-built Windows validation packages use `scripts/package-windows-qa.js`, which explicitly enables the embedded frontend. No unsigned QA archive is a public release.
+
 ## Run the diagnostic client
 
-Prerequisites: macOS, Rust 1.97+, Node.js 24+, and Muse Code 1.4.9 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.9 and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
+Development prerequisites: Rust 1.97+, Node.js 24+, Git, and Muse Code 1.4.9 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.9 and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
 
 ```sh
 npm ci
@@ -37,7 +45,7 @@ npm start -- status
 
 ### Muse account and API key
 
-The macOS desktop offers browser subscription login and secure API-key configuration on first launch and from **Muse account** in the header/menu. Browser login takes precedence over a saved key. A subscription failure never silently activates API billing. Logout stops Muse hosts and remains logged out after restart; **Forget API key** separately removes the Keychain entry. See [account policy, lifecycle and validation](docs/accounts.md).
+The desktop offers browser subscription login and secure API-key configuration on first launch and from **Muse account** in the header/menu. Browser login takes precedence over a saved key. A subscription failure never silently activates API billing. Logout stops Muse hosts and remains logged out after restart; **Forget API key** separately removes the secure credential entry. See [account policy, lifecycle and validation](docs/accounts.md).
 
 The supervisor retains an account host independently of the window, restores persisted login before session recovery and observes credential state in the background. Muse owns OAuth and supported renewal; revoked or expired access can still require **Reconnect Muse**. An open window is not a guarantee of indefinite provider authorization.
 
@@ -63,7 +71,7 @@ npm start -- stop '{"sessions":["SESSION_ID"]}' stop-one
 
 `stop` must name every registered session in the order shown by `status`. A changed set is rejected. It drains all workers and stops the supervisor. Closing an ordinary client only closes its socket.
 
-State lives in `~/.spatial-constellation`, or `SCH_STATE_DIR`. Use separate directories for independent diagnostic runs. The directory is private, the authenticated Unix socket and token are owner-restricted, and an OS lock prevents duplicate supervisors. No network control API is exposed. `SCH_NODE` selects Node; `SCH_WORKER` is a private development/test override. Launch-time environment changes take effect on the next supervisor start.
+State lives in `~/.spatial-constellation`, or `SCH_STATE_DIR`. Use separate directories for independent diagnostic runs. The directory is private, the authenticated Unix socket (macOS/Linux), Windows named pipe and token are owner-restricted, and an OS lock prevents duplicate supervisors. No network control API is exposed. `SCH_NODE` selects Node; `SCH_WORKER` is a private development/test override. Launch-time environment changes take effect on the next supervisor start.
 
 ## Verify Stage A
 

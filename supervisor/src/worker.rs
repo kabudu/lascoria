@@ -14,7 +14,7 @@ use std::{
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    process::{Child, ChildStdin, Command},
+    process::{Child, ChildStdin},
     sync::oneshot,
     time::timeout,
 };
@@ -33,7 +33,7 @@ pub struct Broker {
 }
 impl Broker {
     pub async fn spawn(node: &str, script: &Path, db: SharedDb) -> Result<Arc<Self>> {
-        let mut command = Command::new(node);
+        let mut command = lascoria_runtime::command(node);
         crate::auth::configure(&mut command, &db).await?;
         let mut child = command
             .arg(script)
@@ -227,7 +227,7 @@ impl Broker {
     }
 }
 enum Backend {
-    Dedicated(Dedicated),
+    Dedicated(Box<Dedicated>),
     Shared {
         broker: Arc<Broker>,
         key: String,
@@ -254,7 +254,7 @@ impl Worker {
             let worker = Dedicated::spawn(node, script, db, session, generation).await?;
             return Ok(Self {
                 ready: worker.ready.clone(),
-                backend: Backend::Dedicated(worker),
+                backend: Backend::Dedicated(Box::new(worker)),
             });
         }
         let mut pool = pool.lock().await;

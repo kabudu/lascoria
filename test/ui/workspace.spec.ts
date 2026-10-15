@@ -132,6 +132,15 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
     await expect(page.getByLabel('New task for this session')).toHaveValue(
       /Repository context: README.md/,
     );
+    const savedDraft = await page.getByLabel('New task for this session').inputValue();
+    await expect
+      .poll(async () => {
+        const { drafts } = await request(directory, 'drafts/get');
+        return Object.values(drafts).some((draft: any) => draft.text === savedDraft);
+      })
+      .toBe(true);
+    await page.reload();
+    await expect(page.getByLabel('New task for this session')).toHaveValue(savedDraft);
     await page.getByRole('tab', { name: 'workspace', exact: true }).click();
     await page
       .getByLabel('Test command')

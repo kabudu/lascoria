@@ -1,3 +1,4 @@
+import { useDurableDrafts } from './useDurableDrafts';
 import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
@@ -7,11 +8,14 @@ import { recordTiming, timingSnapshot } from './diagnostics';
 import { useCanvasGestures } from './useCanvasGestures';
 import { FloatingPanel } from './FloatingPanel';
 import type { PanelLayout } from './FloatingPanel';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { FormEvent } from 'react';
 import { connect, request } from './api';
 import {
   tasks,
+  nodeActivity,
   attention,
   questionAnswers,
   taskAttentionKey,
@@ -55,6 +59,19 @@ export function App() {
   const inspectorTabs = status.features?.includes('taskWorkspaces')
     ? ['transcript', 'diff', 'evidence', 'workspace']
     : ['transcript', 'diff', 'evidence'];
+  const [runtimeReady, setRuntimeReady] = useState(!(window as any).__TAURI_INTERNALS__?.metadata);
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__?.metadata) return;
+    void invoke<{ ready: boolean }>('runtime_status')
+      .then((value) => {
+        setRuntimeReady(value.ready);
+        if (!value.ready) setModal('account');
+      })
+      .catch(() => {
+        setRuntimeReady(false);
+        setModal('account');
+      });
+  }, []);
   const [account, setAccount] = useState<AccountStatus | null>(null);
   const accountOnboarded = useRef(false);
   const accountRequest = useRef(0);
@@ -127,7 +144,12 @@ export function App() {
   const suppressNodeClick = useRef<string | null>(null);
   const [mapWidth, setMapWidth] = useState(600);
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const { drafts, setDrafts, flushDrafts } = useDurableDrafts(
+    Boolean(connected && status.features?.includes('drafts')),
+    setError,
+  );
+  const flushDraftsRef = useRef(flushDrafts);
+  flushDraftsRef.current = flushDrafts;
   const [modal, setModal] = useState<
       'start' | 'stop' | 'palette' | 'diagnostics' | 'settings' | 'account' | null
     >(null),
@@ -396,14 +418,28 @@ export function App() {
     if (!(window as any).__TAURI_INTERNALS__?.metadata) return;
     let disposed = false;
     let unlisten: undefined | (() => void);
+    let unlistenQuit: undefined | (() => void);
+    void listen('lascoria-before-quit', async () => {
+      try {
+        await flushDraftsRef.current();
+        await flushPrefs();
+        await invoke('finish_quit');
+      } catch (e) {
+        setError(`Quit paused because drafts or layout could not be saved: ${String(e)}`);
+      }
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenQuit = fn;
+    });
     void getCurrentWindow()
       .onCloseRequested(async (event) => {
         event.preventDefault();
         try {
+          await flushDraftsRef.current();
           await flushPrefs();
           await getCurrentWindow().destroy();
         } catch (e) {
-          setError(`Close paused because layout could not be saved: ${String(e)}`);
+          setError(`Close paused because drafts or layout could not be saved: ${String(e)}`);
         }
       })
       .then((fn) => {
@@ -413,6 +449,7 @@ export function App() {
     return () => {
       disposed = true;
       unlisten?.();
+      unlistenQuit?.();
     };
   }, []);
   useEffect(() => {
@@ -1271,10 +1308,13 @@ export function App() {
                         </svg>
                         {visible.map((node, index) => {
                           const p = position(node, index);
+                          const activity = nodeActivity(node, session, connected);
                           return (
                             <button
                               key={node.id}
-                              className={`task-node ${task?.id === node.id ? 'selected' : ''}`}
+                              className={`task-node ${task?.id === node.id ? 'selected' : ''} activity-${activity.kind}`}
+                              aria-busy={activity.busy}
+                              data-activity={activity.kind}
                               style={{ left: p.x, top: p.y }}
                               title="Drag to arrange; Shift+arrow keys move; arrow keys navigate"
                               onPointerDown={(event) => {
@@ -1370,7 +1410,7 @@ export function App() {
                                 }
                               }}
                               id={`node-${node.id}`}
-                              aria-label={`${node.label}, ${node.status}, ${node.provenance}`}
+                              aria-label={`${node.label}, ${node.status}, ${node.provenance}, ${activity.label}`}
                             >
                               <small>
                                 <span className="node-symbol" aria-hidden="true">
@@ -1386,8 +1426,10 @@ export function App() {
                               </small>
                               <strong>{node.label}</strong>
                               <span>
-                                <i className={`status-dot ${node.status}`} />
-                                {node.status}
+                                <i className={`status-dot ${activity.kind}`} aria-hidden="true" />
+                                <span className="node-activity-label" title={activity.label}>
+                                  {activity.label}
+                                </span>
                               </span>
                             </button>
                           );
@@ -2138,7 +2180,9 @@ export function App() {
             ×
           </button>
         </div>
-        {modal === 'account' && <Account account={account} refresh={refreshAccount} />}
+        {modal === 'account' && (
+          <Account account={account} refresh={refreshAccount} onRuntimeReady={setRuntimeReady} />
+        )}
         {modal === 'settings' &&
           (() => {
             const target = status.sessions.find((s) => s.id === settingsTarget);
@@ -2267,7 +2311,7 @@ export function App() {
             </p>
             <button
               className="primary"
-              disabled={busy || (account?.managed && !account.authenticated)}
+              disabled={busy || !runtimeReady || (account?.managed && !account.authenticated)}
             >
               Start session
             </button>

@@ -13,15 +13,12 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
-    env,
-    fs::{self, OpenOptions},
-    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    env, fs,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tokio::{
-    net::{UnixListener, UnixStream},
     sync::{Semaphore, mpsc, oneshot},
     task::JoinSet,
     time::{interval, timeout},
@@ -243,7 +240,7 @@ impl Actor {
             let db = self.db.lock().unwrap();
             let commands = db.all("commands")?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -251,6 +248,8 @@ impl Actor {
         if [
             "presentation/get",
             "presentation/save",
+            "drafts/get",
+            "drafts/save",
             "artifact/capture",
             "artifact/check",
             "artifact/read",
@@ -478,7 +477,7 @@ impl Actor {
                 );
             }
             let workspace =
-                fs::canonicalize(params["workspace"].as_str().context("Workspace required")?)?;
+                dunce::canonicalize(params["workspace"].as_str().context("Workspace required")?)?;
             ensure!(workspace.is_dir(), "Workspace must be a directory");
             ensure!(
                 self.db.lock().unwrap().count("sessions")? < 100,
@@ -489,14 +488,9 @@ impl Actor {
             let workspace = if params["isolated"] == true {
                 // Persist intent before filesystem effects. An uncertain retry never creates another worktree.
                 workspace::begin(&self.db, id, operation, &params, &session)?;
-                let parent = env::var_os("SCH_STATE_DIR")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| {
-                        PathBuf::from(env::var_os("HOME").unwrap()).join(".spatial-constellation")
-                    })
-                    .join("worktrees");
+                let parent = lascoria_runtime::state_dir().join("worktrees");
                 fs::create_dir_all(&parent)?;
-                let target = fs::canonicalize(&parent)?.join(&session);
+                let target = dunce::canonicalize(&parent)?.join(&session);
                 let mut planned = json!({"id":session,"workspace":target,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false},"managedWorkspace":{"source":workspace,"path":target,"branch":format!("lascoria/{session}")}});
                 self.save(&planned)?;
                 match workspace::create(&workspace, &target, &session).await {
@@ -597,17 +591,14 @@ struct Call {
     enqueued: Instant,
 }
 async fn connection(
-    stream: UnixStream,
+    stream: lascoria_runtime::platform::Stream,
     token: String,
     sender: mpsc::Sender<Call>,
     db: SharedDb,
     metrics: Arc<Mutex<metrics::Metrics>>,
     auth: Arc<tokio::sync::Mutex<auth::Auth>>,
 ) -> Result<()> {
-    ensure!(
-        stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
-        "IPC peer belongs to another user"
-    );
+    lascoria_runtime::platform::check_peer(&stream)?;
     let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(65536));
     let (delivered_tx, delivered_rx) = oneshot::channel();
     let mut started = None;
@@ -629,7 +620,7 @@ async fn connection(
             if request["params"]["since"].as_str().is_some_and(|version| version == db.version()) {
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
         let (tx, rx) = oneshot::channel();
         sender
@@ -663,45 +654,17 @@ async fn connection(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let directory = env::var_os("SCH_STATE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env::var_os("HOME").unwrap()).join(".spatial-constellation")
-        });
-    fs::create_dir_all(&directory)?;
-    let metadata = fs::symlink_metadata(&directory)?;
-    ensure!(
-        metadata.is_dir() && metadata.uid() == unsafe { libc::geteuid() },
-        "State directory must be owned by this user and cannot be a symlink"
-    );
-    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?;
-    let lock = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(directory.join("owner.lock"))?;
+    #[cfg(windows)]
+    lascoria_runtime::process::workspace_helper()?;
+    let directory = lascoria_runtime::state_dir();
+    lascoria_runtime::platform::private_dir(&directory)?;
+    let lock = lascoria_runtime::platform::private_file(&directory.join("owner.lock"), false)?;
     lock.try_lock_exclusive()
         .context("Another supervisor owns this state directory")?;
     let database_path = directory.join("state.sqlite");
-    // O_NOFOLLOW also refuses dangling symlinks, unlike Path::exists().
-    let database_file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&database_path)?;
-    ensure!(
-        database_file.metadata()?.uid() == unsafe { libc::geteuid() },
-        "Database must belong to this user"
-    );
+    let database_file = lascoria_runtime::platform::private_file(&database_path, false)?;
     drop(database_file);
     let db = Arc::new(Mutex::new(Db::open(&database_path)?));
-    fs::set_permissions(&database_path, fs::Permissions::from_mode(0o600))?;
     {
         let db = db.lock().unwrap();
         for mut command in db.all("commands")? {
@@ -725,28 +688,21 @@ async fn main() -> Result<()> {
             )?;
         }
     }
-    let socket_path = directory.join("supervisor.sock");
-    if socket_path.exists() {
-        fs::remove_file(&socket_path)?;
-    }
-    let listener = UnixListener::bind(&socket_path)?;
-    fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))?;
+    let socket_path = directory.join(if cfg!(windows) {
+        "ipc.json"
+    } else {
+        "supervisor.sock"
+    });
+    let mut listener = lascoria_runtime::platform::Listener::bind(&directory)?;
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-    let mut token_file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(directory.join("token"))?;
+    let mut token_file = lascoria_runtime::platform::private_file(&directory.join("token"), true)?;
     use std::io::Write;
     token_file.write_all(token.as_bytes())?;
     token_file.sync_all()?;
-    fs::set_permissions(directory.join("token"), fs::Permissions::from_mode(0o600))?;
     let script = env::var_os("SCH_WORKER")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/worker.js"));
-    let node = env::var("SCH_NODE").unwrap_or_else(|_| "node".into());
+        .unwrap_or_else(|| lascoria_runtime::worker("worker.js"));
+    let node = lascoria_runtime::node().to_string_lossy().into_owned();
     let (sender, mut requests) = mpsc::channel::<Call>(16);
     let permits = Arc::new(Semaphore::new(16));
     let broker = Arc::new(tokio::sync::Mutex::new(None));
@@ -758,12 +714,9 @@ async fn main() -> Result<()> {
         broker: broker.clone(),
         target,
     };
-    let mut account = auth::Auth::new(db.clone())?;
-    if auth::managed(&db)
-        && let Err(error) = account.status().await
-    {
-        eprintln!("Account status unavailable: {error}");
-    }
+    // Account probing runs in the monitor; IPC readiness must not wait on a locked vault.
+    // The ready gate remains closed until authentication has actually been observed.
+    let account = auth::Auth::new(db.clone())?;
     let account_ready = account.ready.clone();
     let account = Arc::new(tokio::sync::Mutex::new(account));
     let monitor_account = account.clone();
@@ -788,7 +741,8 @@ async fn main() -> Result<()> {
     let work_permits = Arc::new(Semaphore::new(16));
     let mut tasks = JoinSet::new();
     let mut in_flight = std::collections::HashSet::new();
-    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let term = lascoria_runtime::platform::terminate_signal();
+    tokio::pin!(term);
     let mut tick = interval(Duration::from_secs(1));
     println!("{}", json!({"pid":std::process::id(),"socket":socket_path}));
     let metrics = Arc::new(Mutex::new(metrics::Metrics::new()));
@@ -796,7 +750,7 @@ async fn main() -> Result<()> {
     let accept_db = db.clone();
     let accept_account = account.clone();
     let accept_task = tokio::spawn(async move {
-        while let Ok((stream, _)) = listener.accept().await {
+        while let Ok(stream) = listener.accept().await {
             if let Ok(permit) = permits.clone().try_acquire_owned() {
                 let sender = sender.clone();
                 let token = token.clone();
@@ -817,7 +771,7 @@ async fn main() -> Result<()> {
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => break,
-            _ = term.recv() => break,
+            _ = &mut term => break,
             Some(done) = tasks.join_next(), if !tasks.is_empty() => {
                 match done {
                     Ok(Some(id)) => { in_flight.remove(&id); }

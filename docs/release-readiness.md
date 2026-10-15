@@ -1,12 +1,12 @@
 # Lascoria release-readiness backlog
 
-Updated 15 October 2026. This is the consolidated product/release backlog, not a claim that Lascoria is ready to distribute. Historical validation records remain in the stage documents. An unchecked item is planned or outstanding; checked implementation elsewhere does not close a release gate without its acceptance evidence.
+Updated 15 October 2026. Implementation is active; see the [running checklist](implementation-progress.md). This is the consolidated product/release backlog, not a claim that Lascoria is ready to distribute. Historical validation records remain in the stage documents. An unchecked item is planned or outstanding; checked implementation elsewhere does not close a release gate without its acceptance evidence.
 
-The user requested missing-Muse onboarding, in-app update checks backed by platform GitHub Releases, and renaming the repository to `lascoria`. This change records those requests; it does not install software, rename/publish the repository, publish releases or enable an updater.
+The user requested missing-Muse onboarding, in-app update checks backed by platform GitHub Releases, and renaming the repository to `lascoria`. Implementation is tracked below and in the running checklist. Repository rename is complete; public visibility, software installation and publishing remain separate actions.
 
 ## Release blockers
 
-### R1 — Detect and install Muse during onboarding
+### R1 - Detect and install Muse during onboarding
 
 - [ ] Before account onboarding, distinguish missing Muse, incompatible Muse, launch failure and ready state. Resolve binaries reliably from a GUI launch without relying on an interactive shell's PATH; support choosing an existing installation.
 - [ ] Explain that Muse is required and offer **Install Muse**, **Choose existing installation**, **Retry** and **Later**. Later permits offline inspection and returns to setup before new model work. Installation requires the user's explicit action.
@@ -17,15 +17,15 @@ The user requested missing-Muse onboarding, in-app update checks backed by platf
 
 Reference: [official Muse installation documentation](https://dev.meta.ai/docs/muse-code). Verify current vendor installation, integrity and redistribution terms when implementing; do not turn this backlog into an unverified shell-installer recipe.
 
-### R2 — Make the download self-contained and define supported platforms
+### R2 - Make the download self-contained and define supported platforms
 
 - [ ] Package the Rust supervisor, frontend assets and official SDK worker resources with installed-resource paths. Bundle or explicitly provision the required Node runtime; a normal user must not need Rust, npm, Node development setup or this source checkout. Muse setup is covered by R1.
-- [ ] Decide and publish an OS/architecture matrix. Current implementation is macOS-specific (Unix IPC, process control and Keychain). Assess Apple Silicon and Intel macOS separately; Windows/Linux builds require actual IPC, credential-storage and process-lifecycle ports and validation before being advertised. Tauri build targets alone are not platform support.
+- [ ] Decide and publish an OS/architecture matrix. First release requires macOS, Windows and Linux, per the user's 15 October decision. Windows IPC, secure storage and process-control implementations now exist alongside the Unix paths; Linux secure storage uses Secret Service. All three still need their complete packaged acceptance matrix. Assess each architecture separately. Tauri build targets alone are not platform support.
 - [ ] Preserve stable application/state identities through branding and updates, or provide a tested migration. The repository rename must not reset accounts, sessions, worktrees, evidence or update identity.
 - [ ] Produce signed application/installer artifacts, macOS notarization where applicable, updater signatures, dependency/license notices and version/provenance metadata. Keep signing keys in release infrastructure, never in source or downloadable apps.
 - [ ] Validate fresh install, launch, permissions, uninstall/retained-data behaviour and reinstall on every advertised platform/architecture without developer tools installed.
 
-### R3 — In-app updates from GitHub Releases
+### R3 - In-app updates from GitHub Releases
 
 - [ ] Add **Check for updates** in Settings/About and bounded automatic startup/periodic checks with a user preference, no overlapping requests, timeouts and backoff. Show installed/latest version, last successful check, release notes, up-to-date, offline and failure states. Checks use ordinary networking, never model calls.
 - [ ] Use the supported Tauri updater with signed platform/architecture artifacts and a release manifest hosted through GitHub Releases. Verify signatures before installation and reject wrong-target, tampered or incompatible artifacts. Keep stable and prerelease selection explicit; do not silently move stable users to prereleases.
@@ -37,23 +37,23 @@ Reference: [official Muse installation documentation](https://dev.meta.ai/docs/m
 
 Reference: [Tauri v2 updater](https://v2.tauri.app/plugin/updater/) supports signed update artifacts and static manifests on GitHub Releases. Lascoria has not integrated it yet. Existing live UI-close/reconnect and graceful-logout proofs in [accounts](accounts.md) are prerequisites, not an update-install proof.
 
-### R4 — Repository rename and public-release preparation
+### R4 - Repository rename and public-release preparation
 
-- [ ] Rename `kabudu/spatial-constellation-harness` to `kabudu/lascoria`, checking target availability immediately before the operation. Update and verify local origin, package metadata, README links, issue/repository URLs, CI, badges and future release/updater endpoints. Preserve Git history and verify fetch/push against the renamed repository.
+- [x] Rename `kabudu/spatial-constellation-harness` to `kabudu/lascoria`, checking target availability immediately before the operation. Update and verify local origin, package metadata, README links, issue/repository URLs, CI, badges and future release/updater endpoints. Preserve Git history and verify fetch/push against the renamed repository.
 - [ ] Keep existing application identifiers, persistent state paths, task branches and evidence fingerprints compatible unless a separate migration is implemented. Renaming the local checkout is optional and must not break installed/development resource paths.
 - [ ] Before making the repository public, review tracked files and history for credentials/private data, licensing/redistribution rights, security reporting, support expectations and contributor guidance. Keep local `.dev` credentials and live transcripts excluded. A rename is not authorization to make the repository public.
 - [ ] Add reproducible CI/build/release instructions, supported versions, changelog/tag policy, artifact checksums/provenance and clean-machine installation documentation. Publish only the targets that passed R2/R3.
 
-### R5 — Durable data, authentication and lifecycle acceptance
+### R5 - Durable data, authentication and lifecycle acceptance
 
-Implemented foundations: browser subscription priority over a saved API key, Keychain storage, app-local logout, bounded graceful cancellation with retained evidence, detached UI background execution and same-session recovery. See [accounts](accounts.md).
+Implemented foundations: browser subscription priority over a saved API key, native credential storage, app-local logout, bounded graceful cancellation with retained evidence, detached UI background execution and same-session recovery. See [accounts](accounts.md).
 
 - [ ] Validate browser authentication/expiry/revocation across real provider expiry intervals, sleep/wake and network loss; show reconnect without automatic paid fallback. Do not promise indefinite provider authorization.
-- [ ] Make task drafts durable across window closure/update; preserve per-session targeting and provide a visible recovery path for interrupted work. Current drafts are in-window only.
+- [ ] Make task drafts durable across window closure/update; preserve per-session targeting and provide a visible recovery path for interrupted work. Local SQLite-backed drafts and reload recovery are implemented; cross-window conflict recovery, full native close/update acceptance and the remaining lifecycle gates are still tracked.
 - [ ] Define backup/export/restore, schema migration and safe local-data cleanup/retention. Current bounds include 100 retained sessions and 2,000 journal records; exhaustion needs an actionable product flow before sustained release use, without weakening no-replay guarantees.
 - [ ] Run packaged lifecycle tests for long-running commands, subagents, outstanding questions/approvals, sign-out, window quit, supervisor replacement, crash, sleep/wake and restart. Distinguish confirmed cancellation, natural completion and uncertain outcomes; retain worktree edits and never silently rerun side effects.
 
-### R6 — Finish Stage C performance and usability evidence
+### R6 - Finish Stage C performance and usability evidence
 
 - [ ] Close the remaining real retained-history/update-burst gates and repeat reference measurements, including the GUI and full runtime tree with documented Muse/Node/build versions. Synthetic 100,000-item rendering is not real Muse/SQLite history-scale proof.
 - [ ] Revalidate sustained memory/CPU/latency budgets with account observation and packaged binaries; add repeatable regression gates. Short smoke runs do not substitute for the required observation period.
@@ -61,13 +61,13 @@ Implemented foundations: browser subscription priority over a saved API key, Key
 
 Source: [Stage C](stage-c.md) and its [memory follow-up](stage-c-memory.md). Historical failed measurements remain historical; this checklist does not reopen already-fixed memory defects without new evidence.
 
-### R7 — Accessibility, reliability and user-facing failure states
+### R7 - Accessibility, reliability and user-facing failure states
 
 - [ ] Complete native VoiceOver and keyboard-only journeys, focus restoration, zoom/text scaling, supported window sizes and both themes. Existing automated WCAG checks are a foundation, not a full native accessibility audit.
 - [ ] Test unavailable Muse/runtime, authentication, permissions, network failures, disk-full/locked Keychain, malformed/incompatible history and exhausted resource limits with clear recovery actions and no secret-bearing errors.
 - [ ] Add privacy-safe diagnostic export/support information with explicit preview/redaction boundaries. Define log retention and ensure installed builds do not depend on ignored development artifacts.
 
-### R8 — Subscription usage in Settings and non-interrupting `/usage`
+### R8 - Subscription usage in Settings and non-interrupting `/usage`
 
 - [ ] Add **Settings → Account & usage** with subscription tier, separate current-window and weekly used/remaining percentage bars, reset countdowns plus absolute local reset times, last-observed timestamp, refresh and clear unavailable/stale states. Include a compact optional workspace indicator; keep detailed information out of the main canvas by default.
 - [ ] Read native `usage/read` and observe `usage/changed` through a bounded read-only path independent of model commands, session mutation queues and slow recovery. Opening/refreshing usage must not start, steer, cancel, interrupt or restart a turn/host, generate inference, create a transcript message or change the selected billing route. Do not invoke the interactive CLI's `/usage` screen.
@@ -78,7 +78,7 @@ Source: [Stage C](stage-c.md) and its [memory follow-up](stage-c-memory.md). His
 
 The installed SDK exposes tier, current-window duration/used percentage/reset and weekly used percentage/reset with `observedAtMs`. Muse documents that the served usage query reads observed windows without spending a prompt: [Muse changelog](https://dev.meta.ai/docs/muse-code/changelog). These fields support a clear allowance dashboard; they do not establish access to full account billing information. The UI is not implemented yet.
 
-### R9 — Native Muse slash-command and skill picker
+### R9 - Native Muse slash-command and skill picker
 
 - [ ] Typing `/` at a command position in the composer opens an anchored, height-bounded, scrollable and searchable picker. Show supported Lascoria commands separately from Muse skills, with name, concise description, source badge (built-in/user/project/plugin) and argument hint when supplied. Support keyboard arrows, Enter/Tab selection, Escape dismissal, mouse selection and screen-reader announcements; keep the highlighted row in view.
 - [ ] Discover user-invocable skills through per-session native `skill/list`, respecting the selected workspace, plugin state, activation and native name resolution. Show actual available built-in skills rather than a hardcoded marketing list; exclude non-user-invocable entries. Handle qualified plugin selectors, duplicate display names, reserved local commands and conflicts without silently invoking another skill.
@@ -89,25 +89,46 @@ The installed SDK exposes tier, current-window duration/used percentage/reset an
 
 References: [native skill discovery](https://meta-models.github.io/muse-code-sdk/next/generated/msp/methods/skill-list/), [skills in SDK sessions](https://meta-models.github.io/muse-code-sdk/next/guides/plugins/concepts/plugins-in-sdk-sessions/). Discovery and typed invocation are supported by Muse; Lascoria's picker and explicit usage UI are not implemented yet.
 
+### R10 - Optional BYOK decision providers, with a quiet UI
+
+User requirement added 15 October: support Jev (TypeSafe), Subquadratic/SubQ and OpenAI decision APIs with user-supplied keys. Research/design first; do not interpret this item as permission to transmit repository material or activate paid calls by default. A clean, uncluttered workspace is a fundamental product constraint.
+
+Verified first-party contracts (15 October 2026; recheck before implementation):
+
+| Provider | API and documented shape | Source |
+| --- | --- | --- |
+| Jev / TypeSafe | `POST https://api.typesafe.ai/v1/systemone`; `model`, shared `state`, named typed `questions`; named answers and usage. `noul`, `choice` and `score` are provider-native types. | [TypeSafe API](https://docs.typesafe.ai/api) |
+| SubQ | `POST https://api.subq.ai/v1/systemone`; `subq-snap-preview`, shared state and 1–16 named `noul`/`choice`/`score` questions. Public preview, with probabilities and reported usage. | [SubQ Decisions](https://docs.subq.ai/endpoints/decisions-api/) |
+| OpenAI | Dedicated `POST /v1/decisions`, not Responses; public beta currently documents `gpt-6-luna`, shared `input` and named `predicate`/`choice`/`score` questions, with an answers array. | [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions) |
+
+- [ ] Design **Settings → Integrations → Decision assistance** for BYOK provider/model configuration, native-vault storage, explicit connection testing and per-workspace enablement. Keep Muse subscription and its API key separate from these independently billed services. Keys never enter React state after submission, command journals, argv, exported diagnostics or Muse prompts. Honour provider retention/data-use settings and expose the actual destination before enabling any integration.
+- [ ] Agree the initial interaction model before enabling automatic policy: (a) user-requested evaluation of selected evidence, (b) opt-in bounded background triage with scoped data, (c) an explicit tool usable by Muse, or a staged combination. Start with advisory results; model routing, autonomous gates and scheduler actions require separately defined policy/permission semantics. Do not silently replace Muse's execution model or masquerade as its native permission reviewer.
+- [ ] Use a Rust-owned bounded decision service and provider-specific adapters, not an assumed universal chat or OpenAI-compatible schema. Preserve native answer types, probabilities, resolved model and request identity. Version rubrics and input/evidence fingerprints; reject stale answers after revisions change. Provider confidence is not guaranteed correctness or directly comparable calibration between providers.
+- [ ] Keep the default canvas unchanged. No always-visible provider cards, extra floating panels or per-call toasts. Offer details through the existing inspector/usage/settings surfaces; expose a small task indicator only when relevant/actionable or explicitly enabled. The user can inspect the outcome, source/provider/model, input scope, timestamp, rubric version, uncertainty and whether a recommendation was applied. No fabricated chain-of-thought or explanation when the API did not return one.
+- [ ] Provide optional metrics: calls, reported tokens, estimated/known cost provenance, latency distributions, errors/rate limits, cache reuse, policy outcomes and human overrides, per provider/task/workspace. Aggregate summaries live in Usage; detailed traces stay opt-in and privacy-safe. Do not imply external BYOK charges are covered by a Muse subscription or claim savings without a task-quality benchmark.
+- [ ] Keep app recommendations and native Muse events separate. Any approved recommendation affecting a Muse session uses the existing authenticated, journaled command boundary, with fresh approval requirements and no replay. Never auto-approve permissions or mark evidence accepted based solely on a decision probability. Failures must leave Muse usable and allow disabling assistance without breaking a session.
+- [ ] Enforce deadlines, concurrency/admission and spend warnings, cancellation, bounded payloads and result validation. Avoid duplicate paid retries and stale background decisions; an ambiguous timeout is not proof a call was unbilled. Never switch providers or disclose data to a fallback destination silently. Credential rotation/removal, offline, invalid-key, quota, beta/schema changes and malformed output need visible, recoverable states without UI clutter.
+- [ ] Validate all three adapters with contract fixtures, adversarial/stale inputs and independent quality checks; then explicit BYOK live trials and native UX with active Muse turns, subagents, questions and approvals. Measure non-interference and payload disclosure as well as latency/tokens. Have the user assess the proposed interaction design before enabling automatic decisions.
+
 ## Developer-workflow priorities to scope before calling it a daily-driver release
 
 These are known gaps from [daily coding workflow](daily-coding-workflow.md), not promises that every feature must ship in the first public preview. Decide an explicit preview scope and label unsupported actions rather than hide them.
 
-- [ ] **D1 — Git delivery:** selected-file/hunk staging, branch visibility, push, PR creation, merge/conflict handling and applicable repository hooks/signing. Current guarded commit stages all Git-visible changes and does not push; the UI must make those limits clear.
-- [ ] **D2 — Editing and terminal:** open in the user's editor, file/diff navigation and a defined interactive-terminal story. An embedded editor/PTY is an option; the present runner is bounded and non-interactive.
-- [ ] **D3 — Find and retain work:** global/session transcript search, export, archive browsing and a continuation path for archived work without accidental duplication or deletion.
-- [ ] **D4 — Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
-- [ ] **D5 — Muse capabilities:** skill discovery/invocation/attribution is a release requirement under R9. Separately define the exposed activation-management, plugin/MCP/settings workflow and supported scope.
+- [ ] **D1 - Git delivery:** selected-file/hunk staging, branch visibility, push, PR creation, merge/conflict handling and applicable repository hooks/signing. Current guarded commit stages all Git-visible changes and does not push; the UI must make those limits clear.
+- [ ] **D2 - Editing and terminal:** open in the user's editor, file/diff navigation and a defined interactive-terminal story. An embedded editor/PTY is an option; the present runner is bounded and non-interactive.
+- [ ] **D3 - Find and retain work:** global/session transcript search, export, archive browsing and a continuation path for archived work without accidental duplication or deletion.
+- [ ] **D4 - Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
+- [ ] **D5 - Muse capabilities:** skill discovery/invocation/attribution is a release requirement under R9. Separately define the exposed activation-management, plugin/MCP/settings workflow and supported scope.
 
 ## Token-efficiency follow-up
 
 Requested for consideration in the preceding discussion; these policies are not implemented merely because Muse exposes usage events.
 
-- [ ] **T1 — Measure first:** per-task/session/model usage, cache/reasoning counters where reported, context pressure and correctly deduplicated child-agent totals. Keep token counts, estimated API cost and subscription usage windows distinct; missing data stays unknown.
-- [ ] **T2 — Reuse evidence:** reuse repository analysis, test results and reviews only while content/configuration fingerprints remain valid. Preserve provenance and invalidate on relevant changes.
-- [ ] **T3 — Bound work:** explicit delegation/concurrency budgets, duplicate-work/loop detection and warnings before admitting more work. Any spend limit based on post-call counters is a soft limit with in-flight overshoot, not guaranteed billing enforcement.
-- [ ] **T4 — Optional policies:** economical model/effort presets with user-visible escalation, focused context handoffs and deliberate use of Muse-native compaction. Preserve user instructions, correctness and permission boundaries; do not silently truncate history or rewrite transcripts.
-- [ ] **T5 — Benchmark savings:** compare tokens, correctness, retries and completion time on repeated identical tasks. Existing UI polling/paging and broker memory savings are not inference-token savings.
+- [ ] **T1 - Measure first:** per-task/session/model usage, cache/reasoning counters where reported, context pressure and correctly deduplicated child-agent totals. Keep token counts, estimated API cost and subscription usage windows distinct; missing data stays unknown.
+- [ ] **T2 - Reuse evidence:** reuse repository analysis, test results and reviews only while content/configuration fingerprints remain valid. Preserve provenance and invalidate on relevant changes.
+- [ ] **T3 - Bound work:** explicit delegation/concurrency budgets, duplicate-work/loop detection and warnings before admitting more work. Any spend limit based on post-call counters is a soft limit with in-flight overshoot, not guaranteed billing enforcement.
+- [ ] **T4 - Optional policies:** economical model/effort presets with user-visible escalation, focused context handoffs and deliberate use of Muse-native compaction. Preserve user instructions, correctness and permission boundaries; do not silently truncate history or rewrite transcripts.
+- [ ] **T5 - Benchmark savings:** compare tokens, correctness, retries and completion time on repeated identical tasks. Existing UI polling/paging and broker memory savings are not inference-token savings.
 
 ## Optional research
 

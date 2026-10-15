@@ -5,7 +5,7 @@
   "identifier": "dev.constellation.harness",
   "build": {
     "beforeDevCommand": "npm run ui:dev",
-    "beforeBuildCommand": "npm run ui:build",
+    "beforeBuildCommand": "npm run desktop:prepare",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
@@ -27,6 +27,9 @@
   },
   "bundle": {
     "active": false,
-    "icon": ["icons/icon.png", "icons/icon.icns"]
+    "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
+    "resources": {
+      "../.dev/bundle-runtime/": "runtime/"
+    }
   }
 }

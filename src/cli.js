@@ -9,11 +9,16 @@ import { request } from './client.js';
 const [operation = 'help', json = '{}', id] = process.argv.slice(2);
 const directory = process.env.SCH_STATE_DIR ?? join(homedir(), '.spatial-constellation');
 const binary = resolve(
-  fileURLToPath(new URL('../supervisor/target/debug/constellation-supervisor', import.meta.url)),
+  fileURLToPath(
+    new URL(
+      `../supervisor/target/debug/constellation-supervisor${process.platform === 'win32' ? '.exe' : ''}`,
+      import.meta.url,
+    ),
+  ),
 );
 try {
   if (operation === 'supervisor') {
-    const child = spawn(binary, [], { stdio: 'inherit' });
+    const child = spawn(binary, [], { stdio: 'inherit', windowsHide: true });
     child.on('error', (error) => {
       console.error(error.message);
       process.exitCode = 1;
@@ -28,7 +33,7 @@ try {
       await request(directory, 'status', {}, undefined, 200);
       console.log('Supervisor already running');
     } catch {
-      const child = spawn(binary, [], { detached: true, stdio: 'ignore' });
+      const child = spawn(binary, [], { detached: true, stdio: 'ignore', windowsHide: true });
       child.on('error', (error) => {
         console.error(error.message);
         process.exitCode = 1;

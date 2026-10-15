@@ -1,0 +1,15 @@
+// Test-only layout matching installed resource resolution. Does not publish an artifact.
+import { mkdir, cp, copyFile, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+const output = resolve('.dev/native-qa');
+await mkdir(join(output, 'testing'), { recursive: true });
+await cp('.dev/bundle-runtime', join(output, 'runtime'), { recursive: true });
+await copyFile('src/client.js', join(output, 'runtime/workers/client.js'));
+for (const file of [
+  'windows-smoke.js',
+  'uncertain-worker.js',
+  'account-worker.js',
+  'subscription-smoke.js',
+])
+  await copyFile(join('testing', file), join(output, 'testing', file));
+await writeFile(join(output, 'package.json'), JSON.stringify({ private: true, type: 'module' }));

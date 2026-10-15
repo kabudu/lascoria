@@ -57,6 +57,25 @@ test(
     await until(status, (s) => s.pid === daemon.pid);
     await request(directory, 'account/setKey', { apiKey: model.env.META_API_KEY });
     const { sessionId } = await request(directory, 'start', { workspace });
+    const draft = await request(
+      directory,
+      'drafts/save',
+      { sessionId, text: 'Retain this task draft', expectedRevision: 0 },
+      'draft-1',
+    );
+    assert.equal(draft.revision, 1);
+    assert.equal(
+      (await request(directory, 'drafts/get')).drafts[sessionId].text,
+      'Retain this task draft',
+    );
+    await assert.rejects(
+      request(directory, 'drafts/save', {
+        sessionId,
+        text: 'stale overwrite',
+        expectedRevision: 0,
+      }),
+      /Draft changed/,
+    );
     const turn = await request(directory, 'turn', {
       sessionId,
       text: 'Stop this active turn for app logout',
@@ -82,6 +101,11 @@ test(
     await request(directory, 'account/useKey');
     state = (await until(status, (s) => s.sessions[0].lifecycle === 'connected')).sessions[0];
     assert.equal(state.id, sessionId);
+    assert.equal(
+      (await request(directory, 'drafts/get')).drafts[sessionId].text,
+      'Retain this task draft',
+      'draft survives account-mode change and recovery',
+    );
     assert.ok(
       state.interruptions.some((entry) => entry.shutdown?.cancellation === 'confirmed'),
       'shutdown evidence survives cold replay',

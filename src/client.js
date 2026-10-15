@@ -12,7 +12,13 @@ export async function request(
   timeoutMs = 30000,
 ) {
   const token = readFileSync(join(directory, 'token'), 'utf8');
-  const socket = net.createConnection(join(directory, 'supervisor.sock'));
+  const endpoint =
+    process.platform === 'win32'
+      ? JSON.parse(readFileSync(join(directory, 'ipc.json'), 'utf8')).pipe
+      : join(directory, 'supervisor.sock');
+  if (process.platform === 'win32' && !/^\\\\\.\\pipe\\lascoria-[a-f0-9]{64}$/.test(endpoint))
+    throw new Error('Invalid local pipe endpoint');
+  const socket = net.createConnection(endpoint);
   socket.setEncoding('utf8');
   try {
     return await bounded(
