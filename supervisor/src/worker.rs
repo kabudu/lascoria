@@ -244,7 +244,7 @@ impl Worker {
         db: SharedDb,
         session: String,
         generation: u64,
-        pool: &mut Option<Arc<Broker>>,
+        pool: &tokio::sync::Mutex<Option<Arc<Broker>>>,
     ) -> Result<Self> {
         if std::env::var_os("SCH_WORKER").is_some()
             || std::env::var_os("SCH_DEDICATED_WORKERS").is_some()
@@ -255,6 +255,7 @@ impl Worker {
                 backend: Backend::Dedicated(worker),
             });
         }
+        let mut pool = pool.lock().await;
         if pool.as_ref().is_none_or(|broker| !broker.alive()) {
             if let Some(old) = pool.take() {
                 old.stop().await;
@@ -262,6 +263,7 @@ impl Worker {
             *pool = Some(Broker::spawn(node, &script.with_file_name("broker.js"), db).await?);
         }
         let broker = pool.as_ref().unwrap().clone();
+        drop(pool); // Context handshakes must not serialize independent session recovery.
         let key = format!("{session}:{generation}");
         broker
             .slots

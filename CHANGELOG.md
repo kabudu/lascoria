@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Isolate session commands and recovery with bounded FIFO lanes; retain serialized session admission, global request-ID protection and durable no-replay semantics. Add a repeatable concurrent Muse trial and native-host isolation coverage.
+
 - Verify native Wonder question/resumption, implementation, diff capture and independent tests using Muse browser-account login; document API-key precedence for subscription trials.
 
 - Adopt Lascoria with a folded-wing mark, lowercase wordmark, porcelain/ink/periwinkle themes, welcome copy and native app icons. Use repository/display names for isolated sessions rather than worktree UUIDs. Preserve existing state and revision identities; new isolated task branches use `lascoria/`.

@@ -39,6 +39,7 @@ test(
         ...process.env,
         SCH_STATE_DIR: directory,
         SCH_PROVIDER: 'meta',
+        META_API_KEY: 'stage-a-loopback-only', // Fixed fake credential; never use the user's Keychain login.
         XDG_CONFIG_HOME: join(root, 'config'),
         XDG_DATA_HOME: join(root, 'data'),
         XDG_CACHE_HOME: join(root, 'cache'),
@@ -141,6 +142,29 @@ test(
     const providerRequest = JSON.parse(model.requests.at(-1));
     assert.equal(providerRequest.model, 'stage-b-alternate');
     assert.equal(providerRequest.reasoning?.effort ?? providerRequest.reasoning_effort, 'low');
+    // A frozen native host must not monopolize the supervisor or the shared broker.
+    const frozenHost = children(broker)[0];
+    let pending;
+    let settled = false;
+    process.kill(frozenHost, 'SIGSTOP');
+    try {
+      pending = request(directory, 'models', { sessionId: a }).finally(() => {
+        settled = true;
+      });
+      await delay(250);
+      assert.equal(settled, false, 'native request is actually blocked');
+      const began = performance.now();
+      const peer = await request(directory, 'setModel', {
+        sessionId: b,
+        modelId: 'stage-a-fixture',
+      });
+      assert.ok(['applied', 'accepted'].includes(peer.status), JSON.stringify(peer));
+      assert.ok(performance.now() - began < 1500, 'peer mutation bypasses frozen native host');
+      assert.equal(settled, false, 'peer completes before blocked native request');
+    } finally {
+      process.kill(frozenHost, 'SIGCONT');
+      await pending;
+    }
     // One real host dies. Second session retains its worker generation and broker.
     const before = await request(directory, 'status');
     process.kill(children(broker)[0], 'SIGKILL');
