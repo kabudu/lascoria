@@ -142,6 +142,10 @@ export async function createSession(send, onDeath) {
           .filter(([id, value]) => value?.revision === fold.items.get(id)?.revision),
       ),
       current: !stale && !opening && !!fold?.current,
+      relayToolsAvailable: Boolean(
+        process.env.SCH_RELAY_HELPER &&
+        runtime?.handshake.grantedCapabilities?.includes('sessionMcp'),
+      ),
       sessionState: Object.fromEntries(
         (fold?.sessionState.families() ?? []).map((family) => [
           family,
@@ -174,6 +178,7 @@ export async function createSession(send, onDeath) {
         binary: process.env.MUSE_BIN,
         provider: process.env.SCH_PROVIDER ?? 'echo',
         onHistory: rememberSource,
+        capabilities: process.env.SCH_RELAY_HELPER ? ['sessionMcp'] : [],
       },
       (event) => {
         if (ended || event.params?.sessionId !== sessionId) return;
@@ -348,11 +353,29 @@ export async function createSession(send, onDeath) {
           modelId: params.modelId ?? defaults[0].modelId,
         };
       }
+      const relayConfig =
+        process.env.SCH_RELAY_HELPER &&
+        runtime.handshake.grantedCapabilities?.includes('sessionMcp')
+          ? {
+              config: {
+                mcpServers: {
+                  lascoria_local: {
+                    transport: 'stdio',
+                    command: process.env.SCH_RELAY_HELPER,
+                    args: ['--relay-mcp', sessionId],
+                    env: { SCH_STATE_DIR: process.env.SCH_RELAY_STATE_DIR },
+                    framing: 'lineDelimitedJson',
+                    mode: 'required',
+                  },
+                },
+              },
+            }
+          : {};
       const result = await runtime.command(
         operation === 'start' ? 'session/start' : 'session/resume',
         operation === 'start'
-          ? { sessionId, workspaceRoot: params.workspace, ...initialRoute }
-          : { sessionId, excludeItems: true },
+          ? { sessionId, workspaceRoot: params.workspace, ...initialRoute, ...relayConfig }
+          : { sessionId, excludeItems: true, ...relayConfig },
         commandId,
       );
       modelRoute = { providerId: result.session.providerId, modelId: result.session.modelId };

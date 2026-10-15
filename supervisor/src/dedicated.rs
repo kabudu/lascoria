@@ -40,6 +40,14 @@ impl Dedicated {
         let mut command = lascoria_runtime::command(node);
         crate::auth::configure(&mut command, &db).await?;
         let mut child = command
+            .env(
+                "SCH_RELAY_HELPER",
+                dunce::simplified(&std::env::current_exe()?),
+            )
+            .env(
+                "SCH_RELAY_STATE_DIR",
+                dunce::canonicalize(lascoria_runtime::state_dir())?,
+            )
             .arg(script)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

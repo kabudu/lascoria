@@ -3,6 +3,7 @@ mod db;
 mod dedicated;
 mod metrics;
 mod relay;
+mod relay_mcp;
 mod review;
 mod worker;
 mod workspace;
@@ -700,8 +701,23 @@ async fn connection(
     Ok(())
 }
 
+fn main() -> Result<()> {
+    let args: Vec<_> = std::env::args().collect();
+    if args.get(1).is_some_and(|arg| arg == "--relay-mcp") {
+        ensure!(
+            args.len() == 3,
+            "Local relay helper requires exactly one session identity"
+        );
+        return tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(relay_mcp::run(&args[2]));
+    }
+    supervisor_main()
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn supervisor_main() -> Result<()> {
     #[cfg(windows)]
     lascoria_runtime::process::workspace_helper()?;
     let directory = lascoria_runtime::state_dir();

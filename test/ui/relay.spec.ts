@@ -64,8 +64,15 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await page.getByRole('button', { name: 'Local messages', exact: true }).click();
     const modal = page.getByRole('dialog');
     await modal.getByLabel('Other session').selectOption(b);
+    await expect(modal.getByRole('checkbox', { name: 'Allow Muse' })).not.toBeChecked();
+    await modal.getByRole('checkbox', { name: 'Allow Muse' }).check();
     await modal.getByRole('button', { name: 'Connect sessions', exact: true }).click();
     await expect(modal.getByRole('button', { name: 'Disconnect sessions' })).toBeVisible();
+    expect(
+      (await request(directory, 'relay/get', { sessionId: a })).connections[0].allowAgentMessages,
+    ).toBe(true);
+    await expect(modal.getByRole('checkbox', { name: 'Allow Muse' })).toBeChecked();
+    await expect(modal.getByRole('checkbox', { name: 'Allow Muse' })).toBeDisabled();
     await modal.getByLabel('Message', { exact: true }).fill('UI selected finding for B');
     await modal.getByRole('button', { name: 'Share message', exact: true }).click();
     await expect(modal.getByText('UI selected finding for B', { exact: true })).toBeVisible();
