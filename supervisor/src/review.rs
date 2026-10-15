@@ -6,21 +6,20 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use tokio::{
     io::AsyncReadExt,
-    process::Command,
     time::{Duration, timeout},
 };
 use uuid::Uuid;
 
 async fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
-    let mut child = Command::new("git")
+    let mut child = lascoria_runtime::command("git")
         .args([
             "-c",
             "core.fsmonitor=false",
             "-c",
-            "core.hooksPath=/dev/null",
+            lascoria_runtime::hooks_config(),
         ])
         .arg("-C")
-        .arg(root)
+        .arg(dunce::simplified(root))
         .args(args)
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -151,9 +150,8 @@ pub async fn capture(root: &Path) -> Result<Value> {
             tracked_bytes <= 16 * 1024 * 1024,
             "Tracked content exceeds 16 MiB fingerprint budget"
         );
-        use std::os::unix::fs::MetadataExt;
         digest.update(b"present");
-        digest.update(meta.mode().to_be_bytes());
+        digest.update(lascoria_runtime::fingerprint_mode(&meta).to_be_bytes());
         digest.update((content.len() as u64).to_be_bytes());
         digest.update(&content);
     }
@@ -198,8 +196,7 @@ pub async fn capture(root: &Path) -> Result<Value> {
         ensure!(bytes <= 4 * 1024 * 1024, "Capture exceeds 4 MiB budget");
         digest.update((name.len() as u64).to_be_bytes());
         digest.update(name.as_bytes());
-        use std::os::unix::fs::MetadataExt;
-        digest.update(meta.mode().to_be_bytes());
+        digest.update(lascoria_runtime::fingerprint_mode(&meta).to_be_bytes());
         digest.update((content.len() as u64).to_be_bytes());
         digest.update(&content);
         untracked.push(json!({"path": name, "bytes":content.len(), "sha256":hex(&Sha256::digest(&content)), "text":String::from_utf8(content).ok()}));
@@ -215,6 +212,45 @@ pub async fn handle(
     params: &Value,
     request_id: &str,
 ) -> Result<Value> {
+    if operation == "drafts/get" {
+        let database = db.lock().unwrap();
+        let mut drafts = serde_json::Map::new();
+        for session in database.all("sessions")? {
+            let id = session["id"].as_str().context("Invalid session")?;
+            if let Some(draft) = database.get("presentation", &format!("draft:{id}"))? {
+                drafts.insert(id.to_owned(), draft);
+            }
+        }
+        return Ok(json!({"drafts": drafts}));
+    }
+    if operation == "drafts/save" {
+        let id = params["sessionId"].as_str().context("Session required")?;
+        let text = params["text"].as_str().context("Draft text required")?;
+        ensure!(
+            text.len() <= 64000 && text.chars().count() <= 16000,
+            "Draft exceeds 16000 characters"
+        );
+        let database = db.lock().unwrap();
+        ensure!(database.get("sessions", id)?.is_some(), "Unknown session");
+        let key = format!("draft:{id}");
+        let prior = database
+            .get("presentation", &key)?
+            .unwrap_or(json!({"revision":0,"text":""}));
+        if prior["requestId"] == request_id {
+            ensure!(
+                prior["text"] == text && prior["expectedRevision"] == params["expectedRevision"],
+                "Draft retry changed"
+            );
+            return Ok(prior);
+        }
+        ensure!(
+            params["expectedRevision"] == prior["revision"],
+            "Draft changed in another window; retain your text and reload"
+        );
+        let row = json!({"text":text,"revision":prior["revision"].as_u64().unwrap_or(0)+1,"requestId":request_id,"expectedRevision":params["expectedRevision"]});
+        database.put("presentation", &key, &row)?;
+        return Ok(row);
+    }
     if operation == "presentation/get" {
         return Ok(db
             .lock()
@@ -434,7 +470,7 @@ pub async fn handle(
     Ok(row)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};

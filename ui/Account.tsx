@@ -1,3 +1,4 @@
+import { MuseSetup } from './MuseSetup';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,7 +10,8 @@ export type AccountStatus = {
   logoutPending?: boolean;
   mode: 'loggedOut' | 'subscription' | 'apiKey';
   authenticated: boolean;
-  keyConfigured: boolean;
+  keyConfigured: boolean | null;
+  keyStorageAvailable?: boolean | null;
   subscription: { state: string; label?: string };
   pending: boolean;
   outcome?: string | null;
@@ -17,10 +19,14 @@ export type AccountStatus = {
 export function Account({
   account,
   refresh,
+  onRuntimeReady,
 }: {
   account: AccountStatus | null;
   refresh: () => Promise<void>;
+  onRuntimeReady?: (ready: boolean) => void;
 }) {
+  const native = Boolean((window as any).__TAURI_INTERNALS__?.metadata);
+  const [runtimeReady, setRuntimeReady] = useState(!native);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -45,6 +51,14 @@ export function Account({
   const api = account?.mode === 'apiKey' && account.authenticated;
   return (
     <section className="account-panel" aria-label="Muse account">
+      {native && (
+        <MuseSetup
+          onReady={(ready) => {
+            setRuntimeReady(ready);
+            onRuntimeReady?.(ready);
+          }}
+        />
+      )}
       {(!account || account.unavailable) && (
         <div role="status">
           <p>Your account connection could not be checked. Unlock your Mac and retry.</p>
@@ -94,7 +108,7 @@ export function Account({
         </div>
         <button
           className="primary"
-          disabled={busy || !account}
+          disabled={busy || !account || !runtimeReady}
           onClick={() =>
             void perform('account/login', {}, async (value) => {
               setFlow(value);
@@ -147,10 +161,23 @@ export function Account({
         <p className="hint">Provider access and API billing are checked when you run a task.</p>
       )}
       <details className="account-api" open={api || undefined}>
-        <summary>API key {account?.keyConfigured ? '· saved securely' : '· optional'}</summary>
+        <summary>
+          API key{' '}
+          {account?.keyConfigured === null
+            ? '· status unavailable'
+            : account?.keyConfigured
+              ? '· saved securely'
+              : '· optional'}
+        </summary>
+        {account?.keyStorageAvailable === false && (
+          <p role="status">
+            Your secure credential store is unavailable. Unlock it to use API keys. Browser
+            subscription sign-in is still available.
+          </p>
+        )}
         <p>
-          Stored in macOS Keychain. Signing in with Muse takes precedence. API usage is never
-          enabled automatically when a subscription expires.
+          Stored in your operating system’s secure credential store. Signing in with Muse takes
+          precedence. API usage is never enabled automatically when a subscription expires.
         </p>
         <form
           onSubmit={(event: FormEvent) => {
@@ -207,7 +234,7 @@ export function Account({
           <p>
             {confirm === 'logout'
               ? 'Active turns will be cancelled before Muse hosts stop. Saved conversation history and worktrees remain available to continue after sign-in. The saved API key stays inactive until you explicitly choose it again. Your Muse CLI login is retained; returning here requires browser approval.'
-              : 'The key will be removed from macOS Keychain. If API billing is active, Muse hosts will stop and you will be signed out.'}
+              : 'The key will be removed from your secure credential store. If API billing is active, Muse hosts will stop and you will be signed out.'}
           </p>
           <div className="account-actions">
             <button disabled={busy} onClick={() => setConfirm(null)}>

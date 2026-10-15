@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   tasks,
+  nodeActivity,
   attention,
   questionAnswers,
   taskAttentionKey,
@@ -317,4 +318,36 @@ test('confirmed graceful logout is reviewable saved progress, not an execution f
   assert.ok(!queue.some((entry) => entry.kind === 'failure'));
   row.interruptions[0].shutdown.cancellation = 'unconfirmed';
   assert.ok(attention({ sessions: [row] }, {}).some((entry) => entry.kind === 'failure'));
+});
+
+test('canvas activity distinguishes work, tool use, attention and stale observation', () => {
+  const task = { id: 's:t', sessionId: 's', turnId: 't', status: 'running' };
+  const row = {
+    lifecycle: 'connected',
+    state: { current: true, items: [], userInputs: [], approvals: [] },
+  };
+  assert.deepEqual(nodeActivity(task, row), { label: 'Working', kind: 'working', busy: true });
+  row.state.items.push({
+    kind: 'toolCall',
+    turnId: 't',
+    status: 'inProgress',
+    displayLabel: { active: 'Running tests' },
+  });
+  assert.equal(nodeActivity(task, row).label, 'Running tests');
+  row.state.userInputs.push({ turnId: 't' });
+  assert.deepEqual(nodeActivity(task, row), {
+    label: 'Answer needed',
+    kind: 'waiting',
+    busy: false,
+  });
+  row.state.userInputs = [];
+  row.state.approvals.push({ requested: { turnId: 't' } });
+  assert.equal(nodeActivity(task, row).label, 'Permission needed');
+  row.state.current = false;
+  assert.deepEqual(nodeActivity(task, row), {
+    label: 'Reconnecting',
+    kind: 'unavailable',
+    busy: false,
+  });
+  assert.equal(nodeActivity({ ...task, status: 'completed' }, row).label, 'completed');
 });

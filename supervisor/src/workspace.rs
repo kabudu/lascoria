@@ -3,15 +3,15 @@ use crate::{db::now_ms, review, worker::SharedDb};
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::os::unix::fs::PermissionsExt;
 use std::{path::Path, process::Stdio};
 use tokio::{
     io::AsyncReadExt,
-    process::Command,
     time::{Duration, timeout},
 };
 
+#[cfg(unix)]
 struct ProcessGroup(u32);
+#[cfg(unix)]
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
         unsafe {
@@ -44,17 +44,17 @@ pub fn idle(db: &SharedDb, row: &Value) -> Result<()> {
 }
 
 pub async fn git(root: &Path, args: &[&str]) -> Result<String> {
-    let mut child = Command::new("git")
+    let mut child = lascoria_runtime::command("git")
         .args([
             "-c",
             "core.fsmonitor=false",
             "-c",
-            "core.hooksPath=/dev/null",
+            lascoria_runtime::hooks_config(),
             "-c",
             "commit.gpgsign=false",
         ])
         .arg("-C")
-        .arg(root)
+        .arg(dunce::simplified(root))
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
@@ -101,7 +101,9 @@ pub async fn create(source: &Path, target: &Path, session: &str) -> Result<Value
         .trim()
         .to_string();
     let branch = format!("lascoria/{}", session);
-    let target_text = target.to_str().context("Workspace path must be UTF-8")?;
+    let target_text = dunce::simplified(target)
+        .to_str()
+        .context("Workspace path must be UTF-8")?;
     git(
         source,
         &["worktree", "add", "-b", &branch, "--", target_text, &base],
@@ -166,7 +168,7 @@ async fn content_fingerprint(root: &Path) -> Result<String> {
             bytes.len() <= 1024 * 1024 && total <= 16 * 1024 * 1024,
             "Workspace content exceeds budget"
         );
-        digest.update((meta.permissions().mode() & 0o111).to_be_bytes());
+        digest.update((lascoria_runtime::fingerprint_mode(&meta) & 0o111).to_be_bytes());
         digest.update((bytes.len() as u64).to_be_bytes());
         digest.update(bytes);
     }
@@ -311,19 +313,34 @@ pub async fn run(db: SharedDb, row: Value, id: String, params: Value) -> Result<
         "Deadline must be 1..120 seconds"
     );
     let before = content_fingerprint(Path::new(row["workspace"].as_str().unwrap())).await?;
-    let mut child = Command::new("/bin/sh");
+    #[cfg(unix)]
+    let mut child = {
+        let mut c = lascoria_runtime::command("/bin/sh");
+        c.args(["-c", command]);
+        c
+    };
+    #[cfg(windows)]
+    let mut child = {
+        let mut c = lascoria_runtime::command(std::env::current_exe()?);
+        c.args(["--workspace-job", command]);
+        c
+    };
     child
-        .args(["-c", command])
         .current_dir(row["workspace"].as_str().unwrap())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    // A separate process group lets deadlines terminate test descendants too.
+    #[cfg(windows)]
+    child.stdin(Stdio::piped());
+    // Each platform owns the complete test process tree, including detached descendants.
+    #[cfg(unix)]
     child.process_group(0);
     let mut child = child.spawn()?;
-    let pid = child.id().context("Test process ID missing")?;
-    let group = ProcessGroup(pid);
+    #[cfg(unix)]
+    let group = ProcessGroup(child.id().context("Test process ID missing")?);
+    #[cfg(windows)]
+    let group = lascoria_runtime::process::ProcessTree::new(&mut child)?;
     let out = child.stdout.take().unwrap();
     let err = child.stderr.take().unwrap();
     {

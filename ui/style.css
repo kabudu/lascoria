@@ -1843,3 +1843,77 @@ main {
     justify-self: start;
   }
 }
+
+/* One quiet motion cue per active node; waiting/stale observations never spin. */
+.task-node .status-dot.working {
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  background: transparent;
+  flex: 0 0 10px;
+  animation: node-working 1.1s linear infinite;
+}
+.task-node .status-dot.waiting {
+  background: var(--attention);
+}
+.task-node .status-dot.unavailable {
+  background: transparent;
+  border: 1px solid var(--muted);
+}
+.task-node > span {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.node-activity-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes node-working {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-node .status-dot.working {
+    animation: none;
+    border-color: var(--accent);
+  }
+}
+
+.runtime-setup {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--raised);
+  display: grid;
+  gap: 12px;
+}
+.runtime-setup h3,
+.runtime-setup p {
+  margin: 0;
+}
+.runtime-setup input {
+  width: 100%;
+  margin: 8px 0;
+}
+.runtime-setup progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.runtime-ready {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.runtime-ready code {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}
+
+.runtime-confirm {
+  border-color: var(--accent);
+}

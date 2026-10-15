@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.97"
 
 [dependencies]
+lascoria-runtime = { path = "../runtime-support" }
 anyhow = "1"
 fs2 = "0.4"
 libc = "0.2"
@@ -15,6 +16,10 @@ tokio-util = { version = "0.7", features = ["codec"] }
 futures-util = { version = "0.3", features = ["sink"] }
 uuid = { version = "1", features = ["v4", "v7"] }
 sha2 = "0.11"
+dunce = "1.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+keyring = "4.2"

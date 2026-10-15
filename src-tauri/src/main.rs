@@ -1,18 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod muse_setup;
 use serde_json::{Value, json};
-use std::{env, path::PathBuf, process::Stdio};
+use std::{path::PathBuf, process::Stdio};
+use tauri::{Emitter, Manager};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::UnixStream,
     time::{Duration, timeout},
 };
 
 fn directory() -> PathBuf {
-    env::var_os("SCH_STATE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env::var_os("HOME").unwrap()).join(".spatial-constellation")
-        })
+    lascoria_runtime::state_dir()
 }
 async fn request(operation: &str, params: Value, id: String) -> Result<Value, String> {
     if ![
@@ -47,6 +44,8 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "output",
         "presentation/get",
         "presentation/save",
+        "drafts/get",
+        "drafts/save",
         "artifact/capture",
         "artifact/check",
         "artifact/read",
@@ -73,7 +72,7 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         Duration::from_secs(30)
     };
     let result = timeout(duration, async {
-        let mut stream = UnixStream::connect(root.join("supervisor.sock")).await?;
+        let mut stream = lascoria_runtime::platform::connect(&root).await?;
         stream.write_all(payload.as_bytes()).await?;
         let mut data = Vec::new();
         stream
@@ -102,31 +101,51 @@ async fn supervisor_request(operation: String, params: Value, id: String) -> Res
     request(&operation, params, id).await
 }
 #[tauri::command]
-async fn connect_supervisor() -> Result<Value, String> {
+async fn connect_supervisor(app: tauri::AppHandle) -> Result<Value, String> {
     if let Ok(status) = request("status", json!({}), "desktop-connect".into()).await {
         return Ok(status);
     }
-    // Source-checkout development unit. No worker or host is tied to the window lifetime.
-    let binary = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../supervisor/target/debug/constellation-supervisor");
+    let resources = app
+        .path()
+        .resource_dir()
+        .map(|path| dunce::simplified(&path).to_owned())
+        .map_err(|e| e.to_string())?
+        .join("runtime");
+    let binary = resources.join(lascoria_runtime::executable("constellation-supervisor"));
+    if !binary.is_file() {
+        return Err("Installed Lascoria runtime is missing. Reinstall Lascoria or rebuild the runtime bundle.".into());
+    }
     let mut cmd = std::process::Command::new(binary);
-    cmd.env("SCH_AUTH_MANAGED", "1")
+    cmd.env("SCH_RESOURCES", &resources)
+        .env(
+            "SCH_NODE",
+            resources.join(lascoria_runtime::executable("node")),
+        )
+        .env("SCH_AUTH_MANAGED", "1")
         .env("SCH_PROVIDER", "meta")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    use std::os::unix::process::CommandExt;
-    unsafe {
-        cmd.pre_exec(|| {
-            if libc_setsid() < 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc_setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x00000008 | 0x00000200);
     }
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("Build the supervisor first: {e}"))?;
+        .map_err(|e| format!("Could not start the installed supervisor: {e}"))?;
     std::thread::spawn(move || {
         let _ = child.wait();
     });
@@ -150,10 +169,16 @@ async fn open_account_browser(url: String) -> Result<(), String> {
     }
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        tokio::process::Command::new("/usr/bin/open")
-            .arg(url)
-            .kill_on_drop(true)
-            .status(),
+        tokio::process::Command::new(if cfg!(target_os = "macos") {
+            "/usr/bin/open"
+        } else if cfg!(windows) {
+            "explorer.exe"
+        } else {
+            "xdg-open"
+        })
+        .arg(url)
+        .kill_on_drop(true)
+        .status(),
     )
     .await
     .map_err(|_| "Opening your browser timed out")?
@@ -163,9 +188,14 @@ async fn open_account_browser(url: String) -> Result<(), String> {
     }
     Ok(())
 }
+#[cfg(unix)]
 unsafe extern "C" {
     #[link_name = "setsid"]
     fn libc_setsid() -> i32;
+}
+#[tauri::command]
+fn finish_quit(app: tauri::AppHandle) {
+    app.exit(0);
 }
 fn main() {
     // Diagnostic entry point exercises the exact native bridge without a WebView.
@@ -192,11 +222,26 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .manage(muse_setup::Setup::default())
         .invoke_handler(tauri::generate_handler![
             supervisor_request,
             connect_supervisor,
-            open_account_browser
+            open_account_browser,
+            finish_quit,
+            muse_setup::runtime_status,
+            muse_setup::runtime_select,
+            muse_setup::runtime_install,
+            muse_setup::runtime_cancel
         ])
-        .run(tauri::generate_context!())
-        .expect("Tauri application failed");
+        .build(tauri::generate_context!())
+        .expect("Tauri application failed")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event
+                && code.is_none()
+                && !app.webview_windows().is_empty()
+            {
+                api.prevent_exit();
+                let _ = app.emit("lascoria-before-quit", ());
+            }
+        });
 }

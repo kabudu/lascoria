@@ -316,3 +316,34 @@ export function normalizedWheel(x: number, y: number, mode: number, height: numb
   const factor = mode === 1 ? 16 : mode === 2 ? height : 1;
   return { x: x * factor, y: y * factor };
 }
+
+/** Activity is an observation, never a percentage or an inferred model thought. */
+export function nodeActivity(task: Task, session: SessionRow, connected = true) {
+  const active = ['running', 'inProgress', 'pending', 'queued'].includes(task.status);
+  if (!active) return { label: task.status, kind: task.status, busy: false };
+  if (!connected || !session.state.current || session.lifecycle !== 'connected')
+    return { label: 'Reconnecting', kind: 'unavailable', busy: false };
+  if (!task.item) {
+    if ((session.state.userInputs ?? []).some((input) => input.turnId === task.turnId))
+      return { label: 'Answer needed', kind: 'waiting', busy: false };
+    if (
+      (session.state.approvals ?? []).some((approval) => approval.requested.turnId === task.turnId)
+    )
+      return { label: 'Permission needed', kind: 'waiting', busy: false };
+  }
+  if (['pending', 'queued'].includes(task.status))
+    return { label: 'Queued', kind: 'waiting', busy: false };
+  const tool =
+    !task.item &&
+    (session.state.items ?? []).findLast(
+      (item) =>
+        item.turnId === task.turnId && item.kind === 'toolCall' && item.status === 'inProgress',
+    );
+  const detail =
+    tool && (typeof tool.displayLabel === 'object' ? tool.displayLabel?.active : tool.displayLabel);
+  return {
+    label: typeof detail === 'string' && detail.trim() ? detail.slice(0, 96) : 'Working',
+    kind: 'working',
+    busy: true,
+  };
+}

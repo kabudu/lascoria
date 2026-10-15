@@ -1,4 +1,4 @@
-//! Account policy and Keychain storage. Secrets never enter the command journal.
+//! Account policy and operating-system credential storage. Secrets never enter the command journal.
 use crate::worker::SharedDb;
 use anyhow::{Context, Result, bail, ensure};
 use futures_util::StreamExt;
@@ -6,7 +6,6 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     env, fs,
-    os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::Stdio,
     sync::{
@@ -25,11 +24,7 @@ const POLICY: &str = "account-policy-v1";
 const SERVICE: &str = "dev.lascoria.credentials";
 
 fn root() -> PathBuf {
-    env::var_os("SCH_STATE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env::var_os("HOME").unwrap()).join(".spatial-constellation")
-        })
+    lascoria_runtime::state_dir()
 }
 fn config() -> PathBuf {
     fs::canonicalize(root())
@@ -54,7 +49,11 @@ fn key() -> Result<Option<Vec<u8>>> {
 }
 #[cfg(not(target_os = "macos"))]
 fn key() -> Result<Option<Vec<u8>>> {
-    bail!("Secure account storage currently requires macOS")
+    match keyring::Entry::new(SERVICE, &account())?.get_secret() {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => bail!("Secure credential store unavailable; unlock your account vault and retry"),
+    }
 }
 #[cfg(target_os = "macos")]
 fn save_key(value: Option<&[u8]>) -> Result<()> {
@@ -71,8 +70,13 @@ fn save_key(value: Option<&[u8]>) -> Result<()> {
     }
 }
 #[cfg(not(target_os = "macos"))]
-fn save_key(_: Option<&[u8]>) -> Result<()> {
-    bail!("Secure account storage currently requires macOS")
+fn save_key(value: Option<&[u8]>) -> Result<()> {
+    let entry = keyring::Entry::new(SERVICE, &account())?;
+    match value.map_or_else(|| entry.delete_credential(), |v| entry.set_secret(v)) {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) if value.is_none() => Ok(()),
+        Err(_) => bail!("Could not update the secure Lascoria credential entry"),
+    }
 }
 
 async fn vault_permit() -> Result<tokio::sync::OwnedSemaphorePermit> {
@@ -85,8 +89,8 @@ async fn vault_permit() -> Result<tokio::sync::OwnedSemaphorePermit> {
             .acquire_owned(),
     )
     .await
-    .context("Keychain operation still in progress; unlock your Mac and retry")?
-    .context("Keychain access unavailable")
+    .context("Credential operation still in progress; unlock your account vault and retry")?
+    .context("Secure credential storage unavailable")
 }
 async fn read_key() -> Result<Option<Vec<u8>>> {
     let permit = vault_permit().await?;
@@ -98,7 +102,7 @@ async fn read_key() -> Result<Option<Vec<u8>>> {
         }),
     )
     .await
-    .context("Keychain read timed out")??
+    .context("Credential read timed out")??
 }
 async fn write_key(value: Option<Vec<u8>>) -> Result<()> {
     let permit = vault_permit().await?;
@@ -110,7 +114,7 @@ async fn write_key(value: Option<Vec<u8>>) -> Result<()> {
         }),
     )
     .await
-    .context("Keychain update timed out; check account settings before retrying")??
+    .context("Credential update timed out; check account settings before retrying")??
 }
 
 pub fn validate(operation: &str, params: &Value) -> Result<()> {
@@ -155,6 +159,10 @@ pub fn managed(db: &SharedDb) -> bool {
 }
 /// Configure a new SDK process from current non-secret policy, never from ambient API keys.
 pub async fn configure(command: &mut Command, db: &SharedDb) -> Result<()> {
+    if let Some(path) = lascoria_runtime::selected_muse() {
+        command.env("MUSE_BIN", path);
+    }
+    command.env("MUSE_NO_AUTO_UPDATE", "1");
     if !managed(db) {
         return Ok(());
     }
@@ -198,14 +206,16 @@ impl Host {
                 "Account configuration must be a directory, not a symlink"
             );
         }
-        fs::create_dir_all(config())?;
-        fs::set_permissions(config(), fs::Permissions::from_mode(0o700))?;
+        lascoria_runtime::platform::private_dir(&config())?;
         let script = env::var_os("SCH_ACCOUNT_WORKER")
             .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/auth-worker.js")
-            });
-        let mut child = Command::new(env::var("SCH_NODE").unwrap_or_else(|_| "node".into()))
+            .unwrap_or_else(|| lascoria_runtime::worker("auth-worker.js"));
+        let mut command = lascoria_runtime::command(lascoria_runtime::node());
+        if let Some(path) = lascoria_runtime::selected_muse() {
+            command.env("MUSE_BIN", path);
+        }
+        command.env("MUSE_NO_AUTO_UPDATE", "1");
+        let mut child = command
             .arg(script)
             .env_remove("META_API_KEY")
             .env_remove("MUSE_AUTH_PATH")
@@ -270,6 +280,7 @@ pub struct Auth {
     mode: String,
     enabled: bool,
     configured: bool,
+    vault_available: bool,
     account: Value,
     outcome: Value,
     pending: bool,
@@ -296,6 +307,7 @@ impl Auth {
             mode,
             enabled,
             configured: false,
+            vault_available: false,
             account: json!({"state":"loggedOut"}),
             outcome: Value::Null,
             pending: false,
@@ -354,7 +366,19 @@ impl Auth {
             return Ok(value.clone());
         }
         if self.enabled {
-            self.configured = read_key().await?.is_some();
+            match read_key().await {
+                Ok(value) => {
+                    self.configured = value.is_some();
+                    self.vault_available = true;
+                }
+                Err(error) => {
+                    self.vault_available = false;
+                    // Optional BYOK storage must not gate browser subscription access.
+                    if self.mode == "apiKey" {
+                        return Err(error);
+                    }
+                }
+            }
             if self.mode == "subscription" {
                 let state = self.call("read").await?;
                 self.account = state["account"].clone();
@@ -386,7 +410,7 @@ impl Auth {
                 && !self.needs_login)
             || (self.mode == "apiKey" && self.configured);
         self.ready.store(authenticated, Ordering::SeqCst);
-        let value = json!({"managed":self.enabled,"mode":self.mode,"authenticated":authenticated,"keyConfigured":self.configured,"subscription":self.account,"pending":self.pending,"outcome":self.outcome,"reconnectRequired":self.needs_login,"logoutPending":self.logout_pending});
+        let value = json!({"managed":self.enabled,"mode":self.mode,"authenticated":authenticated,"keyConfigured":if self.vault_available {json!(self.configured)} else {Value::Null},"keyStorageAvailable":if self.enabled {json!(self.vault_available)} else {Value::Null},"subscription":self.account,"pending":self.pending,"outcome":self.outcome,"reconnectRequired":self.needs_login,"logoutPending":self.logout_pending});
         self.cached = Some((Instant::now(), value.clone()));
         Ok(value)
     }

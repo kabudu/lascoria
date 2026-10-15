@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    process::{Child, ChildStdin, Command},
+    process::{Child, ChildStdin},
     sync::oneshot,
     task::JoinHandle,
     time::timeout,
@@ -37,7 +37,7 @@ impl Dedicated {
         session: String,
         generation: u64,
     ) -> Result<Self> {
-        let mut command = Command::new(node);
+        let mut command = lascoria_runtime::command(node);
         crate::auth::configure(&mut command, &db).await?;
         let mut child = command
             .arg(script)
