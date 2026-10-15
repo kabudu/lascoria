@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show readable allowance durations, simplify saved-change and transcript controls, and add explicit UX/DX/language and attachment release gates.
+- Resolve competing draft edits with visible comparisons and explicit choices; recover committed saves after lost replies while retaining safe retry identities.
+
 - Add read-only Muse subscription usage and a local `/usage` view, plus session-scoped slash-skill discovery and native typed invocation. Keep observations and explicit skill selection separate from model execution.
 - Preserve constellation scene positions and zoom/pan when floating panels expand or collapse, and show a checking state before offering Muse installation.
 - Add pinned Muse installation onboarding with verified vendor downloads, progress, cancellation, existing-runtime selection and SDK compatibility checks.

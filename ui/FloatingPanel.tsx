@@ -40,6 +40,7 @@ export function FloatingPanel({
     y: Math.max(76, Math.min(y, size.height - 64)),
   });
   const visible = clamp(position.x, position.y);
+  const collapsed = layout?.collapsed ?? position.collapsed;
   return (
     <section
       ref={ref}
@@ -97,14 +98,14 @@ export function FloatingPanel({
           {badge !== undefined && <span className="count">{badge}</span>}
         </button>
         <button
-          aria-label={`${position.collapsed ? 'Expand' : 'Collapse'} ${title} panel`}
-          aria-expanded={!position.collapsed}
-          onClick={() => onChange({ ...position, ...visible, collapsed: !position.collapsed })}
+          aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title} panel`}
+          aria-expanded={!collapsed}
+          onClick={() => onChange({ ...position, ...visible, collapsed: !collapsed })}
         >
-          {position.collapsed ? '+' : '−'}
+          {collapsed ? '+' : '−'}
         </button>
       </div>
-      <div className="panel-content" hidden={position.collapsed}>
+      <div className="panel-content" hidden={collapsed}>
         {children}
       </div>
     </section>

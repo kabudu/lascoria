@@ -547,7 +547,7 @@ test('real Muse implementation, tests and review through React and the native Ru
       join(workspace, 'unsafe.txt'),
       '<img src=x onerror=window.untrustedExecuted=true>',
     );
-    await page.getByRole('button', { name: 'Capture working-tree diff', exact: true }).click();
+    await page.getByRole('button', { name: 'Save snapshot', exact: true }).click();
     await expect(page.getByText('Untracked: sum.mjs', { exact: false })).toBeVisible();
     await expect(page.getByText('Current captured content', { exact: true })).toBeVisible();
     const captures = await request(directory, 'review/list', { sessionId: sessions[0] });
