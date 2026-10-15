@@ -4,7 +4,7 @@
 
 Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.
 
-[Release-readiness backlog](docs/release-readiness.md) tracks Muse installation onboarding, signed GitHub updates, repository rename/publication preparation and remaining product gates.
+[Release policy and local CI](docs/RELEASE.md) defines private validation and public-opening authority. [Release-readiness backlog](docs/release-readiness.md) tracks Muse installation onboarding, signed GitHub updates, repository rename/publication preparation and remaining product gates.
 
 [Lascoria identity](docs/branding.md) documents the folded-wing mark, light-first palette, assets and compatibility boundaries.
 
