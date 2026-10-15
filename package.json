@@ -15,7 +15,8 @@
     "test:ui": "npm run build && cargo build --manifest-path src-tauri/Cargo.toml && playwright test",
     "check:ui": "tsc && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "benchmark:runtime": "npm run build && node testing/stage-c-benchmark.js",
-    "benchmark:ui": "playwright test test/ui/benchmark.spec.ts"
+    "benchmark:ui": "playwright test test/ui/benchmark.spec.ts",
+    "benchmark:concurrent": "npm run build && node testing/concurrent-trial.js"
   },
   "repository": {
     "type": "git",

@@ -57,6 +57,7 @@ test(
         XDG_CACHE_HOME: join(root, 'cache'),
         SCH_STATE_DIR: directory,
         SCH_PROVIDER: 'meta',
+        META_API_KEY: 'stage-a-loopback-only', // Fixed fake credential; never use the user's Keychain login.
         MUSE_BIN: proxy,
         SCH_NATIVE_MUSE: process.env.MUSE_BIN ?? 'muse',
         SCH_SATURATION_SOCKET: controlPath,

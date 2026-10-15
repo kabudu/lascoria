@@ -22,18 +22,36 @@ use std::{
 use tokio::{
     net::{UnixListener, UnixStream},
     sync::{Semaphore, mpsc, oneshot},
+    task::JoinSet,
     time::{interval, timeout},
 };
 use tokio_util::codec::{Framed, LinesCodec};
 use uuid::Uuid;
 use worker::{Broker, SharedDb, Worker};
 
+#[derive(Clone)]
+struct Lane {
+    actor: Arc<tokio::sync::Mutex<Actor>>,
+    admission: Arc<Semaphore>,
+    tail: Arc<Mutex<Option<oneshot::Receiver<()>>>>,
+}
+impl Lane {
+    fn new(actor: Actor) -> Self {
+        Self {
+            actor: Arc::new(tokio::sync::Mutex::new(actor)),
+            admission: Arc::new(Semaphore::new(4)),
+            tail: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
 struct Actor {
     db: SharedDb,
     workers: HashMap<String, Worker>,
     node: String,
     script: PathBuf,
-    broker: Option<Arc<Broker>>,
+    broker: Arc<tokio::sync::Mutex<Option<Arc<Broker>>>>,
+    target: Option<String>,
 }
 impl Actor {
     fn row(&self, id: &str) -> Result<Value> {
@@ -68,7 +86,7 @@ impl Actor {
             self.db.clone(),
             id.clone(),
             generation,
-            &mut self.broker,
+            &self.broker,
         )
         .await?;
         {
@@ -197,20 +215,21 @@ impl Actor {
         Ok(command)
     }
     async fn recovery_tick(&mut self) -> Result<()> {
-        let rows = self.db.lock().unwrap().all("sessions")?;
-        for row in rows {
-            if row["lifecycle"] == "interrupted"
-                && row["durability"] == "durable"
-                && row["attempts"].as_u64().unwrap_or(0) < 2
-            {
-                let id = row["id"].as_str().unwrap();
-                if let Err(error) = self.recover(id, None).await {
-                    let mut row = self.row(id)?;
-                    row["lifecycle"] = json!("interrupted");
-                    row["recoveryError"] = json!(error.to_string());
-                    row["state"]["current"] = json!(false);
-                    self.save(&row)?;
-                }
+        let Some(target) = self.target.as_deref() else {
+            return Ok(());
+        };
+        let row = self.row(target)?;
+        if row["lifecycle"] == "interrupted"
+            && row["durability"] == "durable"
+            && row["attempts"].as_u64().unwrap_or(0) < 2
+        {
+            let id = row["id"].as_str().unwrap();
+            if let Err(error) = self.recover(id, None).await {
+                let mut row = self.row(id)?;
+                row["lifecycle"] = json!("interrupted");
+                row["recoveryError"] = json!(error.to_string());
+                row["state"]["current"] = json!(false);
+                self.save(&row)?;
             }
         }
         Ok(())
@@ -567,9 +586,6 @@ impl Actor {
         for (_, mut worker) in self.workers.drain() {
             worker.stop().await;
         }
-        if let Some(broker) = self.broker.take() {
-            broker.stop().await;
-        }
     }
 }
 
@@ -604,7 +620,7 @@ async fn connection(
         );
         started = Some(Instant::now());
         if request["operation"] == "diagnostics" { return Ok(metrics.lock().unwrap().snapshot()); }
-        // Snapshot reads remain available while the serialized command actor is recovering.
+        // Snapshot reads bypass session command lanes, including during recovery.
         if request["operation"] == "status" {
             let db = db.lock().unwrap();
             if request["params"]["since"].as_str().is_some_and(|version| version == db.version()) {
@@ -730,19 +746,34 @@ async fn main() -> Result<()> {
     let node = env::var("SCH_NODE").unwrap_or_else(|_| "node".into());
     let (sender, mut requests) = mpsc::channel::<Call>(16);
     let permits = Arc::new(Semaphore::new(16));
-    let mut actor = Actor {
-        db,
+    let broker = Arc::new(tokio::sync::Mutex::new(None));
+    let make_actor = |target| Actor {
+        db: db.clone(),
         workers: HashMap::new(),
-        node,
-        script,
-        broker: None,
+        node: node.clone(),
+        script: script.clone(),
+        broker: broker.clone(),
+        target,
     };
+    let global = Lane::new(make_actor(None));
+    let lanes = Arc::new(Mutex::new(HashMap::new()));
+    for row in db.lock().unwrap().all("sessions")? {
+        let id = row["id"].as_str().unwrap().to_owned();
+        lanes
+            .lock()
+            .unwrap()
+            .insert(id.clone(), Lane::new(make_actor(Some(id))));
+    }
+    // Includes work whose IPC client has disconnected. No unbounded detached tasks.
+    let work_permits = Arc::new(Semaphore::new(16));
+    let mut tasks = JoinSet::new();
+    let mut in_flight = std::collections::HashSet::new();
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let mut tick = interval(Duration::from_secs(1));
     println!("{}", json!({"pid":std::process::id(),"socket":socket_path}));
     let metrics = Arc::new(Mutex::new(metrics::Metrics::new()));
     let accept_metrics = metrics.clone();
-    let accept_db = actor.db.clone();
+    let accept_db = db.clone();
     let accept_task = tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
             if let Ok(permit) = permits.clone().try_acquire_owned() {
@@ -763,19 +794,132 @@ async fn main() -> Result<()> {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => break,
             _ = term.recv() => break,
-            _ = tick.tick() => { if let Err(error) = actor.recovery_tick().await { eprintln!("Recovery: {error}"); } }
+            Some(done) = tasks.join_next(), if !tasks.is_empty() => {
+                match done {
+                    Ok(Some(id)) => { in_flight.remove(&id); }
+                    Ok(None) => {}
+                    Err(error) => { eprintln!("Session task failed: {error}"); break; }
+                }
+            }
+            _ = tick.tick() => {
+                let candidates: Vec<_> = {
+                    let rows = db.lock().unwrap().all("sessions")?;
+                    let lanes = lanes.lock().unwrap();
+                    rows.iter().filter(|row| row["lifecycle"] == "interrupted" && row["durability"] == "durable" && row["attempts"].as_u64().unwrap_or(0) < 2)
+                        .filter_map(|row| lanes.get(row["id"].as_str()?).cloned()).collect()
+                };
+                for lane in candidates {
+                    if tasks.len() >= 16 || lane.admission.available_permits() < 4 { continue; }
+                    let Ok(mut actor) = lane.actor.try_lock_owned() else { continue };
+                    let Ok(permit) = work_permits.clone().try_acquire_owned() else { break };
+                    tasks.spawn(async move {
+                        let _permit = permit;
+                        if let Err(error) = actor.recovery_tick().await { eprintln!("Recovery: {error}"); }
+                        None::<String>
+                    });
+                }
+            }
             Some(call) = requests.recv() => {
-                metrics.lock().unwrap().record_queue(call.enqueued.elapsed().as_secs_f64() * 1000.0);
-                let result = actor.handle(call.request).await;
-                let stop = result.as_ref().is_ok_and(|value| value["stopping"] == true);
-                let _ = call.response.send(result);
-                if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
+                if call.request["operation"] == "stop" {
+                    // A shutdown is a barrier: finish admitted work before validating affected sessions.
+                    while let Some(done) = tasks.join_next().await {
+                        if let Ok(Some(id)) = done { in_flight.remove(&id); }
+                    }
+                    let result = global.actor.lock().await.handle(call.request).await;
+                    let stop = result.as_ref().is_ok_and(|value| value["stopping"] == true);
+                    let _ = call.response.send(result);
+                    if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
+                    continue;
+                }
+                let id = call.request["id"].as_str().map(str::to_owned);
+                if id.as_ref().is_some_and(|id| in_flight.contains(id)) {
+                    let _ = call.response.send(Err(anyhow::anyhow!("Request ID already in flight; retry after completion")));
+                    continue;
+                }
+                let Ok(permit) = work_permits.clone().try_acquire_owned() else {
+                    let _ = call.response.send(Err(anyhow::anyhow!("Supervisor work limit reached")));
+                    continue;
+                };
+                if tasks.len() >= 16 {
+                    let _ = call.response.send(Err(anyhow::anyhow!("Supervisor work limit reached")));
+                    continue;
+                }
+                if let Some(id) = &id { in_flight.insert(id.clone()); }
+                let target = (call.request["operation"] != "start")
+                    .then(|| call.request["params"]["sessionId"].as_str()).flatten();
+                let lane = if let Some(target) = target {
+                    let lane = lanes.lock().unwrap().get(target).cloned();
+                    let Some(lane) = lane else {
+                        if let Some(id) = &id { in_flight.remove(id); }
+                        let _ = call.response.send(Err(anyhow::anyhow!("Unknown session or session admission still in progress; refresh status")));
+                        continue;
+                    };
+                    lane
+                } else { global.clone() };
+                let Ok(lane_permit) = lane.admission.clone().try_acquire_owned() else {
+                    if let Some(id) = &id { in_flight.remove(id); }
+                    let _ = call.response.send(Err(anyhow::anyhow!("Session request queue full")));
+                    continue;
+                };
+                // Link in receive order before spawning: executor polling order is not FIFO.
+                let (finished, next) = oneshot::channel();
+                let predecessor = lane.tail.lock().unwrap().replace(next);
+                let lanes = lanes.clone();
+                let metrics = metrics.clone();
+                tasks.spawn(async move {
+                    let _permit = permit;
+                    let _lane_permit = lane_permit;
+                    let _finished = finished; // Dropping also releases the next waiter after a panic.
+                    if let Some(predecessor) = predecessor { let _ = predecessor.await; }
+                    let mut actor = lane.actor.lock().await;
+                    if call.response.is_closed() { return id; }
+                    metrics.lock().unwrap().record_queue(call.enqueued.elapsed().as_secs_f64() * 1000.0);
+                    let starting = call.request["operation"] == "start";
+                    let result = actor.handle(call.request).await;
+                    // Start admission is serialized; hand ownership to a dedicated lane before replying.
+                    if starting {
+                        let workers = std::mem::take(&mut actor.workers);
+                        for (session, worker) in workers {
+                            let next = Actor {
+                                db: actor.db.clone(), workers: HashMap::from([(session.clone(), worker)]),
+                                node: actor.node.clone(), script: actor.script.clone(), broker: actor.broker.clone(),
+                                target: Some(session.clone()),
+                            };
+                            lanes.lock().unwrap().insert(session, Lane::new(next));
+                        }
+                        // Failed starts also need a lane for explicit recovery.
+                        if let Ok(rows) = actor.db.lock().unwrap().all("sessions") {
+                            let mut lanes = lanes.lock().unwrap();
+                            for row in rows {
+                                let session = row["id"].as_str().unwrap().to_owned();
+                                lanes.entry(session.clone()).or_insert_with(|| Lane::new(Actor {
+                                    db: actor.db.clone(), workers: HashMap::new(), node: actor.node.clone(),
+                                    script: actor.script.clone(), broker: actor.broker.clone(), target: Some(session),
+                                }));
+                            }
+                        }
+                    }
+                    let _ = call.response.send(result);
+                    id
+                });
             }
 
         }
     }
     accept_task.abort();
-    actor.stop().await;
+    while let Some(done) = tasks.join_next().await {
+        if let Err(error) = done {
+            eprintln!("Drain session task: {error}");
+        }
+    }
+    let actors: Vec<_> = lanes.lock().unwrap().values().cloned().collect();
+    for lane in actors {
+        lane.actor.lock().await.stop().await;
+    }
+    global.actor.lock().await.stop().await;
+    if let Some(broker) = broker.lock().await.take() {
+        broker.stop().await;
+    }
     fs::remove_file(socket_path)?;
     drop(lock);
     Ok(())
