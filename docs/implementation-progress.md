@@ -25,6 +25,7 @@ Started 15 October 2026 from `fa330e2`. Scope and acceptance criteria: [release 
 | R9 slash skills | Pending | Session-scoped native discovery and invocation; keyboard/scrollable picker; selecting does not submit or interrupt. |
 | R10 BYOK decision assistance | Research complete; design pending | First-party Jev/TypeSafe, SubQ and OpenAI Decisions contracts verified. Clean default canvas, opt-in Settings, scoped disclosure and optional metrics; no automatic policy enabled. |
 | R11 resource efficiency | Required; review pending | Whole-tree CPU/memory/energy review, per-component attribution, active/background/concurrent workloads, repeated baselines and soak/leak checks. Historical 1.4.8 results are not current release acceptance. |
+| R12 security review | Required; review pending | Threat model; authentication/IPC/WebView/filesystem/process boundaries; skills and BYOK disclosure; supply chain/install/update; adversarial OS validation; findings remediation and residual-risk acceptance. |
 | D1 Git delivery | Pending product feature | Selected-file/hunk staging, branch visibility, push, PR creation and conflict/signing UX remain open. Repository delivery evidence is recorded below, independently of this app feature. |
 | D2 editor / terminal | Pending | External editor handoff and interactive-terminal story. |
 | D3 search / archive continuation | Pending | Search/export and safe continuation with retained worktree. |
