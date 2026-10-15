@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Consolidate release-readiness gates for Muse installation onboarding, signed platform GitHub updates, the planned repository rename, packaging, lifecycle, accessibility and developer/token-efficiency work.
+
 - Gracefully cancel active turns before account host shutdown, retain cancellation evidence across recovery, and verify detached background completion and same-session continuation.
 - Add native Muse browser sign-in, subscription-first routing, separate macOS Keychain API-key storage, durable logout and background account observation without automatic paid fallback.
 - Keep Bézier connectors visibly curved when nodes are aligned; retain native/user relationship styles.

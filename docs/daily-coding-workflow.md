@@ -27,6 +27,8 @@ Lascoria is the primary product name. The existing repository URL, internal bina
 
 ## Acceptance and remaining product work
 
+The [release-readiness backlog](release-readiness.md) consolidates outstanding release gates and developer-workflow priorities, including installation, updates, durable drafts and Git delivery. Historical validation below is retained.
+
 The lifecycle test drives the public API through a real Muse host with a scripted loopback provider: isolated start, a permission-gated file implementation, direct passing tests, time/output failures, stale-preview rejection, idempotent commit, worktree removal with branch retention, and archive across supervisor restart. The browser workflow uses React and the native Rust bridge; native WebView and paid-provider checks are recorded separately when completed.
 
 This milestone does not add Git push/PR/merge/conflict resolution, selected-hunk staging, an embedded editor or PTY, desktop notifications, usage budgets, global transcript search/export, a dependency scheduler, or automatic evidence acceptance. Those remain product work; no SDK capability alone counts as a delivered UI feature.
