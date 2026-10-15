@@ -24,7 +24,10 @@ export async function spawnRuntime(options, onEvent, onDeath) {
   let host;
   try {
     host = await bounded(
-      handshake.initialize({ clientInfo: { name: 'spatial_constellation', version: '0.1.0' } }),
+      handshake.initialize({
+        clientInfo: { name: 'spatial_constellation', version: '0.1.0' },
+        capabilities: { requestedCapabilities: options.capabilities ?? [] },
+      }),
     );
     if (host.fingerprintWarning)
       throw new Error(`SDK schema mismatch: ${JSON.stringify(host.fingerprintWarning)}`);

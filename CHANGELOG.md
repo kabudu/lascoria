@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add opt-in session-scoped Muse messaging tools, bounded agent exchanges, peer isolation, revocation and retry reconciliation; retain full platform/lifecycle release gates.
+
 - Add explicit local session connections and selected-text inboxes, with idle-only Muse delivery, bounded durable identities and no automatic model calls or permission sharing. Full agent-to-agent coordination remains a release gate.
 
 - Show readable allowance durations, simplify saved-change and transcript controls, and add explicit UX/DX/language and attachment release gates.

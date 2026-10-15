@@ -10,10 +10,11 @@ type Message = {
   createdAtMillis: number;
   expiresAtMillis: number;
   delivery?: { id: string; status: string };
+  origin: 'user' | 'agent';
 };
 type Inbox = {
   revision: number;
-  connections: { sessions: string[]; active: boolean }[];
+  connections: { sessions: string[]; active: boolean; allowAgentMessages?: boolean }[];
   messages: Message[];
 };
 export function SessionRelay({
@@ -28,6 +29,7 @@ export function SessionRelay({
   const [inbox, setInbox] = useState<Inbox>();
   const [peer, setPeer] = useState('');
   const [text, setText] = useState('');
+  const [allowAgents, setAllowAgents] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [receipts, setReceipts] = useState<Record<string, Json>>({});
@@ -49,7 +51,12 @@ export function SessionRelay({
       setBusy(false);
     }
   };
-  const active = inbox?.connections.some((c) => c.active && c.sessions.includes(peer));
+  const connection = inbox?.connections.find((c) => c.active && c.sessions.includes(peer));
+  const active = Boolean(connection);
+  const toolsReady = Boolean(
+    session.state.relayToolsAvailable &&
+    sessions.find((s) => s.id === peer)?.state.relayToolsAvailable,
+  );
   return (
     <section className="session-relay" aria-label="Local session messages" aria-busy={busy}>
       <p>
@@ -61,7 +68,10 @@ export function SessionRelay({
         <select
           value={peer}
           disabled={busy || Boolean(pending.current)}
-          onChange={(e) => setPeer(e.target.value)}
+          onChange={(e) => {
+            setPeer(e.target.value);
+            setAllowAgents(false);
+          }}
         >
           <option value="">Choose a local session</option>
           {sessions
@@ -73,6 +83,28 @@ export function SessionRelay({
             ))}
         </select>
       </label>
+      {peer && (
+        <label className="relay-agent-permission">
+          <input
+            type="checkbox"
+            checked={active ? Boolean(connection?.allowAgentMessages) : allowAgents}
+            disabled={busy || active || !toolsReady}
+            onChange={(e) => setAllowAgents(e.target.checked)}
+          />
+          Allow Muse to send and read task messages (up to 8 per connection)
+        </label>
+      )}
+      {peer && !toolsReady && (
+        <p className="muted">
+          Resume both sessions with the current runtime to enable Muse messaging tools.
+        </p>
+      )}
+      {connection?.allowAgentMessages && (
+        <p className="muted">
+          Muse may exchange selected task context with this peer. No model turn starts
+          automatically. Disconnect to revoke this permission.
+        </p>
+      )}
       <div className="relay-actions">
         <button
           disabled={busy || !peer || !inbox || Boolean(pending.current)}
@@ -82,6 +114,7 @@ export function SessionRelay({
                 sessionId: session.id,
                 peerId: peer,
                 expectedRevision: inbox!.revision,
+                allowAgentMessages: allowAgents,
               });
               await refresh();
             })
@@ -138,6 +171,7 @@ export function SessionRelay({
                 {name(m.from)} → {name(m.to)}
               </strong>
               <p className="muted">
+                {m.origin === 'agent' ? 'Shared by Muse' : 'Shared by you'} ·{' '}
                 {new Date(m.createdAtMillis).toLocaleString()} · Saved in local inbox
               </p>
               <p className="relay-body">{m.body}</p>

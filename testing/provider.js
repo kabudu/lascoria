@@ -13,6 +13,7 @@ export async function provider(root, options = {}) {
     finishBurst = resolve;
   });
   const stageBSent = new Set();
+  const relaySent = new Set();
   let tools = 0;
   let asked = false;
   let produced = 0;
@@ -66,6 +67,11 @@ export async function provider(root, options = {}) {
     }
     requests.push(body);
     if (options.saturation && produced >= (options.batchSize ?? 1536)) finishBatch();
+    const relayMarker =
+      options.relay &&
+      [...body.matchAll(/STAGE_RELAY_(SEND_TO|READ_FROM):([a-f0-9-]{36}):([a-z0-9-]+)/g)].at(-1);
+    const relayCall = relayMarker && !relaySent.has(relayMarker[0]);
+    if (relayCall) relaySent.add(relayMarker[0]);
     const input = body.includes('STAGE_A_INPUT') && !asked;
     if (input) asked = true;
     const stageB =
@@ -98,7 +104,42 @@ export async function provider(root, options = {}) {
     const emit = (event) => response.write('data: ' + JSON.stringify(event) + '\n\n');
     response.writeHead(200, { 'content-type': 'text/event-stream' });
     emit({ type: 'response.created', sequence_number: 1, response: frame('in_progress') });
-    if (input)
+    if (relayCall) {
+      const item = {
+        type: 'function_call',
+        id: 'fc_relay_' + requests.length,
+        call_id: 'call_relay_' + requests.length,
+        name:
+          'mcp__lascoria_local__' +
+          (relayMarker[1] === 'SEND_TO' ? 'send_message' : 'read_messages'),
+        arguments: JSON.stringify(
+          relayMarker[1] === 'SEND_TO'
+            ? {
+                peerId: relayMarker[2],
+                messageId: relayMarker[3],
+                body: 'Selected evidence from ' + relayMarker[3],
+              }
+            : { peerId: relayMarker[2] },
+        ),
+        status: 'completed',
+      };
+      // Exercise the canonical native tool IDs reported by Muse, with complete stream items.
+      emit({
+        type: 'response.output_item.added',
+        sequence_number: 2,
+        output_index: 0,
+        item: { ...item, arguments: '', status: 'in_progress' },
+      });
+      emit({
+        type: 'response.function_call_arguments.done',
+        sequence_number: 3,
+        output_index: 0,
+        item_id: item.id,
+        name: item.name,
+        arguments: item.arguments,
+      });
+      emit({ type: 'response.output_item.done', sequence_number: 4, output_index: 0, item });
+    } else if (input)
       emit({
         type: 'response.function_call_arguments.done',
         sequence_number: 2,
@@ -207,7 +248,7 @@ export async function provider(root, options = {}) {
         if (!response.destroyed) {
           emit({
             type: 'response.completed',
-            sequence_number: 3,
+            sequence_number: relayCall ? 5 : 3,
             response: {
               ...frame('completed'),
               usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },

@@ -32,7 +32,7 @@ Show source and recipient names, workspace/project scope, the exact content bein
 
 The Rust supervisor owns the relay in its existing private SQLite journal and owner-authenticated Unix socket / Windows named pipe. There is no network listener, machine discovery, user directory, external messaging service or cross-user transport. Only session IDs in this supervisor registry are eligible.
 
-From **Workspace menu → Local messages**, select another local session, connect explicitly and share selected text. Sharing stores it in the local inbox without calling a model. The recipient can choose **Ask Muse about this** to start a normal Muse turn when idle. It does not steer active work, answer questions or approve tools. Replies remain in that session's transcript; the user must explicitly select and share any reply. Messages are labelled user-originated, never represented as agent-generated messages.
+From **Workspace menu → Local messages**, select another local session, connect explicitly and share selected text. Sharing stores it in the local inbox without calling a model. The recipient can choose **Ask Muse about this** to start a normal Muse turn when idle. It does not steer active work, answer questions or approve tools. Replies remain in that session's transcript; the user must explicitly select and share any reply. This user-directed path labels messages user-originated; the separate Muse tool path retains agent attribution.
 
 Protocol v1 adds the optional `localRelay` feature and these owner-authenticated operations:
 
@@ -47,10 +47,21 @@ Limits: 8,192 UTF-8 bytes per message, 20 new messages per sender per minute, 12
 
 An inbox entry means **saved locally**, not seen by Muse. A command receipt records admission/execution facts with the existing `accepted` / `applied` / `rejected` / `outcomeUnknown` vocabulary; it does not establish that the model read or understood a message. Transcript/native turn completion is the independent observation. Reservations are durable under the same lock as connection validation; a crash between reservation and dispatch cannot trigger a replay. The UI retains uncertain send identity while its conversation remains mounted; durable composition recovery across close is still required.
 
-Remaining R16 work: session-bound agent send/receive tools and explicit authorisation policy, curved communication links, unread/acknowledgement semantics, durable relay composition, useful live bidirectional coordination, and Windows/Linux native acceptance. This increment must not close the whole R16 gate.
+Remaining R16 work: full lifecycle/platform validation of agent send/receive tools, curved communication links, unread/acknowledgement semantics, durable relay composition, useful live bidirectional coordination, and Windows/Linux native acceptance. This increment must not close the whole R16 gate.
 
 ## Validation for the initial increment
 
 The native macOS release bundle ran two independent browser-authenticated Muse Wonder sessions. The user-directed exchange went both ways: a bounded-inbox proposal and an independent review of silent eviction. Both turns completed in their own transcripts. A final rebuilt-bundle check pasted and read back exactly 738 bytes, completed with `LASCORIA_RELAY_FINAL_OK`, displayed the concise generated task title and reconciled the same command identity without another model call. QA used its own state directory; the original user's pending question was preserved. Local evidence is retained under `.dev/backlog-native/relay-*-proof.json` and native screenshots, excluded from source control.
 
 Validation passed eight Rust tests, 31 Node integration/unit tests, five Playwright workflows, formatting/type/Clippy checks and Windows supervisor cross-compilation. After the final title/reconciliation review fix, the four affected lifecycle/account/relay/scheduling integration cases and the relay UI workflow passed again. Windows/Linux native relay execution is not established by cross-compilation. No hosted CI ran while the repository remains private, per the user's instruction.
+
+
+## Session-scoped Muse tools
+
+The agent increment uses Muse's negotiated `sessionMcp` capability. Each session gets a Rust stdio helper exposing `local_peers`, `read_messages` and `send_message`. The helper binds its owning session at launch; model arguments cannot replace that identity. It connects to the existing owner-authenticated local IPC endpoint and never starts a model turn or modifies peer permissions.
+
+Agent access is off by default. Users explicitly enable it when connecting a pair; changing the selected peer resets that choice. Existing pairs require disconnect/reconnect to change access. Native Muse tool approval still applies. Disconnect revokes new reads and sends immediately; an exact retry can reconcile an already stored message without creating another message. An enabled connection permits eight agent messages total across both directions. Only another explicit user connection can renew that budget. Reads return one non-expired peer message per page and a continuation cursor; no background polling or automatic replies occur.
+
+Messages retain user/agent attribution. Agent text is untrusted peer context and cannot approve tools, transfer filesystem authority or accept evidence. Sharing and model receipt remain separate states. Helpers use bounded line/IPC sizes and ten-second IPC deadlines. On macOS, the dedicated helper resolves its own state directory then uses a relative socket path, preventing canonical `/private/var` aliases from exceeding Unix socket limits; the Muse workspace and supervisor working directory are unchanged.
+
+Controlled-provider integration has proved real Muse tool execution in both directions, native approvals, third-session isolation, spoofed-owner rejection, quotas, revocation and exact retry. Native macOS live Wonder sessions also exchanged a proposal and independent review through these tools, with successful read/send results inspected in the app. Windows/Linux acceptance and broader lifecycle proof remain open gates. This is not completion of R16.

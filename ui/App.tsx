@@ -1596,7 +1596,7 @@ export function App() {
                     Session model &amp; effort
                   </button>
                   {status.features?.includes('localRelay') && (
-                    <button className="quiet-action" onClick={() => setModal('relay')}>
+                    <button className="session-settings-trigger" onClick={() => setModal('relay')}>
                       Connect sessions
                     </button>
                   )}
