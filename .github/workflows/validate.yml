@@ -10,6 +10,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   native:
+    # Hosted Actions are deferred until the user makes the repository public.
+    if: github.event.repository.private == false
     strategy:
       fail-fast: false
       matrix:

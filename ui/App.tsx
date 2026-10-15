@@ -185,7 +185,7 @@ export function App() {
     status.sessions[0];
   const sessionName = (row: SessionRow) =>
     prefs.sessionLabels?.[row.id] ||
-    (row.managedWorkspace?.source ?? row.workspace).split('/').filter(Boolean).at(-1) ||
+    (row.managedWorkspace?.source ?? row.workspace).split(/[\\/]/).filter(Boolean).at(-1) ||
     row.id;
   const selectedSession = useRef<string | undefined>(session?.id);
   selectedSession.current = session?.id;
@@ -781,7 +781,7 @@ export function App() {
               : 'Muse account'}
           </button>
           <button onClick={() => setModal('palette')} aria-label="Open command palette">
-            ⌘ K
+            {navigator.platform.startsWith('Mac') ? '⌘ K' : 'Ctrl K'}
           </button>
           <details
             className="workspace-menu"
