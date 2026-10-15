@@ -1443,7 +1443,12 @@ export function App() {
                           >
                             {task.status === 'completed'
                               ? 'Mark completion inspected'
-                              : 'Mark failure seen'}
+                              : task.status === 'cancelled' &&
+                                  queue.some(
+                                    (entry) => entry.target === task.id && entry.kind === 'review',
+                                  )
+                                ? 'Mark stop inspected'
+                                : 'Mark failure seen'}
                           </button>
                           <details className="inspection-note">
                             <summary>About inspection</summary>

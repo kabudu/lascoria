@@ -165,6 +165,9 @@ impl Db {
             return Ok(());
         }
         reason["atMillis"] = json!(now_ms());
+        if let Some(shutdown) = row["state"].get("shutdown") {
+            reason["shutdown"] = shutdown.clone();
+        }
         if let Some(failure) = row["state"].get("failure") {
             reason["projectionFailure"] = failure.clone();
         }

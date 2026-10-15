@@ -189,7 +189,7 @@ export function Account({
         )}
       </details>
       <p className="hint">
-        Changing sign-in mode pauses Muse hosts. Conversations and interrupted turns are retained;
+        Changing sign-in mode stops Muse hosts. Conversations and interrupted turns are retained;
         uncertain commands are never replayed. Closing the window keeps the supervisor running. Meta
         may still require you to reconnect if access expires or is revoked.
       </p>
@@ -206,7 +206,7 @@ export function Account({
           <h3>{confirm === 'logout' ? 'Sign out of Lascoria?' : 'Forget the saved API key?'}</h3>
           <p>
             {confirm === 'logout'
-              ? 'Running Muse hosts will stop. Your conversations and worktrees remain. The saved API key stays inactive until you explicitly choose it again. Your Muse CLI login is retained; returning here requires browser approval.'
+              ? 'Active turns will be cancelled before Muse hosts stop. Saved conversation history and worktrees remain available to continue after sign-in. The saved API key stays inactive until you explicitly choose it again. Your Muse CLI login is retained; returning here requires browser approval.'
               : 'The key will be removed from macOS Keychain. If API billing is active, Muse hosts will stop and you will be signed out.'}
           </p>
           <div className="account-actions">

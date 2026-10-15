@@ -6,14 +6,36 @@ import { bounded, spawnRuntime } from './runtime.js';
 export async function createSession(send, onDeath) {
   let ended = false;
   let closePromise;
-  async function close() {
+  function close() {
+    if (closePromise) return closePromise;
     closing = true;
-    ended = true;
-    clearTimeout(stateTimer);
-    if (runtime) {
-      closePromise ??= runtime.close();
-      await closePromise;
-    }
+    closePromise = (async () => {
+      const turnId = runtime?.session?.fold.activeTurnId;
+      if (!ended && turnId) {
+        shutdown = { kind: 'gracefulStop', turnId, cancellation: 'unconfirmed' };
+        try {
+          if (stale || !runtime.session.fold.current) throw new Error('Projection unavailable');
+          await bounded(runtime.command('turn/cancel', { sessionId, turnId }), 3000);
+          const deadline = Date.now() + 1500;
+          while (runtime.session.fold.activeTurnId === turnId && Date.now() < deadline)
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          if (!runtime.session.fold.activeTurnId)
+            shutdown.cancellation =
+              runtime.session.fold.turns().find((turn) => turn.turnId === turnId)?.terminal ===
+              'cancelled'
+                ? 'confirmed'
+                : 'alreadySettled';
+        } catch {
+          // An unavailable host cannot establish a new checkpoint. Preserve the
+          // last durable projection; never replay an uncertain model/tool call.
+        }
+      }
+      if (!ended && runtime?.session && sessionId) publishState([], true);
+      ended = true;
+      clearTimeout(stateTimer);
+      await runtime?.close();
+    })();
+    return closePromise;
   }
   async function fail(exit) {
     if (ended) return;
@@ -32,6 +54,7 @@ export async function createSession(send, onDeath) {
   let acceptedReceipt;
   let staleReason;
   let runtime;
+  let shutdown;
   let modelRoute;
   const diagnostics = { snapshots: 0, snapshotTotalMs: 0, snapshotMaxMs: 0 };
   const gaps = [];
@@ -112,6 +135,7 @@ export async function createSession(send, onDeath) {
       .slice(-100);
     return {
       sessionId,
+      ...(shutdown ? { shutdown } : {}),
       itemProvenance: Object.fromEntries(
         items
           .map((item) => [item.itemId, itemProvenance.get(item.itemId)])

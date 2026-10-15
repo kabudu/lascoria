@@ -65,6 +65,13 @@ export function attention(status: Status, prefs: Prefs) {
   return status.sessions.flatMap((session) => {
     const nodes = tasks(session, prefs);
     const unseen = (task: Task) => !prefs.acknowledgedTaskFacts?.includes(taskAttentionKey(task));
+    const gracefulStop = (task: Task) =>
+      task.status === 'cancelled' &&
+      !task.item &&
+      [
+        session.state.shutdown,
+        ...(session.interruptions ?? []).map((entry) => entry.shutdown),
+      ].some((stop) => stop?.turnId === task.turnId && stop.cancellation === 'confirmed');
     const target = (turnId?: string) => nodes.find((t) => t.turnId === turnId)?.id ?? nodes[0]?.id;
     return [
       ...(session.interruptions ?? [])
@@ -112,6 +119,7 @@ export function attention(status: Status, prefs: Prefs) {
           (t) =>
             unseen(t) &&
             ['failed', 'rejected', 'cancelled'].includes(t.status) &&
+            !gracefulStop(t) &&
             (t.item?.kind !== 'reminderChild' ||
               t.status !== 'cancelled' ||
               prefs.showRuntimeReminders),
@@ -127,7 +135,7 @@ export function attention(status: Status, prefs: Prefs) {
         .filter(
           (t) =>
             unseen(t) &&
-            t.status === 'completed' &&
+            (t.status === 'completed' || gracefulStop(t)) &&
             (t.item?.kind !== 'reminderChild' || prefs.showRuntimeReminders),
         )
         .map((t) => ({
@@ -135,7 +143,7 @@ export function attention(status: Status, prefs: Prefs) {
           sessionId: session.id,
           target: t.id,
           kind: 'review',
-          label: `Inspect completion: ${t.label}`,
+          label: `${gracefulStop(t) ? 'Inspect saved stop' : 'Inspect completion'}: ${t.label}`,
         })),
     ];
   });

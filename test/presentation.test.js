@@ -302,3 +302,19 @@ test('cursor zoom keeps the same world point under the cursor at arbitrary offse
   assert.deepEqual(normalizedWheel(2, -3, 1, 900), { x: 32, y: -48 });
   assert.deepEqual(normalizedWheel(2, -3, 2, 900), { x: 1800, y: -2700 });
 });
+
+test('confirmed graceful logout is reviewable saved progress, not an execution failure', () => {
+  const row = {
+    id: 'session',
+    lifecycle: 'connected',
+    interruptions: [{ shutdown: { turnId: 'turn', cancellation: 'confirmed' } }],
+    state: { current: true, items: [], turns: [{ turnId: 'turn', terminal: 'cancelled' }] },
+  };
+  const queue = attention({ sessions: [row] }, {});
+  assert.ok(
+    queue.some((entry) => entry.kind === 'review' && entry.label.startsWith('Inspect saved stop:')),
+  );
+  assert.ok(!queue.some((entry) => entry.kind === 'failure'));
+  row.interruptions[0].shutdown.cancellation = 'unconfirmed';
+  assert.ok(attention({ sessions: [row] }, {}).some((entry) => entry.kind === 'failure'));
+});
