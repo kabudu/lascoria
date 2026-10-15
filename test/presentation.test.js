@@ -68,6 +68,13 @@ test('recovered interruptions remain in attention until acknowledged without cha
   const status = { sessions: [row], commands: [], pid: 1 };
   const entry = attention(status, {}).find((entry) => entry.kind === 'interruption');
   assert.equal(entry.label, 'Runtime interruption: crash');
+  assert.equal(entry.historical, true);
+  const offline = attention(
+    { ...status, sessions: [{ ...row, state: { ...row.state, current: false } }] },
+    {},
+  ).find((entry) => entry.id === 's:offline');
+  assert.equal(offline.historical, undefined);
+  assert.equal(offline.label, 'Execution state unavailable');
   assert.equal(attention(status, { acknowledgedInterruptions: [entry.id] }).length, 0);
   assert.equal(row.interruptions.length, 1);
   assert.equal(row.state.current, true);

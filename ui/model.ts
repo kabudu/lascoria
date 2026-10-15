@@ -79,6 +79,7 @@ export function attention(status: Status, prefs: Prefs) {
           sessionId: session.id,
           target: target(),
           kind: 'interruption',
+          historical: true,
           label: 'Runtime interruption: ' + i.kind,
         })),
       ...(!session.state.current || session.lifecycle === 'interrupted'
