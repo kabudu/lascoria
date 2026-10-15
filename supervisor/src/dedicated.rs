@@ -178,7 +178,7 @@ impl Dedicated {
     pub async fn stop(&mut self) {
         // Closing stdin invokes the worker's bounded Muse drain. Kill only after that budget.
         drop(self.stdin.take());
-        if timeout(Duration::from_secs(4), self.child.wait())
+        if timeout(Duration::from_secs(8), self.child.wait())
             .await
             .is_err()
         {

@@ -216,7 +216,7 @@ export async function provider(root, options = {}) {
           response.end();
         }
       },
-      tool || input ? 100 : 2000,
+      tool || input ? 100 : (options.responseDelayMs ?? 2000),
     );
     timers.add(timer);
   });
