@@ -6,6 +6,8 @@ export type Item = import('@muse-code/sdk/dist/src/msp.js').Item & {
 export interface SessionRow {
   id: string;
   workspace: string;
+  workspaceDiscarded?: boolean;
+  managedWorkspace?: { source: string; path: string; branch: string; base: string };
   generation: number;
   lifecycle: string;
   recoveryError?: string;

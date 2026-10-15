@@ -1,3 +1,4 @@
+import { Workspace } from './Workspace';
 import { SessionSettings } from './SessionSettings';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recordTiming, timingSnapshot } from './diagnostics';
@@ -49,6 +50,10 @@ export function App() {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
+  const inspectorTabs = status.features?.includes('taskWorkspaces')
+    ? ['transcript', 'diff', 'evidence', 'workspace']
+    : ['transcript', 'diff', 'evidence'];
+  const [showArchived, setShowArchived] = useState(false);
   const [settingsTarget, setSettingsTarget] = useState('');
   const [settingsCatalog, setSettingsCatalog] = useState<Json>(null);
   const [settingsMessage, setSettingsMessage] = useState('');
@@ -106,14 +111,20 @@ export function App() {
   const saving = useRef<Promise<void> | null>(null);
   const mutationPending = useRef(false);
   const lastCommand = useRef<{ id: string; operation: string; params: Json } | null>(null);
-  const session = status.sessions.find((s) => s.id === prefs.sessionId) ?? status.sessions[0];
+  const session =
+    status.sessions.find((s) => s.id === prefs.sessionId) ??
+    status.sessions.find((s) => s.lifecycle !== 'archived') ??
+    status.sessions[0];
   const selectedSession = useRef<string | undefined>(session?.id);
   selectedSession.current = session?.id;
   const nodes = session ? tasks(session, prefs) : [];
   const task = nodes.find((t) => t.id === prefs.selection) ?? nodes[0];
   const selectedTask = useRef(task?.id);
   selectedTask.current = task?.id;
-  const queue = attention(status, prefs);
+  const queue = attention(
+    { ...status, sessions: status.sessions.filter((s) => s.lifecycle !== 'archived') },
+    prefs,
+  );
   const candidate =
     review.artifacts.find((a) => a.id === artifactId) ??
     review.artifacts.filter((a) => a.taskId === task?.turnId).at(-1);
@@ -658,7 +669,7 @@ export function App() {
     <div className="shell">
       <header className="topbar">
         <a className="wordmark" href="#workspace">
-          <span className="mark">✳</span> CONSTELLATION <span className="edition">WORKSPACE</span>
+          <span className="mark">✳</span> WEFTARA <span className="edition">WORKSPACE</span>
         </a>
         <div className="top-actions">
           <span className={`connection ${connected ? 'live' : ''}`}>
@@ -748,22 +759,32 @@ export function App() {
               ＋
             </button>
           </div>
+          <label className="row">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+            />{' '}
+            Show archived sessions
+          </label>
           <nav aria-label="Sessions">
-            {status.sessions.map((s) => (
-              <button
-                key={s.id}
-                className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
-                onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
-              >
-                <span className="eyebrow">SESSION · {short(s.id)}</span>
-                {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
-                <strong>{prefs.sessionLabels?.[s.id] || s.workspace.split('/').at(-1)}</strong>
-                <span>
-                  {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
-                  {queue.filter((q) => q.sessionId === s.id).length} attention
-                </span>
-              </button>
-            ))}
+            {status.sessions
+              .filter((s) => showArchived || s.lifecycle !== 'archived' || s.id === session?.id)
+              .map((s) => (
+                <button
+                  key={s.id}
+                  className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
+                  onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
+                >
+                  <span className="eyebrow">SESSION · {short(s.id)}</span>
+                  {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
+                  <strong>{prefs.sessionLabels?.[s.id] || s.workspace.split('/').at(-1)}</strong>
+                  <span>
+                    {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
+                    {queue.filter((q) => q.sessionId === s.id).length} attention
+                  </span>
+                </button>
+              ))}
           </nav>
         </FloatingPanel>
         <FloatingPanel
@@ -827,7 +848,7 @@ export function App() {
               </button>
             </div>
           )}
-          {session && !available && (
+          {session && !available && session.lifecycle !== 'archived' && (
             <div className="banner error">
               State is unavailable. Controls are disabled until recovery completes.
               <button
@@ -1390,7 +1411,7 @@ export function App() {
                     Session model &amp; effort
                   </button>
                   <div className="tabs" role="tablist">
-                    {['transcript', 'diff', 'evidence'].map((name) => (
+                    {inspectorTabs.map((name) => (
                       <button
                         key={name}
                         id={`tab-${name}`}
@@ -1399,17 +1420,17 @@ export function App() {
                         aria-selected={tab === name}
                         tabIndex={tab === name ? 0 : -1}
                         onKeyDown={(event) => {
-                          const names = ['transcript', 'diff', 'evidence'];
+                          const names = inspectorTabs;
                           const index = names.indexOf(name);
                           const target =
                             event.key === 'ArrowRight'
-                              ? names[(index + 1) % 3]
+                              ? names[(index + 1) % names.length]
                               : event.key === 'ArrowLeft'
-                                ? names[(index + 2) % 3]
+                                ? names[(index + names.length - 1) % names.length]
                                 : event.key === 'Home'
                                   ? names[0]
                                   : event.key === 'End'
-                                    ? names[2]
+                                    ? names[names.length - 1]
                                     : undefined;
                           if (target) {
                             event.preventDefault();
@@ -1429,6 +1450,31 @@ export function App() {
                     role="tabpanel"
                     aria-labelledby={`tab-${tab}`}
                   >
+                    {tab === 'workspace' && (
+                      <Workspace
+                        key={session.id}
+                        session={session}
+                        commands={status.commands}
+                        busy={busy}
+                        mutate={mutate}
+                        attach={(value) => {
+                          if ((drafts[session.id] ?? '').length + value.length > 16000) {
+                            setError(
+                              'File content exceeds the task draft limit. Choose a smaller file or provide its path.',
+                            );
+                            return;
+                          }
+                          setDrafts((previous) => ({
+                            ...previous,
+                            [session.id]: (previous[session.id] ?? '') + value,
+                          }));
+                          setTab('transcript');
+                          setNotice(
+                            'File content added to the task draft. Review it before sending.',
+                          );
+                        }}
+                      />
+                    )}
                     {tab === 'transcript' && (
                       <>
                         {task?.nativeChild && (
@@ -2055,6 +2101,7 @@ export function App() {
               const modelId = String(form.get('model') ?? '');
               const result = await mutate('start', {
                 workspace: String(form.get('workspace')),
+                isolated: form.get('isolated') === 'on',
                 ...(modelId ? { modelId } : {}),
               });
               if (result && result.status === 'applied') {
@@ -2069,6 +2116,20 @@ export function App() {
               Existing repository path
               <input name="workspace" required placeholder="/Users/you/projects/repository" />
             </label>
+            <label className="row">
+              <input
+                type="checkbox"
+                name="isolated"
+                defaultChecked={status.features?.includes('taskWorkspaces')}
+                disabled={!status.features?.includes('taskWorkspaces')}
+              />{' '}
+              Create an isolated task worktree from committed HEAD
+            </label>
+            <p className="muted">
+              {status.features?.includes('taskWorkspaces')
+                ? 'The isolated task starts from committed files. Existing uncommitted changes stay in the original checkout.'
+                : 'This supervisor does not support isolated tasks. Restart it to enable them; this session will use the existing checkout directly.'}
+            </p>
             <label htmlFor="session-model">Model</label>
             <select
               id="session-model"

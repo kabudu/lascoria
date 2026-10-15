@@ -16,6 +16,13 @@ fn directory() -> PathBuf {
 }
 async fn request(operation: &str, params: Value, id: String) -> Result<Value, String> {
     if ![
+        "workspace/inspect",
+        "workspace/files",
+        "workspace/file",
+        "workspace/run",
+        "workspace/commit",
+        "workspace/discard",
+        "session/archive",
         "status",
         "diagnostics",
         "models",

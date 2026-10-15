@@ -16,7 +16,7 @@ impl Db {
         let db = Connection::open(path)?;
         let version: u32 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         ensure!(
-            version <= 2,
+            version <= 3,
             "Unsupported supervisor journal schema {version}"
         );
         db.execute_batch(
@@ -27,7 +27,7 @@ impl Db {
           CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY, value TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )?;
-        db.execute_batch("PRAGMA user_version=2;")?;
+        db.execute_batch("PRAGMA user_version=3;")?;
         Ok(Self(db, uuid::Uuid::new_v4().to_string()))
     }
     pub fn version(&self) -> String {
@@ -141,7 +141,7 @@ impl Db {
         let Some(mut row) = self.get("sessions", id)? else {
             return Ok(());
         };
-        if row["generation"] != generation {
+        if row["generation"] != generation || row["lifecycle"] == "archived" {
             return Ok(());
         }
         reason["atMillis"] = json!(now_ms());
@@ -183,7 +183,7 @@ impl Db {
         let Some(mut row) = self.get("sessions", id)? else {
             return Ok(());
         };
-        if row["generation"] != generation {
+        if row["generation"] != generation || row["lifecycle"] == "archived" {
             return Ok(());
         }
         row["state"] = state;
@@ -248,6 +248,17 @@ mod tests {
         assert_eq!(db.evidence_page("s", Some("a"), 0)?[0]["id"], "old");
         assert!(db.evidence_page("s", Some("a"), 100)?.is_empty());
         assert!(db.artifact_metadata("s")?[0].get("patch").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn archived_session_ignores_late_worker_frames() -> Result<()> {
+        let db = Db::open(Path::new(":memory:"))?;
+        let archived = json!({"id":"s","generation":1,"lifecycle":"archived","interruptions":[],"state":{"current":false,"items":[{"text":"retained"}]}});
+        db.put("sessions", "s", &archived)?;
+        db.interrupt("s", 1, json!({"kind":"lateEof"}))?;
+        db.state("s", 1, json!({"current":true}), &Value::Null, &json!([]))?;
+        assert_eq!(db.get("sessions", "s")?.unwrap(), archived);
         Ok(())
     }
 

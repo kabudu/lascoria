@@ -138,6 +138,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     for (const marker of ['STAGE_B_IMPLEMENT', 'STAGE_B_TEST', 'STAGE_B_DELEGATE']) {
       await page.getByRole('button', { name: 'New session', exact: true }).click();
       await page.getByLabel('Existing repository path').fill(workspace);
+      await page.getByRole('checkbox', { name: 'Create an isolated task worktree' }).uncheck();
       if (marker === 'STAGE_B_IMPLEMENT')
         await page.getByLabel('Model', { exact: true }).selectOption('muse-wonder-1.0');
       await page.getByLabel('Initial task').fill(marker);
@@ -644,6 +645,18 @@ test('real Muse implementation, tests and review through React and the native Ru
     await page.getByRole('button', { name: 'Record user assertion' }).click();
     await expect(page.getByText(/depends on STAGE_B_TEST/)).toBeVisible();
 
+    const semanticColors = await page.evaluate(() => {
+      const completed = document.querySelector('.status-dot.completed')!;
+      const selection = document.querySelector('.session-card.selected')!;
+      const connected = document.querySelector('.connection.live')!;
+      return {
+        success: getComputedStyle(completed).backgroundColor,
+        selection: getComputedStyle(selection).borderColor,
+        connected: getComputedStyle(connected).color,
+      };
+    });
+    expect(semanticColors.success).not.toBe(semanticColors.selection);
+    expect(semanticColors.connected).toBe(semanticColors.success);
     await page.getByRole('button', { name: 'List', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect
@@ -667,6 +680,8 @@ test('real Muse implementation, tests and review through React and the native Ru
     expect((await status()).pid).toBe(daemon.pid);
     await page.getByRole('tab', { name: 'transcript', exact: true }).focus();
     await page.keyboard.press('End');
+    await expect(page.getByRole('tab', { name: 'workspace', exact: true })).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
     await expect(page.getByRole('tab', { name: 'evidence', exact: true })).toBeFocused();
     await expect(page.getByText('test: passed', { exact: true })).toBeVisible();
     await writeFile(join(workspace, 'sum.mjs'), 'export const sum = (a, b) => a - b;\n');

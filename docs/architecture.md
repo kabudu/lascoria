@@ -1,6 +1,6 @@
 # Stage A architecture decisions
 
-Recorded 12 October 2026; updated for Stage C on 14 October 2026.
+Recorded 12 October 2026; updated for Weftara task workspaces on 15 October 2026.
 
 ## Process boundaries
 
@@ -11,9 +11,9 @@ Diagnostic CLI / Tauri + React + TypeScript desktop client
     authenticated local Unix socket, API version 1
 Rust supervisor
     private generation-tagged NDJSON, one shared SDK broker
-Node SDK broker (@muse-code/sdk 1.4.8), up to ten contexts
+Node SDK broker (@muse-code/sdk 1.4.9), up to ten contexts
     official MSP connection and authoritative SDK Session fold
-Muse Code 1.4.8 (one independent muse serve per session)
+Muse Code 1.4.9 (one independent muse serve per session)
     tools, permissions, agent execution and durable logs
 ```
 
@@ -58,3 +58,5 @@ References: [official Muse SDK](https://github.com/meta-models/muse-code-sdk), [
 [Stage B presentation, evidence and desktop boundaries](stage-b.md) records the new API operations, schema migration and validation.
 
 [Stage C memory and settings](stage-c-memory.md) describes shared-broker recovery, process-scoped RSS and native mid-session model/effort controls. Dedicated workers remain available for diagnostic comparison.
+
+[Weftara daily coding workflow](daily-coding-workflow.md) adds developer-operated workspace execution, managed Git worktrees and schema-3 archival. These are distinct from Muse execution and human-attested evidence.
