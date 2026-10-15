@@ -1,6 +1,6 @@
 # Inter-session communication
 
-Status: R16, a first-release requirement requested on 15 October. Not implemented. Independent sessions must not be confused with child agents inside one session.
+Status: R16, a first-release requirement requested on 15 October. Initial user-directed local relay implemented; full release gate remains open. Independent sessions must not be confused with child agents inside one session.
 
 ## Native capability findings
 
@@ -27,3 +27,30 @@ Show source and recipient names, workspace/project scope, the exact content bein
 - Bound automatic replies, coordination concurrency and token use; handle deadlocks, circular conversations, stale recipients, logout, close, crash and reconnect. A message cannot confer filesystem/tool approval or evidence acceptance.
 - Persist source/recipient/provenance safely, without putting credentials or private raw attachments in message metadata. Make selected sharing and deletion/retention policy clear.
 - Validate actual independent sessions, both directions and concurrent tasks on all three operating systems. Include unavailable transport, pending peer approval, rejected messages, duplicates, timeout/unknown delivery, agent loops and recovery. A parent/child demo does not satisfy this requirement.
+
+## Implemented local inbox and explicit delivery
+
+The Rust supervisor owns the relay in its existing private SQLite journal and owner-authenticated Unix socket / Windows named pipe. There is no network listener, machine discovery, user directory, external messaging service or cross-user transport. Only session IDs in this supervisor registry are eligible.
+
+From **Workspace menu → Local messages**, select another local session, connect explicitly and share selected text. Sharing stores it in the local inbox without calling a model. The recipient can choose **Ask Muse about this** to start a normal Muse turn when idle. It does not steer active work, answer questions or approve tools. Replies remain in that session's transcript; the user must explicitly select and share any reply. Messages are labelled user-originated, never represented as agent-generated messages.
+
+Protocol v1 adds the optional `localRelay` feature and these owner-authenticated operations:
+
+| Operation | Input | Behaviour |
+| --- | --- | --- |
+| `relay/get` | `sessionId` | Connections and messages involving this session only; indexed journal delivery receipts where present. |
+| `relay/connect`, `relay/disconnect` | `sessionId`, `peerId`, `expectedRevision` | Atomic revision-checked pair selection; stale choices fail and require refresh. Disconnect affects subsequent admission, not already admitted model turns. |
+| `relay/send` | `sessionId`, `peerId`, `body`; stable request ID | Atomic inbox insertion; identical retry returns the original message even after disconnect; changed payload reuse fails. |
+| `relay/deliver` | Recipient `sessionId`, `messageId` | Explicit model call with untrusted peer-context attribution; uses stable `relay_<messageId>` command identity, ordinary account/session/idle checks and native permissions. Repeated or uncertain requests reconcile that command instead of dispatching another turn. |
+
+Limits: 8,192 UTF-8 bytes per message, 20 new messages per sender per minute, 128 retained pairs, 256 retained messages globally, 24-hour admission expiry. Bounds reject new work rather than silently discard history. At most about 2 MiB of message bodies is retained in the atomic relay record; no automatic polling, fan-out or paid replies occur. The existing 16-work-item admission and 2,000-command journal limits still apply. Normal backups/retention remain an R5 release dependency.
+
+An inbox entry means **saved locally**, not seen by Muse. A command receipt records admission/execution facts with the existing `accepted` / `applied` / `rejected` / `outcomeUnknown` vocabulary; it does not establish that the model read or understood a message. Transcript/native turn completion is the independent observation. Reservations are durable under the same lock as connection validation; a crash between reservation and dispatch cannot trigger a replay. The UI retains uncertain send identity while its conversation remains mounted; durable composition recovery across close is still required.
+
+Remaining R16 work: session-bound agent send/receive tools and explicit authorisation policy, curved communication links, unread/acknowledgement semantics, durable relay composition, useful live bidirectional coordination, and Windows/Linux native acceptance. This increment must not close the whole R16 gate.
+
+## Validation for the initial increment
+
+The native macOS release bundle ran two independent browser-authenticated Muse Wonder sessions. The user-directed exchange went both ways: a bounded-inbox proposal and an independent review of silent eviction. Both turns completed in their own transcripts. A final rebuilt-bundle check pasted and read back exactly 738 bytes, completed with `LASCORIA_RELAY_FINAL_OK`, displayed the concise generated task title and reconciled the same command identity without another model call. QA used its own state directory; the original user's pending question was preserved. Local evidence is retained under `.dev/backlog-native/relay-*-proof.json` and native screenshots, excluded from source control.
+
+Validation passed eight Rust tests, 31 Node integration/unit tests, five Playwright workflows, formatting/type/Clippy checks and Windows supervisor cross-compilation. After the final title/reconciliation review fix, the four affected lifecycle/account/relay/scheduling integration cases and the relay UI workflow passed again. Windows/Linux native relay execution is not established by cross-compilation. No hosted CI ran while the repository remains private, per the user's instruction.
