@@ -43,4 +43,11 @@ Native visual inspection remains blocked by the locked Mac. A separate real Wond
 
 The product now uses the Lascoria identity. The native Mac is accessible and the rebuilt Tauri app was visually inspected and interacted with in both themes, including model/effort settings and canvas controls. The latest backend suite passed 24 Node and six Rust tests; all three browser/native-bridge workflows passed. [Branding validation](branding.md#validation-15-october-2026) records the exact scope.
 
-The live Wonder trial progressed beyond the prior authentication error after loading the user-provided local API credential through Muse's stdin interface and resuming its host. Meta then rejected the call with HTTP 402 billing verification failure. The failure remains visible in native task/attention state. Successful live implementation and question resumption remain unverified pending provider billing; scripted-provider tests are not presented as that proof.
+The live Wonder trial progressed beyond the prior authentication error after loading the user-provided local API credential through Muse's stdin interface and resuming its host. Meta then rejected the call with HTTP 402 billing verification failure. The failure remains visible in native task/attention state. That result concerned the API-key path. The subsequent subscription-account trial below supersedes this blocker; scripted-provider tests remain separately identified.
+
+
+## Subscription-account live completion, 15 October 2026
+
+The supported Muse browser login completed and verified model access. After refreshing the retained trial host, Wonder successfully read the repository, asked a real structured question in native Attention, resumed after the answer, implemented the task and completed with nine passing tests. A second test run through Lascoria's native Workspace panel independently passed all nine with unchanged content fingerprints. Real native diff capture and evidence freshness inspection also passed. See [the subscription-account validation record](branding.md#subscription-account-follow-up-15-october-2026).
+
+For subscription use, prefer `muse login` and refresh the affected host. API keys override browser credentials; an API-key billing error must not be treated as a subscription billing failure. No harness code change or separate API billing setup was required for the successful account-backed workflow.

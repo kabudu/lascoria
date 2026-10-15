@@ -33,6 +33,12 @@ npm start -- status
 
 `up` launches the Rust service independently and reconnects if it already exists. `supervisor` runs it in the foreground for diagnostics. The default provider is credential-free `echo`; set `SCH_PROVIDER=meta` before launching the service to use your configured provider. Live sessions explicitly select the provider and default model advertised by Muse's native catalog, so workflow children have a recorded parent route. The desktop offers explicit model selection for new sessions and model/effort settings for existing sessions; the diagnostic start command uses the catalog default unless `modelId` is supplied. Existing sessions retain their recorded route. Muse owns credentials, permissions, and its sandbox. The harness does not disable them.
 
+### Subscription account login
+
+Lascoria's SDK host can use your normal Muse browser-account login. Run `muse login`, approve the official Meta device-code page, and wait for Muse to report that model access is verified. Restart the affected session host with `resume` (or start a new session) to pick up the changed credential.
+
+Muse gives `META_API_KEY` precedence over a stored API key, and a stored key precedence over browser-account authentication. An API-key billing error does not establish a subscription billing problem. For subscription trials, use Muse's browser-login flow and ensure no environment API key overrides it; do not automatically import a key as an authentication fix. The harness does not read or manage credentials itself. See [Muse authentication](https://dev.meta.ai/docs/muse-code/auth).
+
 Copy the returned session ID into the next request:
 
 ```sh
