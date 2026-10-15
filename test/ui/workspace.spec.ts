@@ -44,11 +44,17 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
       })
       .toBe(daemon.pid);
     const bridge = resolve('src-tauri/target/debug/spatial-constellation-desktop');
+    let loseDraftReplies = 0;
+    let blockDraftReads = false;
+    const draftWrites: any[] = [];
     await context.exposeBinding('nativeBridge', async (_s, command, args) => {
       const input =
         command === 'connect_supervisor'
           ? { operation: 'status', params: {}, id: 'connect' }
           : args;
+      if (input.operation === 'drafts/get' && blockDraftReads)
+        throw new Error('Fixture read unavailable');
+      if (input.operation === 'drafts/save') draftWrites.push(structuredClone(input));
       const { stdout } = await exec(bridge, ['--bridge-json', JSON.stringify(input)], {
         env,
         timeout: 35000,
@@ -56,6 +62,10 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
       });
       const data = JSON.parse(stdout);
       if (data.error) throw new Error(data.error);
+      if (input.operation === 'drafts/save' && loseDraftReplies > 0) {
+        loseDraftReplies--;
+        throw new Error('Fixture dropped a committed draft reply');
+      }
       return data.result;
     });
     await context.addInitScript(() => {
@@ -64,6 +74,11 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
       };
     });
     const page = await context.newPage();
+    const duplicateKeyErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error' && message.text().includes('same key'))
+        duplicateKeyErrors.push(message.text());
+    });
     await page.goto('/');
     await expect(page).toHaveTitle('Lascoria');
     await expect(page.getByRole('link', { name: 'Lascoria workspace' })).toBeVisible();
@@ -141,6 +156,73 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
       .toBe(true);
     await page.reload();
     await expect(page.getByLabel('New task for this session')).toHaveValue(savedDraft);
+    const other = await context.newPage();
+    await other.goto('/');
+    const composer = page.getByLabel('New task for this session');
+    const otherComposer = other.getByLabel('New task for this session');
+    await expect(otherComposer).toHaveValue(savedDraft);
+    const readSavedDraft = async () =>
+      Object.values((await request(directory, 'drafts/get')).drafts).map(
+        (draft: any) => draft.text,
+      );
+    await composer.fill('First window draft');
+    await expect.poll(readSavedDraft).toContain('First window draft');
+    await otherComposer.fill('Second window draft');
+    const conflict = other.getByRole('region', { name: 'Draft conflict' });
+    await expect(conflict).toBeVisible();
+    await other.getByRole('button', { name: 'Collapse Task inspector panel', exact: true }).click();
+    await other.getByRole('button', { name: 'Review drafts (1)', exact: true }).click();
+    await expect(
+      conflict.getByRole('button', { name: 'Keep my draft', exact: true }),
+    ).toBeFocused();
+    await expect(other.getByRole('button', { name: 'Start turn', exact: true })).toBeDisabled();
+    await expect(otherComposer).toHaveValue('Second window draft');
+    expect(await readSavedDraft()).toContain('First window draft');
+    await expect(conflict.getByText('First window draft', { exact: true })).toBeVisible();
+    await conflict.getByRole('button', { name: 'Keep my draft', exact: true }).click();
+    await expect.poll(readSavedDraft).toContain('Second window draft');
+    await expect(conflict).toHaveCount(0);
+    await composer.fill('Third local draft');
+    const firstConflict = page.getByRole('region', { name: 'Draft conflict' });
+    await expect(firstConflict).toBeVisible();
+    await otherComposer.fill('Newer saved draft');
+    await expect.poll(readSavedDraft).toContain('Newer saved draft');
+    await firstConflict.getByRole('button', { name: 'Keep my draft', exact: true }).click();
+    await expect(firstConflict.getByText('Newer saved draft', { exact: true })).toBeVisible();
+    expect(await readSavedDraft()).toContain('Newer saved draft');
+    await expect(composer).toHaveValue('Third local draft');
+    await firstConflict.getByRole('button', { name: 'Use saved draft', exact: true }).click();
+    await expect(composer).toHaveValue('Newer saved draft');
+    await expect(firstConflict).toHaveCount(0);
+    expect(duplicateKeyErrors).toEqual([]);
+    await other.close();
+    const writesBeforeLostReply = draftWrites.length;
+    loseDraftReplies = 1;
+    await composer.fill('Saved despite a lost reply');
+    await expect.poll(readSavedDraft).toContain('Saved despite a lost reply');
+    await composer.fill('Next edit after recovered reply');
+    await expect.poll(readSavedDraft).toContain('Next edit after recovered reply');
+    expect(draftWrites.length - writesBeforeLostReply).toBe(2);
+    const writesBeforeUncertainReply = draftWrites.length;
+    loseDraftReplies = 1;
+    blockDraftReads = true;
+    await composer.fill('Uncertain draft write');
+    await expect.poll(readSavedDraft).toContain('Uncertain draft write');
+    await expect(
+      page.getByRole('alert').filter({
+        hasText: 'Draft could not be saved. Keep this window open and reconnect to retry.',
+      }),
+    ).toBeVisible();
+    blockDraftReads = false;
+    await composer.fill('Latest local edit survives retry');
+    await expect.poll(readSavedDraft).toContain('Latest local edit survives retry');
+    const retried = draftWrites.slice(writesBeforeUncertainReply);
+    expect(retried).toHaveLength(3);
+    expect(retried[0]).toEqual(retried[1]);
+    expect(retried[2].id).not.toBe(retried[0].id);
+    await page.reload();
+    await expect(composer).toHaveValue('Latest local edit survives retry');
+
     await page.getByRole('tab', { name: 'workspace', exact: true }).click();
     await page
       .getByLabel('Test command')

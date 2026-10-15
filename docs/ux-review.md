@@ -1,0 +1,14 @@
+# UX, developer experience and language findings
+
+Release gate: R13. Scope so far: the supplied usage/Diff/transcript screenshots, draft editing across windows, and the affected controls. This is an incremental findings register, not a completed whole-application or native accessibility review.
+
+| Finding | Priority and impact | Change / evidence | State |
+| --- | --- | --- | --- |
+| UX01: allowance shown as 300 minutes | P3: avoidable mental conversion | Show 5-hour window; preserve mixed precision as 1-hour 30-minute. UI regression checks both against supplied native-shaped observations. | Fixed; automated UI verified |
+| UX02: large competing Diff actions and dense technical explanation | P2: difficult to scan and unclear next action | Save snapshot is the primary action; Refresh is smaller; About snapshots contains scope and attribution limits; selector uses Saved snapshot. Final macOS release bundle visually checked; screenshots retained in .dev/backlog-native. | Fixed; automated and native verified |
+| UX03: transcript controls and revision metadata crowd the conversation | P2: weak hierarchy and noisy conversation | Compact, wrapping toolbar; descriptive paging labels; aligned background filter; Sent/Complete and readable states; precise revisions retained in Message details. Final macOS release bundle visually checked; screenshots retained in .dev/backlog-native. | Fixed; automated and native verified |
+| UX04: stale draft save has no recovery action | P1: text retained but user cannot resolve competing edits or close safely | Compare both copies, choose explicitly, recheck concurrent saves and retain retry identity after lost replies. Rust-backed two-window UI test fails before and passes after implementation. | Fixed; Rust-backed two-window tests and native close/reopen/live Wonder verified |
+| UX05: other internal terminology across primary flows | P2: unexplained concepts reduce clarity | Audit remaining task/evidence/recovery/account/settings copy and developer docs under R13; preserve precise facts in details. | Open |
+| UX06: general attachment intake absent | P2: screenshots/files cannot be added naturally | R14 defines a compact composer strip with explicit sending, private staging and native capability checks. See attachments.md. | Design recorded; implementation open |
+
+Further review must cover every R13 journey, all three operating systems, accessibility, failures and realistic developer use. Each fixed finding needs the final revision/environment behind its evidence; earlier green runs do not validate later changes automatically.

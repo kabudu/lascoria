@@ -138,6 +138,48 @@ Added 15 October at the user's request. This is a release gate requiring an evid
 - [ ] Exercise adversarial failure and abuse cases on macOS, Windows and Linux: malformed/fuzzed protocol frames, stale credentials/evidence, interrupted writes/install/update, cross-user IPC attempts, endpoint replacement, queue/resource exhaustion, hostile histories/diffs and crash/restart races. Use disposable environments and bounded tests; record exact revisions, environments, methods, findings and reproduction evidence.
 - [ ] Maintain a severity-ranked findings register with owner, remediation, regression proof and residual risk. Fix exploitable authorization, credential disclosure, unsafe execution/update, data-loss and serious availability findings before release. Any unresolved risk requires explicit acceptance and documented scope; a passing scanner or test suite alone does not close this gate. Obtain a separate reviewer where practical, define vulnerability reporting/response guidance and rerun affected checks after fixes.
 
+### R13 - Full UX, developer experience and language review
+
+Added 15 October at the user's request. Clear, easily digestible language and a clean, uncluttered interface are release requirements. Technical terms belong where they help developers make a decision; internal implementation details belong in expandable diagnostics.
+
+- [ ] Review every first-run and daily-use journey: installation, sign-in/API keys, session creation, model/effort changes, canvas navigation, skills, usage, attention, transcript, changes, evidence, Git delivery, archive/continuation, settings, updates and recovery. Evaluate hierarchy, spacing, useful defaults, discoverability, progressive disclosure and consistency across macOS, Windows and Linux.
+- [ ] Audit every visible label, tooltip, shortcut, status, confirmation, empty/loading/error state and notification. Use plain language, consistent product terms, specific actions and a clear next step. Explain jargon only where required; avoid exposing raw identifiers, protocol names or engineering prose in ordinary workflows. Keep precise native facts available in details without claiming more than Muse reports.
+- [ ] Review durations, dates, numbers, units and quotas for readability and accuracy: for example, say “5-hour window” instead of “300 minute window”. Preserve mixed-unit precision and show local reset times, freshness and unknown values clearly. Distinguish subscription allowance, model tokens and API billing without forcing users to understand transport internals.
+- [ ] Review developer experience end to end: clean setup/build/run instructions, command/shortcut discoverability, workspace/editor/Git handoffs, environment and permission guidance, actionable failures, safe retries, retained drafts and restored work. Verify documented examples against the actual app and CLI; distinguish supported behaviour from planned features.
+- [ ] Validate keyboard and screen-reader journeys, focus restoration, text scaling, narrow windows, both themes, reduced motion, long/localised content and status visibility without open panels. Combine native interaction, automated accessibility checks and realistic developer trials; screenshots alone do not prove usability.
+- [ ] Keep a prioritised findings register with affected journey, reproduction, user impact, proposed wording/interaction, fix and regression evidence. Fix confusing or unsafe primary flows before release, rerun the affected journeys after changes and record unresolved limitations explicitly. Apply this review to each increment and repeat the complete review before release.
+
+### R14 - Native attachments with a compact composer workflow
+
+Requested 15 October. See [attachment capabilities and proposed UX](attachments.md). Current repository text insertion is not general attachment support.
+
+- [ ] Add a compact attachment control, drag/drop and clipboard image intake, with a bounded thumbnail/file strip, preview, remove, keyboard/screen-reader support and clear per-item states. Keep the canvas uncluttered; selecting only stages a draft and does not interrupt work or transmit content.
+- [ ] Prove supported formats against the pinned Muse runtime/provider. Use native image input and session-owned video uploads where supported; preserve native permissions and provenance. Distinguish file references, text excerpts and actual attached bytes. Explain unsupported formats rather than sending only their names.
+- [ ] Persist session-owned staged attachments and order with durable draft conflict/recovery semantics. Preserve unknown-send identity, support per-item retry/removal, and prevent cross-session leakage or duplicate model calls after close/crash/reconnect.
+- [ ] Add a narrow private staging boundary with content/size/decode/count/storage limits, validated formats/paths and explicit cleanup. Preserve the general IPC size limit; keep large/private bytes out of command journals, logs and diagnostics. No automatic external conversion/upload on selection.
+- [ ] Validate native pick/drop/paste, long names, duplicate/corrupt/oversized/unsupported files, mixed text/skills/images, model changes, active turns, questions/approvals, cancellation, offline/recovery and close/reopen across all three operating systems. Complete R11 resource and R12 privacy/security checks for this boundary.
+
+### R15 - Simple sessions and reusable multi-folder projects
+
+Requested 15 October. See [session/project experience and native context contract](projects.md). Reimagine setup around the spatial workspace while keeping the quick path simple.
+
+- [ ] Offer Session for focused single-folder work and Project for a named, reusable set of folder references, goals and optional notes. Provide a polished spatial folder arrangement plus an equally capable keyboard/list flow; keep context summaries compact during task work.
+- [ ] Add/edit/reorder/remove named folders, choose the default working folder and validate canonical existing roots, aliases, duplicates/nesting, symlinks, unavailable paths and platform-specific paths. Show what Muse will receive before applying; do not auto-read every file or infer permission grants.
+- [ ] Integrate the actual native `workspaceRoots` contract for session start and supported next-turn replacement. Track project/configuration revision, requested versus confirmed context and command receipts. Running tasks retain their current roots; editing a project is not an immediate steer or implicit change to existing sessions.
+- [ ] Persist/recover projects and per-session context through restart, conflict, folder moves and unknown outcomes. Keep sessions/workspaces isolated, preserve native trust/permission boundaries and support clear, reversible editing with safe retries.
+- [ ] Define and implement Git/worktree/diff/evidence ownership across repositories before claiming isolated multi-folder coding. Prevent cross-root staging/discard mistakes and misleading attribution. Preserve the single-folder workflow.
+- [ ] Validate a real live Muse task spanning multiple folders/repositories, folder changes between tasks, simultaneous sessions, approvals/questions, permissions/refusals, recovery and all three operating systems. Complete R11/R12/R13 performance, security and UX/DX gates for this boundary.
+
+### R16 - Inter-session interaction and communication, required for the first release
+
+Explicit first-release requirement, requested 15 October. [Capability findings and proposed experience](session-communication.md) distinguish native parent/child messaging, independent interactive Muse peers and a possible Lascoria-managed relay. Current official native scope excludes Windows/headless; the user selected an explicit all-platform Lascoria relay for the first release.
+
+- [ ] Confirm and implement an available supported transport for independent Lascoria sessions on the required target matrix. Negotiate/prove native capabilities or implement the agreed explicit Lascoria relay; never bypass a native gate, impersonate a peer or present child messaging as independent-session support.
+- [ ] Add a clean Connect sessions / conversation flow with explicit source/recipient, project/folder scope, curved communication links distinct from dependencies, unread/progress indicators and a collapsible exchange view. Keep ordinary canvas work uncluttered and provide keyboard/screen-reader equivalents.
+- [ ] Preserve permissions and attribution: peer content is untrusted data; sharing is scoped and visible; no automatic cross-project disclosure, tool approval, shared filesystem authority or evidence acceptance. Define user and agent-initiated interaction separately.
+- [ ] Implement bounded durable delivery, unique message/request identity, queued/delivered/read distinctions, safe unknown-outcome recovery, cancellation/disconnection, pending-recipient handling, and loop/rate/concurrency/token budgets. Preserve active turns and questions/approvals unless an explicit supported action changes them.
+- [ ] Prove bidirectional coordination between real independent live Muse sessions, with visible native/model receipt and useful resulting work. Exercise idle/active/waiting peers, approvals/rejections, crashes/restarts, duplicate/expired messages and all three operating systems; complete R11/R12/R13 gates. This remains a release blocker until its agreed scope is implemented and verified.
+
 ## Developer-workflow priorities to scope before calling it a daily-driver release
 
 These are known gaps from [daily coding workflow](daily-coding-workflow.md), not promises that every feature must ship in the first public preview. Decide an explicit preview scope and label unsupported actions rather than hide them.

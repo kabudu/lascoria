@@ -2024,3 +2024,114 @@ main {
 .usage-details p {
   margin-top: 0.6rem;
 }
+
+.draft-conflict {
+  margin-top: 0.8rem;
+  padding: 1rem;
+  border: 1px solid var(--attention);
+  border-radius: 12px;
+}
+.draft-conflict h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.draft-conflict p {
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.draft-comparison {
+  display: grid;
+  gap: 0.6rem;
+}
+.draft-comparison h4 {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.draft-comparison pre {
+  max-height: 8rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0.6rem;
+  background: var(--raised);
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+.draft-conflict button {
+  font-size: 0.8rem;
+}
+
+.diff-review {
+  display: grid;
+  gap: 0.85rem;
+}
+.diff-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.diff-toolbar button {
+  min-height: 34px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.75rem;
+}
+.diff-toolbar button:last-child {
+  margin-left: auto;
+  background: transparent;
+}
+.snapshot-help summary {
+  padding: 0;
+  font-size: 0.72rem;
+}
+.snapshot-help p {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.diff-review > label {
+  margin: 0;
+  font-size: 0.72rem;
+}
+.diff-review select {
+  margin-top: 0.4rem;
+  min-height: 36px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.78rem;
+}
+.diff-review > .muted {
+  margin: 0;
+  padding: 1rem 0;
+  font-size: 0.75rem;
+}
+.transcript-tools {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+}
+.transcript-tools button {
+  min-height: 32px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.72rem;
+  background: transparent;
+}
+.transcript-background {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+.transcript-item header {
+  align-items: baseline;
+  flex-wrap: wrap;
+  row-gap: 0.2rem;
+}
+.transcript-item header small {
+  margin-left: auto;
+  font-size: 0.65rem;
+}
+.usage-actions .hint {
+  color: var(--muted);
+  font-size: 0.7rem;
+}

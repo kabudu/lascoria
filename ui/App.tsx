@@ -1,3 +1,4 @@
+import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
@@ -146,10 +147,14 @@ export function App() {
   const suppressNodeClick = useRef<string | null>(null);
   const [mapWidth, setMapWidth] = useState(600);
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  const { drafts, setDrafts, flushDrafts } = useDurableDrafts(
-    Boolean(connected && status.features?.includes('drafts')),
-    setError,
-  );
+  const {
+    drafts,
+    setDrafts,
+    flushDrafts,
+    conflicts: draftConflicts,
+    resolveConflict,
+  } = useDurableDrafts(Boolean(connected && status.features?.includes('drafts')), setError);
+  const [draftToReview, setDraftToReview] = useState<string>();
   const flushDraftsRef = useRef(flushDrafts);
   flushDraftsRef.current = flushDrafts;
   const [modal, setModal] = useState<
@@ -615,8 +620,16 @@ export function App() {
       item.itemId === task?.item?.itemId ||
       ['failed', 'rejected'].includes(item.status),
   );
+  const itemStatusLabels: Record<string, string> = {
+    inProgress: 'In progress',
+    timedOut: 'Timed out',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    rejected: 'Rejected',
+  };
   const itemLabels: Record<string, string> = {
     userMessage: 'You',
+    skillRead: 'Skill',
     agentMessage: 'Muse',
     reminderChild: 'Background activity',
     toolCall: 'Tool execution',
@@ -760,6 +773,19 @@ export function App() {
           <span className="edition">SPATIAL CODING</span>
         </a>
         <div className="top-actions">
+          {Object.keys(draftConflicts).length > 0 && (
+            <button
+              onClick={() => {
+                const target = Object.keys(draftConflicts)[0];
+                setDraftToReview(target);
+                updatePrefs({ sessionId: target, selection: undefined });
+                setTab('transcript');
+                openInspector();
+              }}
+            >
+              Review drafts ({Object.keys(draftConflicts).length})
+            </button>
+          )}
           <span className={`connection ${connected ? 'live' : ''}`}>
             {connected ? 'Supervisor connected' : 'Disconnected'}
           </span>
@@ -1640,11 +1666,15 @@ export function App() {
                         />
                         <div className="transcript-tools">
                           <span>
-                            {history !== null ? total : session.state.totalItems} session items ·
-                            current page only
+                            {transcriptItems.length} shown ·{' '}
+                            {history !== null ? total : session.state.totalItems} in session
                           </span>
                           <button disabled={!available || busy} onClick={() => void page()}>
-                            {history !== null ? 'Next / first page' : 'Browse history'}
+                            {history !== null
+                              ? offset
+                                ? 'Next page'
+                                : 'Back to first page'
+                              : 'Browse history'}
                           </button>
                         </div>
                         <label className="transcript-background">
@@ -1655,7 +1685,7 @@ export function App() {
                               updatePrefs({ showRuntimeReminders: event.target.checked })
                             }
                           />
-                          Show background activity
+                          Background activity
                           {items.length !== transcriptItems.length
                             ? ` (${items.length - transcriptItems.length} hidden)`
                             : ''}
@@ -1674,13 +1704,20 @@ export function App() {
                                   'Native activity'}
                               </strong>
                               <small>
-                                {item.status} · r{item.revision}
+                                {item.status === 'completed'
+                                  ? item.kind === 'userMessage'
+                                    ? 'Sent'
+                                    : 'Complete'
+                                  : (itemStatusLabels[item.status] ?? item.status)}
                               </small>
                             </header>
                             <pre>
                               {(item.status === 'inProgress'
                                 ? session.state.provisionalText?.[item.itemId]
                                 : undefined) ??
+                                (item.kind === 'skillRead'
+                                  ? `${item.selector ?? 'Skill'} · ${item.status === 'completed' ? 'loaded' : item.status === 'inProgress' ? 'loading' : (itemStatusLabels[item.status] ?? item.status)}`
+                                  : undefined) ??
                                 item.text ??
                                 item.objective ??
                                 item.fallbackText ??
@@ -1690,10 +1727,12 @@ export function App() {
                                   : text(item))}
                             </pre>
                             <details>
-                              <summary>Native provenance</summary>
+                              <summary>Message details</summary>
                               <small>
-                                {item.itemId} {item.recordedAt ?? 'provisional'}
+                                Revision {item.revision} · {item.itemId} ·{' '}
+                                {item.recordedAt ?? 'Time not reported'}
                               </small>
+                              {item.kind === 'skillRead' && <pre>{text(item)}</pre>}
                               <pre>
                                 {text(
                                   session.state.itemProvenance?.[item.itemId] ??
@@ -1741,28 +1780,37 @@ export function App() {
                       </>
                     )}
                     {tab === 'diff' && (
-                      <>
-                        <div className="row">
+                      <section className="diff-review" aria-label="Saved changes">
+                        <div className="diff-toolbar">
                           <button
                             className="primary"
                             disabled={!available || busy || !task?.turnId}
                             onClick={() => void capture()}
                           >
-                            Capture working-tree diff
+                            Save snapshot
                           </button>
-                          <button onClick={() => void loadReview()}>Refresh captures</button>
+                          <button
+                            aria-label="Refresh saved snapshots"
+                            onClick={() => void loadReview()}
+                          >
+                            Refresh
+                          </button>
                         </div>
-                        <p className="muted">
-                          Captures include HEAD, tracked changes and untracked files. Producing-task
-                          association is your assertion.
-                        </p>
+                        <details className="snapshot-help">
+                          <summary>About snapshots</summary>
+                          <p>
+                            A snapshot saves the current Git commit, changed files and new files for
+                            review. Linking it to a task is your choice; it does not prove which
+                            task made the changes.
+                          </p>
+                        </details>
                         <label>
-                          Captured revision
+                          Saved snapshot
                           <select
                             value={candidate?.id ?? ''}
                             onChange={(e) => setArtifactId(e.target.value)}
                           >
-                            <option value="">Select a capture</option>
+                            <option value="">Choose a snapshot</option>
                             {review.artifacts.map((a) => (
                               <option key={a.id} value={a.id}>
                                 {short(a.fingerprint.slice(7))} ·{' '}
@@ -1785,11 +1833,9 @@ export function App() {
                             ))}
                           </>
                         ) : (
-                          <p className="muted">
-                            Capture a diff to inspect an exact repository revision.
-                          </p>
+                          <p className="muted">Save a snapshot to review the current changes.</p>
                         )}
-                      </>
+                      </section>
                     )}
                     {tab === 'evidence' && (
                       <>
@@ -2070,6 +2116,7 @@ export function App() {
                           setModal('usage');
                           return;
                         }
+                        if (draftConflicts[session.id]) return;
                         const result = await mutate(session.state.activeTurnId ? 'steer' : 'turn', {
                           sessionId: session.id,
                           text: message,
@@ -2083,7 +2130,7 @@ export function App() {
                     >
                       {status.features?.includes('skills') && (
                         <SkillPicker
-                          key={session.id}
+                          key={`skills:${session.id}`}
                           sessionId={session.id}
                           text={drafts[session.id] ?? ''}
                           select={(text) =>
@@ -2112,6 +2159,16 @@ export function App() {
                         placeholder="Describe the next step…"
                         disabled={!available || busy || task?.provenance === 'native'}
                       />
+                      {draftConflicts[session.id] && (
+                        <DraftConflict
+                          key={`draft-conflict:${session.id}`}
+                          focusRequested={draftToReview === session.id}
+                          onFocused={() => setDraftToReview(undefined)}
+                          local={drafts[session.id] ?? ''}
+                          saved={draftConflicts[session.id].text}
+                          resolve={(choice) => resolveConflict(session.id, choice)}
+                        />
+                      )}
                       <div className="row">
                         <span className="muted">
                           Target session: {short(session.id)}
@@ -2122,7 +2179,12 @@ export function App() {
                         </span>
                         <button
                           className="primary"
-                          disabled={!available || busy || task?.provenance === 'native'}
+                          disabled={
+                            !available ||
+                            busy ||
+                            task?.provenance === 'native' ||
+                            Boolean(draftConflicts[session.id])
+                          }
                         >
                           {session.state.activeTurnId ? 'Send steering' : 'Start turn'}
                         </button>

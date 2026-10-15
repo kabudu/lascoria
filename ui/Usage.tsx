@@ -3,6 +3,16 @@ import { request } from './api';
 
 import type { SubscriptionUsage } from '@muse-code/sdk/dist/src/msp.js';
 
+function usageWindow(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return (
+    [hours ? `${hours}-hour` : '', remainder ? `${remainder}-minute` : '']
+      .filter(Boolean)
+      .join(' ') + ' window'
+  );
+}
+
 export function Usage({ sessionId }: { sessionId?: string }) {
   const [observation, setObservation] = useState<SubscriptionUsage>();
   const [loading, setLoading] = useState(Boolean(sessionId));
@@ -65,7 +75,7 @@ export function Usage({ sessionId }: { sessionId?: string }) {
               <p className="usage-reset">
                 Resets {new Date(allowance.resetsAtMs).toLocaleString()}
                 {'windowDurationMins' in allowance && allowance.windowDurationMins
-                  ? ` · ${allowance.windowDurationMins} minute window`
+                  ? ` · ${usageWindow(allowance.windowDurationMins)}`
                   : ''}
               </p>
             </article>
