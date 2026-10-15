@@ -39,6 +39,10 @@ Reference: [Tauri v2 updater](https://v2.tauri.app/plugin/updater/) supports sig
 
 ### R4 - Repository rename and public-release preparation
 
+- [x] Disable GitHub Actions at repository level while private, per the user's instruction. Verified `repos/kabudu/lascoria/actions/permissions` reports `enabled: false`; workflow source stays committed.
+- [ ] When public visibility is explicitly authorised and applied, re-enable GitHub Actions, run the prepared cross-platform workflow and inspect actual results before relying on CI or publishing. Do not automatically change visibility or enable Actions from local development.
+
+
 - [x] Rename `kabudu/spatial-constellation-harness` to `kabudu/lascoria`, checking target availability immediately before the operation. Update and verify local origin, package metadata, README links, issue/repository URLs, CI, badges and future release/updater endpoints. Preserve Git history and verify fetch/push against the renamed repository.
 - [ ] Keep existing application identifiers, persistent state paths, task branches and evidence fingerprints compatible unless a separate migration is implemented. Renaming the local checkout is optional and must not break installed/development resource paths.
 - [ ] Before making the repository public, review tracked files and history for credentials/private data, licensing/redistribution rights, security reporting, support expectations and contributor guidance. Keep local `.dev` credentials and live transcripts excluded. A rename is not authorization to make the repository public.
