@@ -236,10 +236,12 @@ export async function createSession(send, onDeath) {
 
   async function execute(message) {
     const { operation, params, commandId } = message;
-    if (operation === 'models') {
+    if (['models', 'usage', 'skills'].includes(operation)) {
       if (ended || !runtime.session?.fold.current || params.sessionId !== sessionId)
         throw new ValidationError('Session state unavailable');
-      return runtime.request('model/list', { sessionId });
+      return operation === 'usage'
+        ? runtime.request('usage/read', {})
+        : runtime.request(operation === 'skills' ? 'skill/list' : 'model/list', { sessionId });
     }
     if (operation === 'readOutput') {
       if (stale || !runtime.session?.fold.current || params.sessionId !== sessionId)
@@ -405,7 +407,19 @@ export async function createSession(send, onDeath) {
       if (typeof params.text !== 'string' || !params.text.length || params.text.length > 16000)
         throw new ValidationError('Text must be 1..16000 characters');
       method = operation === 'turn' ? 'turn/start' : 'turn/steer';
-      wire = { sessionId, input: [{ type: 'text', text: params.text }] };
+      let input = [{ type: 'text', text: params.text }];
+      const shortcut = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(params.text);
+      if (shortcut?.[1] === 'usage')
+        throw new ValidationError('/usage is a local read-only command');
+      if (shortcut) {
+        const catalog = await runtime.request('skill/list', { sessionId });
+        if (!catalog.skills.some((skill) => skill.selector === shortcut[1]))
+          throw new ValidationError(
+            'Muse skill is no longer available; reopen the shortcuts picker',
+          );
+        input = [{ type: 'skill', selector: shortcut[1], arguments: shortcut[2] ?? '' }];
+      }
+      wire = { sessionId, input };
       if (operation === 'steer') {
         if (!params.turnId || runtime.session.fold.activeTurnId !== params.turnId)
           throw new ValidationError('Stale steering target');

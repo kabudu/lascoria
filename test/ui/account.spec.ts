@@ -25,7 +25,13 @@ test('account onboarding through native Rust bridge: key, subscription priority,
     stdio: 'ignore',
   });
   let opened = '';
+  let finishRuntime!: (value: any) => void;
+  const runtime = new Promise((resolve) => {
+    finishRuntime = resolve;
+  });
   await page.exposeFunction('accountBridge', async (command: string, args: any) => {
+    if (command.startsWith('plugin:')) return 1;
+    if (command === 'runtime_status') return runtime;
     if (command === 'open_account_browser') {
       opened = args.url;
       return;
@@ -47,6 +53,9 @@ test('account onboarding through native Rust bridge: key, subscription priority,
   });
   await page.addInitScript(() => {
     (window as any).__TAURI_INTERNALS__ = {
+      transformCallback: () => 1,
+      unregisterCallback: () => {},
+      metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       invoke: (command: string, args: any) => (window as any).accountBridge(command, args),
     };
   });
@@ -61,6 +70,10 @@ test('account onboarding through native Rust bridge: key, subscription priority,
     await page.goto('/');
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your Muse connection' })).toBeVisible();
+    await expect(page.getByText('Checking your Muse runtime…')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Install Muse', exact: true })).toHaveCount(0);
+    finishRuntime({ ready: true, version: '1.4.9', path: '/fixture/muse' });
+    await expect(page.getByText('Muse 1.4.9 · ready')).toBeVisible();
     const audit = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
       .analyze();

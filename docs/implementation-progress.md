@@ -10,6 +10,20 @@ Started 15 October 2026 from `fa330e2`. Scope and acceptance criteria: [release 
 - Existing application identifiers, state paths and evidence identities remain compatible. Local checkout path is retained.
 - User provided the connected Windows laptop through Windows App; remote desktop availability verified on 15 October. Use an isolated Lascoria test installation and preserve existing applications. Native Windows validation uses an unsigned cross-built package and the official vendor Muse executable.
 
+## Active completion sequence
+
+User instruction on 15 October: implement incomplete release items in dependency order, keep this checklist current and validate each completion, using Lazarus mode throughout. Scope includes R1–R12 and the listed developer/token-efficiency gaps. A subtask passing does not close its parent release gate.
+
+1. R7 canvas stability and setup loading states; preserve node/view positions when panels change, then validate regression and native behaviour.
+2. R8 native read-only usage and R9 native skill discovery/invocation, with clean Settings/composer UX and active-turn non-interference checks.
+3. R5 conflict recovery, backup/export/restore, retention and lifecycle; D3 continuation/search and D4 attention preferences.
+4. R1/R2 complete installed-platform acceptance and resource provenance; R11 current packaged resource baselines and soak, with measured optimisation; finish R6 remaining scale gates.
+5. R3 signed updater and real version handoff; R4 public-release/security/support preparation. Hosted CI remains deferred by explicit user instruction until public launch; repository visibility is unchanged.
+6. R10 scoped BYOK decision assistance and metrics, D1/D2/D5 developer capabilities, T1–T5 token visibility/budgets/reuse and quality-preserving benchmarks, ordered by their concrete dependencies.
+7. R12 full security review/remediation and consolidated cross-platform release acceptance. Security checks also apply to each implementation step. No public publishing or security-setting changes are implied.
+
+External credentials, platform access or human-trial gates will be recorded precisely while independent work continues. None is silently counted as complete.
+
 ## Running checklist
 
 | Item | State | Evidence / next action |
@@ -21,8 +35,8 @@ Started 15 October 2026 from `fa330e2`. Scope and acceptance criteria: [release 
 | R5 durable drafts / data lifecycle | Partial implementation verified | SQLite drafts use revision checks and stable retry IDs outside the 48-KiB layout record; UI save/reload and backend restart tests passed. Cross-window conflict recovery, full native close/update acceptance and backup/retention remain open. |
 | R6 Stage C acceptance | Pending | Real history/update bursts, sustained packaged measurements and developer-usefulness trials outstanding. |
 | R7 accessibility / failures | In progress | Busy-node feedback derives from native state; reduced-motion and stale-state semantics required. Complete native OS accessibility/failure matrix later. |
-| R8 usage Settings and /usage | Pending | Use read-only native observations without model turns or host restart; preserve timestamps and account scope. |
-| R9 slash skills | Pending | Session-scoped native discovery and invocation; keyboard/scrollable picker; selecting does not submit or interrupt. |
+| R8 usage Settings and /usage | Partial implementation; validation in progress | Use read-only native observations without model turns or host restart; preserve timestamps and account scope. |
+| R9 slash skills | Partial implementation; validation in progress | Session-scoped native discovery and invocation; keyboard/scrollable picker; selecting does not submit or interrupt. |
 | R10 BYOK decision assistance | Research complete; design pending | First-party Jev/TypeSafe, SubQ and OpenAI Decisions contracts verified. Clean default canvas, opt-in Settings, scoped disclosure and optional metrics; no automatic policy enabled. |
 | R11 resource efficiency | Required; review pending | Whole-tree CPU/memory/energy review, per-component attribution, active/background/concurrent workloads, repeated baselines and soak/leak checks. Historical 1.4.8 results are not current release acceptance. |
 | R12 security review | Required; review pending | Threat model; authentication/IPC/WebView/filesystem/process boundaries; skills and BYOK disclosure; supply chain/install/update; adversarial OS validation; findings remediation and residual-risk acceptance. |
@@ -90,3 +104,17 @@ Started 15 October 2026 from `fa330e2`. Scope and acceptance criteria: [release 
 - R11 added in response to the user's resource-consumption question: review the whole process tree, retain separate Lascoria/Muse attribution, compare release builds on all OSes, measure idle/active/waiting/background/concurrency and run repeated five-minute observations plus a 30-minute soak. Historical Stage C 1.4.8 measurements are explicitly labelled historical.
 
 - A short Windows resource snapshot was attempted with the read-only QA command `node resources.mjs` invoking `powershell.exe -NoProfile -File resources.ps1 -SupervisorId <owned-pid>`. PowerShell refused the script because script execution is disabled. No execution-policy or security setting was changed, and no fresh Windows resource figure is claimed. R11 remains an explicit release review requirement; historical macOS figures are the only sustained numbers cited here.
+
+## Current R7/R8/R9 increment
+
+- Canvas scene coordinates now use a stable logical space independent of floating-panel disclosure and filtering. The regression failed before the fix and passes with 50 nodes, 53% zoom, pan and a pinned node. Native Sessions collapse/expand was exercised; explicit Fit remains separate. Setup detection displays a checking state before installation options, with a held-response UI regression.
+- Added bounded read-only `usage` and `skills` supervisor operations, advertised feature flags and Tauri allowlist entries. They query the existing native session host without command journaling, model prompts, account-route changes or host restart. Reads use existing 10-second native deadlines and owner-authenticated IPC. `/usage` is local in composer/palette; a direct model command attempting that reserved selector is rejected. Usage is not aggregated across hosts and missing observations remain unknown.
+- Added a dedicated usage layout after native review found that reusing account-form cards produced uneven columns and default blue progress bars. Removed opaque provider tier IDs from the human-facing label. Quota is independent of token/API billing; reported percentages above 100 remain visible and remaining percentage floors at zero.
+- Slash discovery is debounced, session-scoped, height-bounded and keyboard navigable, with selector/source/description/argument hints. Selection only changes the durable draft; explicit submission resolves the current native catalog and sends typed skill input. Unknown/removed selectors fail closed. Requested invocation is not claimed as observed execution; native provenance remains available.
+- Real Muse Wonder completed `LASCORIA_USAGE_QA_OK`; the native usage query subsequently returned current-window and weekly subscription observations. Native picker discovered bundled/user/plugin entries, selected `/lazarus-mode`, and explicit submission completed `LASCORIA_NATIVE_SKILL_OK`. Initial default route was an existing `stage-a-fixture` setting and failed; selecting the actual `muse-wonder-1.0` route succeeded. No fixture success is reported as live-provider proof.
+- Controlled real-Muse integration verifies usage and catalog reads during an active provider turn preserve active turn ID, host generation and model-call count. UI tests cover overflow quota, refresh, scene stability, selector insertion, keyboard selection and dismissal. Full R8/R9 acceptance remains open: account-wide freshest-observation policy, independent account view, push updates, stale/offline/billing-state matrix, native screen-reader audit, plugin/project mutation and attribution cases.
+- QA instances are isolated from the user's normal app. Closed the older onboarding QA window and its empty supervisor; the current QA window will be closed after final native validation, leaving the normal app window. No user sessions are stopped to consolidate windows.
+
+Final increment evidence: `npm test` passed 30 Node and 7 supervisor Rust tests, including native 1,536-tool saturation recovery (generation 1, recovered native gap, exact final text, 26 model requests). `npm run check`, `npm run check:ui` and all four Playwright workflows passed. The reviewed macOS bundle is 137.40 MiB; final native Usage screenshot is retained locally at `.dev/backlog-native/usage-polished.png`. Earlier validation runs overlapped Vite edits or Playwright output directories and were discarded; the final full UI run was isolated and passed. No hosted CI or new Windows/Linux native acceptance is claimed for this increment.
+
+Cleanup verified one Lascoria GUI process remains (the original normal workspace). Both owned QA windows and their supervisors were closed. Six older idle QA supervisors, with no active turns or pending approvals/questions, were gracefully stopped without deleting their durable state. The normal user's older supervisor has an active task/pending question and was deliberately preserved; replacing that running supervisor needs the active-work handoff under R5/R3.

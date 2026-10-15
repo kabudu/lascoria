@@ -1,4 +1,6 @@
 import { useDurableDrafts } from './useDurableDrafts';
+import { SkillPicker } from './SkillPicker';
+import { Usage } from './Usage';
 import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
@@ -151,7 +153,7 @@ export function App() {
   const flushDraftsRef = useRef(flushDrafts);
   flushDraftsRef.current = flushDrafts;
   const [modal, setModal] = useState<
-      'start' | 'stop' | 'palette' | 'diagnostics' | 'settings' | 'account' | null
+      'start' | 'stop' | 'palette' | 'diagnostics' | 'settings' | 'account' | 'usage' | null
     >(null),
     [tab, setTab] = useState('transcript');
   const [review, setReview] = useState<{
@@ -630,12 +632,9 @@ export function App() {
       (!prefs.collapsed?.includes(n.id) || n.id === task?.id) &&
       n.label.toLowerCase().includes((prefs.search ?? '').toLowerCase()),
   );
-  const layout = constellationLayout(
-    visible,
-    mapWidth,
-    prefs.panels?.sessions?.collapsed && prefs.panels?.attention?.collapsed ? 40 : 300,
-    prefs.panels?.inspector?.collapsed ? 40 : 460,
-  );
+  // Scene coordinates belong to the constellation, not floating panels or the viewport.
+  // Keep filtered nodes in the layout so disclosure/search cannot move their neighbours.
+  const layout = constellationLayout(nodes, 1800);
   const zoom = Math.max(0.02, Math.min(2, prefs.zoom ?? 1));
   const canvasOffset = prefs.canvasOffset ?? { x: 0, y: 0 };
   const position = (node: Task, _index: number) =>
@@ -818,6 +817,12 @@ export function App() {
                 onClick={() => updatePrefs({ theme: prefs.theme === 'light' ? 'dark' : 'light' })}
               >
                 {prefs.theme === 'light' ? 'Dark' : 'Light'}
+              </button>
+              <button
+                disabled={!session || !status.features?.includes('usage')}
+                onClick={() => setModal('usage')}
+              >
+                Usage
               </button>
               <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
               <button
@@ -1662,7 +1667,12 @@ export function App() {
                             data-kind={item.kind}
                           >
                             <header>
-                              <strong>{item.tool ?? itemLabels[item.kind] ?? item.kind}</strong>
+                              <strong>
+                                {item.tool ??
+                                  itemLabels[item.kind] ??
+                                  item.kind ??
+                                  'Native activity'}
+                              </strong>
                               <small>
                                 {item.status} · r{item.revision}
                               </small>
@@ -2056,6 +2066,10 @@ export function App() {
                         e.preventDefault();
                         const data = new FormData(e.currentTarget);
                         const message = String(data.get('message'));
+                        if (message.trim() === '/usage') {
+                          setModal('usage');
+                          return;
+                        }
                         const result = await mutate(session.state.activeTurnId ? 'steer' : 'turn', {
                           sessionId: session.id,
                           text: message,
@@ -2067,6 +2081,17 @@ export function App() {
                           setDrafts((previous) => ({ ...previous, [session.id]: '' }));
                       }}
                     >
+                      {status.features?.includes('skills') && (
+                        <SkillPicker
+                          key={session.id}
+                          sessionId={session.id}
+                          text={drafts[session.id] ?? ''}
+                          select={(text) =>
+                            setDrafts((previous) => ({ ...previous, [session.id]: text }))
+                          }
+                          openUsage={() => setModal('usage')}
+                        />
+                      )}
                       <label htmlFor="message">
                         {session.state.activeTurnId
                           ? 'Steer current turn'
@@ -2164,22 +2189,30 @@ export function App() {
       <dialog ref={modalRef} onCancel={() => setModal(null)} aria-labelledby="dialog-heading">
         <div className="dialog-heading">
           <h2 id="dialog-heading">
-            {modal === 'account'
-              ? 'Your Muse connection'
-              : modal === 'start'
-                ? 'Start a Muse session'
-                : modal === 'stop'
-                  ? 'Stop execution and quit'
-                  : modal === 'diagnostics'
-                    ? 'Performance diagnostics'
-                    : modal === 'settings'
-                      ? 'Session model and effort'
-                      : 'Command palette'}
+            {modal === 'usage'
+              ? 'Muse usage'
+              : modal === 'account'
+                ? 'Your Muse connection'
+                : modal === 'start'
+                  ? 'Start a Muse session'
+                  : modal === 'stop'
+                    ? 'Stop execution and quit'
+                    : modal === 'diagnostics'
+                      ? 'Performance diagnostics'
+                      : modal === 'settings'
+                        ? 'Session model and effort'
+                        : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'usage' && (
+          <Usage
+            key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}
+            sessionId={session?.id}
+          />
+        )}
         {modal === 'account' && (
           <Account account={account} refresh={refreshAccount} onRuntimeReady={setRuntimeReady} />
         )}
@@ -2365,6 +2398,12 @@ export function App() {
         )}
         {modal === 'palette' && (
           <>
+            <button
+              disabled={!session || !status.features?.includes('usage')}
+              onClick={() => setModal('usage')}
+            >
+              /usage · Muse subscription usage
+            </button>
             <button
               onClick={() => {
                 setModal('start');

@@ -63,6 +63,8 @@ Source: [Stage C](stage-c.md) and its [memory follow-up](stage-c-memory.md). His
 
 ### R7 - Accessibility, reliability and user-facing failure states
 
+- [x] Preserve constellation scene geometry when floating panels expand or collapse, including zoom, pan and manually pinned nodes. Regression reproduced before the fix; native Sessions disclosure and the 50-node UI regression pass.
+
 - [ ] Complete native VoiceOver and keyboard-only journeys, focus restoration, zoom/text scaling, supported window sizes and both themes. Existing automated WCAG checks are a foundation, not a full native accessibility audit.
 - [ ] Test unavailable Muse/runtime, authentication, permissions, network failures, disk-full/locked Keychain, malformed/incompatible history and exhausted resource limits with clear recovery actions and no secret-bearing errors.
 - [ ] Add privacy-safe diagnostic export/support information with explicit preview/redaction boundaries. Define log retention and ensure installed builds do not depend on ignored development artifacts.
@@ -76,18 +78,18 @@ Source: [Stage C](stage-c.md) and its [memory follow-up](stage-c-memory.md). His
 - [ ] Keep subscription allowance separate from task tokens, model context occupancy and API billing estimates. Exact remaining requests/tokens, renewal dates and payment balances are shown only if the provider supplies them. Background refresh cannot promise fresher data than Muse's last observation, and must not send a synthetic prompt to obtain a number.
 - [ ] Validate native/live availability on subscription, no-observation, stale/offline, API-key and signed-out states; rapid open/close and multiple sessions; foreground streaming, tools, subagents and waiting approvals/questions. Assert no extra model calls or cancellation/restart events and unchanged active turn identity.
 
-The installed SDK exposes tier, current-window duration/used percentage/reset and weekly used percentage/reset with `observedAtMs`. Muse documents that the served usage query reads observed windows without spending a prompt: [Muse changelog](https://dev.meta.ai/docs/muse-code/changelog). These fields support a clear allowance dashboard; they do not establish access to full account billing information. The UI is not implemented yet.
+The installed SDK exposes tier, current-window duration/used percentage/reset and weekly used percentage/reset with `observedAtMs`. Muse documents that the served usage query reads observed windows without spending a prompt: [Muse changelog](https://dev.meta.ai/docs/muse-code/changelog). These fields support a clear allowance dashboard; they do not establish access to full account billing information. The first native usage view is implemented; the remaining Settings, freshness and state-matrix requirements above are still open.
 
 ### R9 - Native Muse slash-command and skill picker
 
 - [ ] Typing `/` at a command position in the composer opens an anchored, height-bounded, scrollable and searchable picker. Show supported Lascoria commands separately from Muse skills, with name, concise description, source badge (built-in/user/project/plugin) and argument hint when supplied. Support keyboard arrows, Enter/Tab selection, Escape dismissal, mouse selection and screen-reader announcements; keep the highlighted row in view.
 - [ ] Discover user-invocable skills through per-session native `skill/list`, respecting the selected workspace, plugin state, activation and native name resolution. Show actual available built-in skills rather than a hardcoded marketing list; exclude non-user-invocable entries. Handle qualified plugin selectors, duplicate display names, reserved local commands and conflicts without silently invoking another skill.
-- [ ] Selecting a skill inserts the exact native selector into the draft, ready for optional arguments; it does not execute automatically, expand the skill body in React or submit a model turn. On explicit submission, use Muse's native typed invocation path and preserve normal permissions and provenance. Do not manufacture a separate Lascoria interpretation of the skill instructions.
+- [x] Selecting a skill inserts the exact native selector into the draft, ready for optional arguments; it does not execute automatically, expand the skill body in React or submit a model turn. On explicit submission, use Muse's native typed invocation path and preserve normal permissions and provenance. Do not manufacture a separate Lascoria interpretation of the skill instructions.
 - [ ] Opening, filtering or selecting while a turn runs must not interrupt it. Retain the selection in the next-turn draft; any immediate steering/queueing action requires an explicit supported interaction and validated native semantics. Loading/reloading the list uses bounded queries, not prompts; invalidate the session-scoped cache when native skill state changes or session/workspace changes.
 - [ ] Show requested skill invocation separately from observed skill use. Attribute execution/loading only when Muse reports the corresponding tool/event evidence, retaining source/session provenance. Missing evidence is unknown, not proof that a skill did or did not run.
 - [ ] Validate built-in, user, project and plugin skills, empty/unavailable catalogs, disabled/conflicting selectors, arguments, session switching, long lists, keyboard/accessibility, active-turn non-interruption and a real native skill invocation. Negotiate any experimental capability required by the pinned Muse version; SDK type declarations alone are not runtime proof.
 
-References: [native skill discovery](https://meta-models.github.io/muse-code-sdk/next/generated/msp/methods/skill-list/), [skills in SDK sessions](https://meta-models.github.io/muse-code-sdk/next/guides/plugins/concepts/plugins-in-sdk-sessions/). Discovery and typed invocation are supported by Muse; Lascoria's picker and explicit usage UI are not implemented yet.
+References: [native skill discovery](https://meta-models.github.io/muse-code-sdk/next/generated/msp/methods/skill-list/), [skills in SDK sessions](https://meta-models.github.io/muse-code-sdk/next/guides/plugins/concepts/plugins-in-sdk-sessions/). Discovery and typed invocation are supported by Muse. Lascoria now has an initial picker and usage view; the full acceptance matrix above remains open.
 
 ### R10 - Optional BYOK decision providers, with a quiet UI
 
@@ -95,11 +97,11 @@ User requirement added 15 October: support Jev (TypeSafe), Subquadratic/SubQ and
 
 Verified first-party contracts (15 October 2026; recheck before implementation):
 
-| Provider | API and documented shape | Source |
-| --- | --- | --- |
-| Jev / TypeSafe | `POST https://api.typesafe.ai/v1/systemone`; `model`, shared `state`, named typed `questions`; named answers and usage. `noul`, `choice` and `score` are provider-native types. | [TypeSafe API](https://docs.typesafe.ai/api) |
-| SubQ | `POST https://api.subq.ai/v1/systemone`; `subq-snap-preview`, shared state and 1–16 named `noul`/`choice`/`score` questions. Public preview, with probabilities and reported usage. | [SubQ Decisions](https://docs.subq.ai/endpoints/decisions-api/) |
-| OpenAI | Dedicated `POST /v1/decisions`, not Responses; public beta currently documents `gpt-6-luna`, shared `input` and named `predicate`/`choice`/`score` questions, with an answers array. | [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions) |
+| Provider       | API and documented shape                                                                                                                                                             | Source                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| Jev / TypeSafe | `POST https://api.typesafe.ai/v1/systemone`; `model`, shared `state`, named typed `questions`; named answers and usage. `noul`, `choice` and `score` are provider-native types.      | [TypeSafe API](https://docs.typesafe.ai/api)                                |
+| SubQ           | `POST https://api.subq.ai/v1/systemone`; `subq-snap-preview`, shared state and 1–16 named `noul`/`choice`/`score` questions. Public preview, with probabilities and reported usage.  | [SubQ Decisions](https://docs.subq.ai/endpoints/decisions-api/)             |
+| OpenAI         | Dedicated `POST /v1/decisions`, not Responses; public beta currently documents `gpt-6-luna`, shared `input` and named `predicate`/`choice`/`score` questions, with an answers array. | [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions) |
 
 - [ ] Design **Settings → Integrations → Decision assistance** for BYOK provider/model configuration, native-vault storage, explicit connection testing and per-workspace enablement. Keep Muse subscription and its API key separate from these independently billed services. Keys never enter React state after submission, command journals, argv, exported diagnostics or Muse prompts. Honour provider retention/data-use settings and expose the actual destination before enabling any integration.
 - [ ] Agree the initial interaction model before enabling automatic policy: (a) user-requested evaluation of selected evidence, (b) opt-in bounded background triage with scoped data, (c) an explicit tool usable by Muse, or a staged combination. Start with advisory results; model routing, autonomous gates and scheduler actions require separately defined policy/permission semantics. Do not silently replace Muse's execution model or masquerade as its native permission reviewer.
@@ -161,11 +163,6 @@ Requested for consideration in the preceding discussion; these policies are not 
 - [ ] Evaluate a Rust-native interactive MSP adapter using the staged conformance/performance gates in [the SDK assessment](rust-sdk-assessment.md). Keep the official SDK as production/reference until parity is proven. This is not a prerequisite for onboarding or app updates, and it does not solve provider billing or credential expiry.
 - [ ] A dependency-aware task scheduler and automatic evidence acceptance need separately agreed semantics and trust boundaries; current graph assertions and human evidence do not implement them.
 
-## Suggested implementation order
+## Active implementation order
 
-1. R1/R2 together: installed-runtime packaging and Muse onboarding on the first supported platform.
-2. R5 durable drafts/data lifecycle, while retaining existing account/recovery behaviour.
-3. R4 rename/link/CI preparation while keeping public visibility as a separate deliberate action.
-4. R3 signed GitHub release/update pipeline and real upgrade tests, with the active-work contract enforced.
-5. R8/R9 usage and slash-skill UX; T1 token instrumentation can share the observation plumbing while preserving quota/token distinctions. R6/R7 remaining performance, usability, accessibility and failure gates; agree which D-items block the intended preview before optimisation policies.
-6. Public preview only after the chosen target matrix and acceptance gates pass. Add other platforms only with their own installed/native/live validation.
+Follow the [running completion sequence](implementation-progress.md#active-completion-sequence). All three operating systems remain release requirements. Hosted CI runs are deferred until the repository is public, as requested; skipped jobs are not validation evidence.
