@@ -14,8 +14,11 @@
   --ink: #e9eee9;
   --muted: #a5b4ab;
   --line: #34473d;
-  --accent: #b4d19a;
-  --accent-ink: #17221f;
+  --accent: #bdb7f4;
+  --accent-surface: #29263d;
+  --success: #9bceb0;
+  --attention: #e7bd79;
+  --accent-ink: #211c3c;
   --error: #edb9a5;
   color-scheme: dark;
 }
@@ -26,7 +29,10 @@
   --ink: #21382c;
   --muted: #536658;
   --line: #c6d2c4;
-  --accent: #3f633c;
+  --accent: #5550a4;
+  --accent-surface: #eeedf7;
+  --success: #35735a;
+  --attention: #90631b;
   --accent-ink: #fff;
   --error: #8d3620;
   color-scheme: light;
@@ -223,7 +229,7 @@ summary {
   margin-right: 14px;
 }
 .connection.live {
-  color: var(--accent);
+  color: var(--success);
 }
 .connection:before {
   content: '●';
@@ -310,7 +316,7 @@ summary {
   color: var(--error);
 }
 .attention-icon.review {
-  color: var(--accent);
+  color: var(--attention);
 }
 .attention-row small {
   display: block;
@@ -477,11 +483,11 @@ main {
   margin-right: 5px;
 }
 .status-dot.completed {
-  background: var(--accent);
+  background: var(--success);
 }
 .status-dot.running,
 .status-dot.inProgress {
-  background: #e0c989;
+  background: var(--accent);
 }
 .status-dot.failed,
 .status-dot.cancelled,
@@ -630,7 +636,7 @@ main {
 }
 .decision {
   padding: 16px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--attention);
   border-radius: 8px;
   margin-bottom: 16px;
 }
@@ -1259,7 +1265,7 @@ main {
   --ink: #252e2b;
   --muted: #636b66;
   --line: #dedfd7;
-  --accent: #356456;
+  --accent: #5550a4;
   --error: #963e2e;
 }
 .topbar {
@@ -1712,4 +1718,44 @@ main {
   transform: none;
   width: 100%;
   pointer-events: auto;
+}
+
+/* Interaction and execution state have distinct semantic colours. */
+.session-card.selected,
+.task-node.selected {
+  background: var(--accent-surface);
+}
+.attention-icon.approval,
+.attention-icon.question {
+  color: var(--attention);
+}
+
+.developer-workspace {
+  display: grid;
+  gap: 24px;
+}
+.developer-workspace > section {
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.developer-workspace pre {
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.workspace-path {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.repository-files {
+  display: grid;
+  max-height: 180px;
+  overflow: auto;
+  margin: 10px 0;
+}
+.repository-files button {
+  text-align: left;
+  overflow-wrap: anywhere;
 }

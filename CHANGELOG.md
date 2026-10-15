@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Name the product Weftara while retaining existing state, application and binary identities.
+- Add isolated task worktrees, Git-visible file context, direct streamed test commands, guarded commits/discard and persistent read-only session archives.
+- Upgrade the official Muse SDK and strict runtime compatibility pin to 1.4.9 after the installed host's schema advance.
+- Use muted indigo for interaction and selection, with separate green success, amber attention and red failure colours.
+
 - Reorganize the light workspace with a persistent compact canvas dock, workspace utilities menu, quieter floating panels, actionable attention and progressive transcript detail.
 
 - Refine inspector spacing and session settings with a labelled effort slider, model-specific defaults and explicit unavailable states.

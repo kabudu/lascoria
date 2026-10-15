@@ -3,6 +3,7 @@ mod dedicated;
 mod metrics;
 mod review;
 mod worker;
+mod workspace;
 
 use anyhow::{Context, Result, bail, ensure};
 use db::Db;
@@ -222,7 +223,7 @@ impl Actor {
             let db = self.db.lock().unwrap();
             let commands = db.all("commands")?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -254,7 +255,105 @@ impl Actor {
             .await
             .context("Review inspection timed out")?;
         }
-        if operation == "transcript" || operation == "output" || operation == "models" {
+        if operation.starts_with("workspace/") || operation == "session/archive" {
+            let session = params["sessionId"].as_str().context("Session required")?;
+            let row = self.row(session)?;
+            if operation == "workspace/files" || operation == "workspace/file" {
+                return workspace::files(&row, &params).await;
+            }
+            if operation == "workspace/inspect" {
+                return workspace::inspect(&row).await;
+            }
+            ensure!(
+                [
+                    "workspace/run",
+                    "workspace/commit",
+                    "workspace/discard",
+                    "session/archive"
+                ]
+                .contains(&operation),
+                "Unsupported workspace operation"
+            );
+            let id = request["id"]
+                .as_str()
+                .context("Stable request ID required")?;
+            ensure!(
+                !id.is_empty()
+                    && id.len() <= 100
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b)),
+                "Invalid request ID"
+            );
+            if let Some(previous) = self.db.lock().unwrap().get("commands", id)? {
+                ensure!(
+                    previous["operation"] == operation && previous["params"] == params,
+                    "Request ID reused with different payload"
+                );
+                return Ok(previous);
+            }
+            if operation == "session/archive" {
+                ensure!(row["lifecycle"] != "archived", "Session already archived");
+                ensure!(
+                    row["state"]["current"] != true || row["state"]["activeTurnId"].is_null(),
+                    "Cancel the active Muse turn before archiving"
+                );
+                ensure!(
+                    !self
+                        .db
+                        .lock()
+                        .unwrap()
+                        .all("commands")?
+                        .iter()
+                        .any(|c| c["sessionId"] == session
+                            && c["operation"] == "workspace/run"
+                            && c["status"] == "running"),
+                    "Wait for the test command to finish"
+                );
+            } else if !(operation == "workspace/discard" && row["lifecycle"] == "archived") {
+                workspace::idle(&self.db, &row)?;
+            }
+            if let Some(previous) = workspace::begin(&self.db, id, operation, &params, session)? {
+                return Ok(previous);
+            }
+            if operation == "workspace/run" {
+                return match workspace::run(self.db.clone(), row, id.to_owned(), params).await {
+                    Ok(result) => Ok(result),
+                    Err(error) => workspace::finish(&self.db, id, Err(error)),
+                };
+            }
+            if operation == "workspace/commit" {
+                return workspace::finish(&self.db, id, workspace::commit(&row, &params).await);
+            }
+            if operation == "workspace/discard" {
+                // Validate the exact content before stopping the worker, then check again before removal.
+                let current = workspace::inspect(&row).await?;
+                ensure!(
+                    row["managedWorkspace"].is_object()
+                        && params["confirmation"] == row["id"]
+                        && current["fingerprint"] == params["fingerprint"],
+                    "Confirm the current isolated workspace before discarding"
+                );
+            }
+            if let Some(mut worker) = self.workers.remove(session) {
+                worker.stop().await;
+            }
+            let mut archived = self.row(session)?;
+            archived["lifecycle"] = json!("archived");
+            archived["state"]["current"] = json!(false);
+            archived["archivedAtMillis"] = json!(db::now_ms());
+            self.save(&archived)?;
+            let result = if operation == "workspace/discard" {
+                workspace::discard(&archived, &params).await
+            } else {
+                Ok(json!({"archived":session,"workspaceRetained":true}))
+            };
+            if operation == "workspace/discard" && result.is_ok() {
+                archived["workspaceDiscarded"] = json!(true);
+                self.save(&archived)?;
+            }
+            return workspace::finish(&self.db, id, result);
+        } else if operation == "transcript" || operation == "output" || operation == "models" {
             let session = params["sessionId"].as_str().context("Session required")?;
             ensure!(
                 self.row(session)?["state"]["current"] == true,
@@ -338,7 +437,14 @@ impl Actor {
         );
         if operation == "start" {
             ensure!(
-                self.db.lock().unwrap().all("sessions")?.len() < 10,
+                self.db
+                    .lock()
+                    .unwrap()
+                    .all("sessions")?
+                    .iter()
+                    .filter(|r| r["lifecycle"] != "archived")
+                    .count()
+                    < 10,
                 "Session limit reached"
             );
             if let Some(model) = params.get("modelId") {
@@ -354,13 +460,48 @@ impl Actor {
             let workspace =
                 fs::canonicalize(params["workspace"].as_str().context("Workspace required")?)?;
             ensure!(workspace.is_dir(), "Workspace must be a directory");
+            ensure!(
+                self.db.lock().unwrap().count("sessions")? < 100,
+                "Retained session limit reached (100)"
+            );
             let session = Uuid::now_v7().to_string();
+            let mut managed = Value::Null;
+            let workspace = if params["isolated"] == true {
+                // Persist intent before filesystem effects. An uncertain retry never creates another worktree.
+                workspace::begin(&self.db, id, operation, &params, &session)?;
+                let parent = env::var_os("SCH_STATE_DIR")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| {
+                        PathBuf::from(env::var_os("HOME").unwrap()).join(".spatial-constellation")
+                    })
+                    .join("worktrees");
+                fs::create_dir_all(&parent)?;
+                let target = fs::canonicalize(&parent)?.join(&session);
+                let mut planned = json!({"id":session,"workspace":target,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false},"managedWorkspace":{"source":workspace,"path":target,"branch":format!("weftara/{session}")}});
+                self.save(&planned)?;
+                match workspace::create(&workspace, &target, &session).await {
+                    Ok(value) => managed = value,
+                    Err(error) => {
+                        planned["lifecycle"] = json!("failed");
+                        planned["recoveryError"] = json!(error.to_string());
+                        self.save(&planned)?;
+                        return workspace::finish(&self.db, id, Err(error));
+                    }
+                }
+                target
+            } else {
+                workspace
+            };
             let mut row = json!({"id":session,"workspace":workspace,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false}});
+            row["managedWorkspace"] = managed;
             self.save(&row)?;
             if let Err(error) = self.launch(&mut row).await {
                 row["lifecycle"] = json!("failed");
                 row["recoveryError"] = json!(error.to_string());
                 self.save(&row)?;
+                if params["isolated"] == true {
+                    return workspace::finish(&self.db, id, Err(error));
+                }
                 return Err(error);
             }
             let mut wire = json!({"sessionId":session,"workspace":workspace});
@@ -388,6 +529,13 @@ impl Actor {
             .as_str()
             .context("Session target required")?;
         let mut row = self.row(session)?;
+        ensure!(
+            row["lifecycle"] != "archived",
+            "Archived sessions are read-only"
+        );
+        if operation == "turn" {
+            workspace::idle(&self.db, &row)?;
+        }
         if operation == "resume" {
             ensure!(
                 params == json!({"sessionId": session}),
@@ -462,7 +610,7 @@ async fn connection(
             if request["params"]["since"].as_str().is_some_and(|version| version == db.version()) {
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["modelSelection","sessionSettings","diagnostics","taskWorkspaces"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
         let (tx, rx) = oneshot::channel();
         sender
@@ -537,7 +685,17 @@ async fn main() -> Result<()> {
     fs::set_permissions(&database_path, fs::Permissions::from_mode(0o600))?;
     {
         let db = db.lock().unwrap();
+        for mut command in db.all("commands")? {
+            if command["operation"] == "workspace/run" && command["status"] == "running" {
+                command["status"] = json!("outcomeUnknown");
+                command["result"]["outcome"] = json!("interrupted");
+                db.put("commands", command["id"].as_str().unwrap(), &command)?;
+            }
+        }
         for mut row in db.all("sessions")? {
+            if row["lifecycle"] == "archived" {
+                continue;
+            }
             let id = row["id"].as_str().unwrap().to_string();
             row["attempts"] = json!(0);
             db.put("sessions", &id, &row)?;

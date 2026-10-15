@@ -28,8 +28,8 @@ export async function spawnRuntime(options, onEvent, onDeath) {
     );
     if (host.fingerprintWarning)
       throw new Error(`SDK schema mismatch: ${JSON.stringify(host.fingerprintWarning)}`);
-    if (host.initializeResult.serverInfo.version !== '1.4.8')
-      throw new Error('Unsupported Muse binary version; this spike is validated against 1.4.8');
+    if (host.initializeResult.serverInfo.version !== '1.4.9')
+      throw new Error('Unsupported Muse binary version; this spike is validated against 1.4.9');
   } catch (error) {
     await handshake.close();
     throw error;

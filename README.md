@@ -1,6 +1,8 @@
-# Spatial Constellation Harness
+# Weftara
 
 Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.
+
+[Daily coding workflow](docs/daily-coding-workflow.md) describes isolated task worktrees, repository context, direct test execution, guarded commits/discard and session archival. Existing state and internal binary paths remain compatible with the former harness name.
 
 Stage A implements a local Rust supervisor, a Node worker using the official Muse SDK, and a diagnostic CLI. Stage B adds a Tauri desktop client with React and TypeScript, using light mode by default. A native Rust MSP SDK is a possible follow-up after the concept is proven; the current `muse-codes` crate wraps headless CLI output and does not replace this interactive MSP integration.
 
@@ -15,7 +17,7 @@ Start a session from an existing Git repository, then inspect the task map/list,
 
 ## Run the diagnostic client
 
-Prerequisites: macOS, Rust 1.97+, Node.js 24+, and Muse Code 1.4.8 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.8 and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
+Prerequisites: macOS, Rust 1.97+, Node.js 24+, and Muse Code 1.4.9 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.9 and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
 
 ```sh
 npm ci
@@ -25,7 +27,7 @@ npm start -- start '{"workspace":"/absolute/path/to/repository"}' session-one
 npm start -- status
 ```
 
-`up` launches the Rust service independently and reconnects if it already exists. `supervisor` runs it in the foreground for diagnostics. The default provider is credential-free `echo`; set `SCH_PROVIDER=meta` before launching the service to use your configured provider. Live sessions explicitly select the provider and default model advertised by Muse's native catalog, so workflow children have a recorded parent route. This uses the catalog default, with no model picker in this development client; existing sessions retain their recorded route. Muse owns credentials, permissions, and its sandbox. The harness does not disable them.
+`up` launches the Rust service independently and reconnects if it already exists. `supervisor` runs it in the foreground for diagnostics. The default provider is credential-free `echo`; set `SCH_PROVIDER=meta` before launching the service to use your configured provider. Live sessions explicitly select the provider and default model advertised by Muse's native catalog, so workflow children have a recorded parent route. The desktop offers explicit model selection for new sessions and model/effort settings for existing sessions; the diagnostic start command uses the catalog default unless `modelId` is supplied. Existing sessions retain their recorded route. Muse owns credentials, permissions, and its sandbox. The harness does not disable them.
 
 Copy the returned session ID into the next request:
 
@@ -56,7 +58,7 @@ npm run check
 npm test
 ```
 
-The suite requires the real Muse 1.4.8 binary. It uses temporary repositories and isolated XDG configuration/data directories. Its scripted model binds only to loopback, uses a dummy credential, and exercises real Muse tools and approvals without a paid provider. It also uses explicit fault fixtures for lost acknowledgements and incompatible handshakes. Test-owned processes and temporary data are cleaned up.
+The suite requires the real Muse 1.4.9 binary. It uses temporary repositories and isolated XDG configuration/data directories. Its scripted model binds only to loopback, uses a dummy credential, and exercises real Muse tools and approvals without a paid provider. It also uses explicit fault fixtures for lost acknowledgements and incompatible handshakes. Test-owned processes and temporary data are cleaned up.
 
 [Stage A requirements, evidence, and limits](docs/stage-a.md) distinguish real runtime proof from injected scenarios. [Architecture decisions](docs/architecture.md) describe the Rust/Node boundary and later SDK replacement option. [Revised product plan](docs/Spatial_Constellation_Harness_Revised_Plan.docx) remains the source plan; the Rust ownership decision in the architecture document supersedes its provisional Node supervisor choice.
 

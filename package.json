@@ -1,5 +1,5 @@
 {
-  "name": "spatial-constellation-harness",
+  "name": "weftara",
   "version": "0.1.0",
   "description": "Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.",
   "scripts": {
@@ -27,7 +27,7 @@
   },
   "homepage": "https://github.com/kabudu/spatial-constellation-harness#readme",
   "dependencies": {
-    "@muse-code/sdk": "1.4.8",
+    "@muse-code/sdk": "1.4.9",
     "@tauri-apps/api": "2.12.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"
