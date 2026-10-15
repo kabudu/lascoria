@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Name the product Weftara while retaining existing state, application and binary identities.
+- Adopt Lascoria with a folded-wing mark, lowercase wordmark, porcelain/ink/periwinkle themes, welcome copy and native app icons. Use repository/display names for isolated sessions rather than worktree UUIDs. Preserve existing state and revision identities; new isolated task branches use `lascoria/`.
+
 - Add isolated task worktrees, Git-visible file context, direct streamed test commands, guarded commits/discard and persistent read-only session archives.
 - Upgrade the official Muse SDK and strict runtime compatibility pin to 1.4.9 after the installed host's schema advance.
 - Use muted indigo for interaction and selection, with separate green success, amber attention and red failure colours.

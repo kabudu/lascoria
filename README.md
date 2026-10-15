@@ -1,6 +1,10 @@
-# Weftara
+# Lascoria
+
+**The spatial coding workspace.** Give your agents room to work.
 
 Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.
+
+[Lascoria identity](docs/branding.md) documents the folded-wing mark, light-first palette, assets and compatibility boundaries.
 
 [Daily coding workflow](docs/daily-coding-workflow.md) describes isolated task worktrees, repository context, direct test execution, guarded commits/discard and session archival. Existing state and internal binary paths remain compatible with the former harness name.
 

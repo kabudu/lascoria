@@ -115,6 +115,10 @@ export function App() {
     status.sessions.find((s) => s.id === prefs.sessionId) ??
     status.sessions.find((s) => s.lifecycle !== 'archived') ??
     status.sessions[0];
+  const sessionName = (row: SessionRow) =>
+    prefs.sessionLabels?.[row.id] ||
+    (row.managedWorkspace?.source ?? row.workspace).split('/').filter(Boolean).at(-1) ||
+    row.id;
   const selectedSession = useRef<string | undefined>(session?.id);
   selectedSession.current = session?.id;
   const nodes = session ? tasks(session, prefs) : [];
@@ -668,8 +672,10 @@ export function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <a className="wordmark" href="#workspace">
-          <span className="mark">✳</span> WEFTARA <span className="edition">WORKSPACE</span>
+        <a className="wordmark" href="#workspace" aria-label="Lascoria workspace">
+          <img className="brand-mark" src="/brand/lascoria-mark.svg" alt="" />
+          <span className="brand-name">lascoria</span>
+          <span className="edition">SPATIAL CODING</span>
         </a>
         <div className="top-actions">
           <span className={`connection ${connected ? 'live' : ''}`}>
@@ -746,93 +752,97 @@ export function App() {
           </details>
         </div>
       </header>
-      <aside className="sidebar">
-        <FloatingPanel
-          title="Sessions"
-          layout={prefs.panels?.sessions}
-          initial={{ x: 16, y: 150 }}
-          onChange={(value) => panelChange('sessions', value)}
-        >
-          <div className="section-heading">
-            <h2>Sessions</h2>
-            <button onClick={() => setModal('start')} aria-label="Start a session">
-              ＋
+      {session && (
+        <aside className="sidebar">
+          <FloatingPanel
+            title="Sessions"
+            layout={prefs.panels?.sessions}
+            initial={{ x: 16, y: 150 }}
+            onChange={(value) => panelChange('sessions', value)}
+          >
+            <div className="section-heading">
+              <h2>Sessions</h2>
+              <button onClick={() => setModal('start')} aria-label="Start a session">
+                ＋
+              </button>
+            </div>
+            <label className="row">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+              />{' '}
+              Show archived sessions
+            </label>
+            <nav aria-label="Sessions">
+              {status.sessions
+                .filter((s) => showArchived || s.lifecycle !== 'archived' || s.id === session?.id)
+                .map((s) => (
+                  <button
+                    key={s.id}
+                    className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
+                    onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
+                  >
+                    <span className="eyebrow">SESSION · {short(s.id)}</span>
+                    {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
+                    <strong>{sessionName(s)}</strong>
+                    <span>
+                      {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle}{' '}
+                      · {queue.filter((q) => q.sessionId === s.id).length} attention
+                    </span>
+                  </button>
+                ))}
+            </nav>
+          </FloatingPanel>
+          <FloatingPanel
+            title="Attention"
+            badge={queue.length}
+            layout={prefs.panels?.attention}
+            initial={{ x: 16, y: 460 }}
+            onChange={(value) => panelChange('attention', value)}
+          >
+            <section className="attention" aria-labelledby="attention-heading">
+              <div className="section-heading">
+                <h2 id="attention-heading">Attention</h2>
+                <span className="count">{queue.length}</span>
+              </div>
+              {queue.length === 0 ? (
+                <p className="muted">Nothing needs attention.</p>
+              ) : (
+                <>
+                  {queue.filter((entry) => !isHistoricalInterruption(entry)).map(renderAttention)}
+                  {queue.some(isHistoricalInterruption) && (
+                    <details className="attention-history">
+                      <summary>
+                        Runtime history <span>{queue.filter(isHistoricalInterruption).length}</span>
+                      </summary>
+                      {queue.filter(isHistoricalInterruption).map(renderAttention)}
+                    </details>
+                  )}
+                </>
+              )}
+            </section>
+          </FloatingPanel>
+          <div className="sidebar-foot">
+            LOCAL EXECUTION
+            <br />
+            <span>Muse · local execution</span>
+          </div>
+        </aside>
+      )}
+      <main id="workspace">
+        {session && (
+          <div className="workspace-title">
+            <div>
+              <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
+              <h1>{sessionName(session)}</h1>
+              <p className="muted">Tasks, decisions and the evidence behind a change.</p>
+            </div>
+            <button className="primary" onClick={() => setModal('start')}>
+              New session
             </button>
           </div>
-          <label className="row">
-            <input
-              type="checkbox"
-              checked={showArchived}
-              onChange={(e) => setShowArchived(e.target.checked)}
-            />{' '}
-            Show archived sessions
-          </label>
-          <nav aria-label="Sessions">
-            {status.sessions
-              .filter((s) => showArchived || s.lifecycle !== 'archived' || s.id === session?.id)
-              .map((s) => (
-                <button
-                  key={s.id}
-                  className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
-                  onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
-                >
-                  <span className="eyebrow">SESSION · {short(s.id)}</span>
-                  {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
-                  <strong>{prefs.sessionLabels?.[s.id] || s.workspace.split('/').at(-1)}</strong>
-                  <span>
-                    {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
-                    {queue.filter((q) => q.sessionId === s.id).length} attention
-                  </span>
-                </button>
-              ))}
-          </nav>
-        </FloatingPanel>
-        <FloatingPanel
-          title="Attention"
-          badge={queue.length}
-          layout={prefs.panels?.attention}
-          initial={{ x: 16, y: 460 }}
-          onChange={(value) => panelChange('attention', value)}
-        >
-          <section className="attention" aria-labelledby="attention-heading">
-            <div className="section-heading">
-              <h2 id="attention-heading">Attention</h2>
-              <span className="count">{queue.length}</span>
-            </div>
-            {queue.length === 0 ? (
-              <p className="muted">Nothing needs attention.</p>
-            ) : (
-              <>
-                {queue.filter((entry) => !isHistoricalInterruption(entry)).map(renderAttention)}
-                {queue.some(isHistoricalInterruption) && (
-                  <details className="attention-history">
-                    <summary>
-                      Runtime history <span>{queue.filter(isHistoricalInterruption).length}</span>
-                    </summary>
-                    {queue.filter(isHistoricalInterruption).map(renderAttention)}
-                  </details>
-                )}
-              </>
-            )}
-          </section>
-        </FloatingPanel>
-        <div className="sidebar-foot">
-          LOCAL EXECUTION
-          <br />
-          <span>Muse 1.4.6 · Rust control plane</span>
-        </div>
-      </aside>
-      <main id="workspace">
-        <div className="workspace-title">
-          <div>
-            <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
-            <h1>{session?.workspace.split('/').at(-1) ?? 'Bring your work into view.'}</h1>
-            <p className="muted">Tasks, decisions and the evidence behind a change.</p>
-          </div>
-          <button className="primary" onClick={() => setModal('start')}>
-            New session
-          </button>
-        </div>
+        )}
         <div className="notification-stack" role="region" aria-label="Workspace notifications">
           {error && (
             <div className="banner error" role="alert">
@@ -862,8 +872,9 @@ export function App() {
         </div>
         {!session ? (
           <section className="empty-state">
-            <span className="large-mark">✳</span>
-            <h2>One place to follow the work.</h2>
+            <img className="brand-mark large-mark" src="/brand/lascoria-mark.svg" alt="" />
+            <p className="eyebrow">THE SPATIAL CODING WORKSPACE</p>
+            <h1>Give your agents room to work.</h1>
             <p>
               Open an existing Git repository, give Muse a task, and keep its decisions and changes
               in view.

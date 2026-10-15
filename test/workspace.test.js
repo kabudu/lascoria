@@ -30,7 +30,7 @@ test(
   'isolated coding lifecycle uses real Muse, direct tests, guarded commits, discard and durable archive',
   { timeout: 100000 },
   async (t) => {
-    const root = await mkdtemp(join(tmpdir(), 'weftara-workspace-'));
+    const root = await mkdtemp(join(tmpdir(), 'lascoria-workspace-'));
     const source = join(root, 'source');
     const directory = join(root, 'state');
     await mkdir(source);
@@ -74,6 +74,13 @@ test(
     const row = () => status().then((s) => s.sessions.find((r) => r.id === sessionId));
     const workspace = (await row()).workspace;
     assert.notEqual(workspace, source);
+    assert.equal((await row()).managedWorkspace.branch, `lascoria/${sessionId}`);
+    assert.equal(
+      execFileSync('git', ['-C', workspace, 'branch', '--show-current'], {
+        encoding: 'utf8',
+      }).trim(),
+      `lascoria/${sessionId}`,
+    );
     assert.equal(await readFile(join(workspace, 'README.md'), 'utf8'), 'Original checkout\n');
     assert.deepEqual(await request(directory, 'start', startParams, 'isolated-start'), started);
     const turn = await request(

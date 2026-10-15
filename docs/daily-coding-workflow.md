@@ -1,10 +1,10 @@
-# Weftara daily coding workflow
+# Lascoria daily coding workflow
 
-Weftara is the primary product name. The existing repository URL, internal binary names, application identifier and `~/.spatial-constellation` state location remain compatible. This is a development application, not a signed distribution. The preliminary brand screen is not trademark or domain clearance.
+Lascoria is the primary product name. The existing repository URL, internal binary names, application identifier, stored task branches, revision fingerprint domain and `~/.spatial-constellation` state location remain compatible. This is a development application, not a signed distribution. The preliminary brand screen is not trademark or domain clearance.
 
 ## Workflow
 
-1. Choose **New session**, enter a Git repository root and a task. **Create an isolated task worktree** is selected by default. This creates `weftara/<session-id>` from committed HEAD under the private supervisor state's `worktrees` directory. Uncommitted source-checkout changes are not copied. Uncheck isolation to use the existing checkout directly.
+1. Choose **New session**, enter a Git repository root and a task. **Create an isolated task worktree** is selected by default. New sessions create `lascoria/<session-id>` from committed HEAD under the private supervisor state's `worktrees` directory. Uncommitted source-checkout changes are not copied. Uncheck isolation to use the existing checkout directly.
 2. Muse runs through the existing approvals, questions, steering and cancellation controls. Its host remains independent of the window lifetime.
 3. Open the inspector's **Workspace** tab. Filter Git-visible file paths, inspect a text file and add its contents to the task draft. Inspect the draft before sending it. Ignored files are excluded; binary files and files above 64 KiB cannot be attached this way. Drafts retain their existing in-window lifetime; they are not durable across app restarts.
 4. Use **Refresh change preview** for tracked changes and new files. This preview has a content identity independent of staging. Existing immutable diff captures and human evidence retain their original separate identity and provenance model.
@@ -37,4 +37,10 @@ The full backend suite passed 24 Node tests and five Rust tests on Muse/SDK 1.4.
 
 All three Playwright workflows passed: the synthetic projection benchmark, existing real Muse/native-bridge workflow and the new isolated-task workflow. The exercised screens passed automated WCAG A/AA checks. Formatting, TypeScript, both Rust Clippy checks and the unsigned optimized desktop build passed. A ten-session five-second runtime smoke passed stable-process, SDK-process-count, idle CPU/RSS, snapshot latency and correctness checks; its five-minute-observation gate is explicitly false.
 
-Native visual inspection remains blocked by the locked Mac. A separate real Wonder trial started successfully but its model turn returned `authRequired`. Browser login approval is pending. These are not represented as completed native/live-provider validation. Existing user sessions were left running separately; trial state and credentials remain ignored local data. The rebuilt native Weftara window was launched against that separate trial state.
+Native visual inspection remains blocked by the locked Mac. A separate real Wonder trial started successfully but its model turn returned `authRequired`. Browser login approval is pending. These are not represented as completed native/live-provider validation. Existing user sessions were left running separately; trial state and credentials remain ignored local data. The previously built native Weftara window was launched against that separate trial state. See the later Lascoria branding validation record for current results.
+
+## Lascoria branding validation, 15 October 2026
+
+The product now uses the Lascoria identity. The native Mac is accessible and the rebuilt Tauri app was visually inspected and interacted with in both themes, including model/effort settings and canvas controls. The latest backend suite passed 24 Node and six Rust tests; all three browser/native-bridge workflows passed. [Branding validation](branding.md#validation-15-october-2026) records the exact scope.
+
+The live Wonder trial progressed beyond the prior authentication error after loading the user-provided local API credential through Muse's stdin interface and resuming its host. Meta then rejected the call with HTTP 402 billing verification failure. The failure remains visible in native task/attention state. Successful live implementation and question resumption remain unverified pending provider billing; scripted-provider tests are not presented as that proof.
