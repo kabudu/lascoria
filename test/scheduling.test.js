@@ -57,20 +57,31 @@ test(
       request(directory, 'turn', { sessionId: b, text: 'collision' }, 'slow'),
       /in flight/,
     );
-    const ordered = request(
-      directory,
-      'setEffort',
-      { sessionId: a, reasoningEffort: 'low' },
-      'ordered',
-    );
+    // Socket connection order is not invocation order. A duplicate-ID refusal proves
+    // one exact request has entered the lane before the next request is submitted.
+    async function enqueueEffort(reasoningEffort, id) {
+      const params = { sessionId: a, reasoningEffort };
+      const submissions = [
+        request(directory, 'setEffort', params, id),
+        request(directory, 'setEffort', params, id),
+      ];
+      const completed = Promise.any(submissions);
+      const first = await Promise.race(
+        submissions.map((p) =>
+          p.then(
+            (value) => ({ value }),
+            (error) => ({ error }),
+          ),
+        ),
+      );
+      assert.match(first.error?.message ?? '', /in flight/, 'duplicate observes queued admission');
+      return { completed };
+    }
+    const ordered = (await enqueueEffort('low', 'ordered')).completed;
     const queued = [
-      request(directory, 'setEffort', { sessionId: a, reasoningEffort: 'medium' }, 'queue-1'),
+      (await enqueueEffort('medium', 'queue-1')).completed,
+      (await enqueueEffort('high', 'queue-2')).completed,
     ];
-    await delay(50);
-    queued.push(
-      request(directory, 'setEffort', { sessionId: a, reasoningEffort: 'high' }, 'queue-2'),
-    );
-    await delay(100);
     await assert.rejects(request(directory, 'models', { sessionId: a }, 'overflow'), /queue full/);
     const began = performance.now();
     const peer = await request(
