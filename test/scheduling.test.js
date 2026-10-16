@@ -133,3 +133,61 @@ test(
     assert.equal(stopped.stopping, true);
   },
 );
+
+test(
+  'review snapshots remain available while a new session is being admitted',
+  { timeout: 15000 },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'sch-admission-'));
+    const directory = join(root, 'state'),
+      workspace = join(root, 'workspace');
+    await mkdir(workspace);
+    const daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
+      env: {
+        ...process.env,
+        SCH_STATE_DIR: directory,
+        SCH_WORKER: resolve('testing/scheduling-worker.js'),
+        SCH_SCHEDULING_LOG: join(root, 'calls'),
+        SCH_DELAY_START: '1',
+      },
+      stdio: 'ignore',
+    });
+    t.after(async () => {
+      if (daemon.exitCode === null && daemon.signalCode === null) {
+        const exited = new Promise((r) => daemon.once('exit', r));
+        daemon.kill('SIGTERM');
+        await bounded(exited, 10000).catch(() => daemon.kill('SIGKILL'));
+      }
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    });
+    await until(
+      () => request(directory, 'status'),
+      (s) => s.pid === daemon.pid,
+      'ready',
+    );
+    const starting = request(directory, 'start', { workspace }, 'admitting').then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+    const snapshot = await until(
+      () => request(directory, 'status'),
+      (s) => s.sessions.length === 1,
+      'registered',
+    );
+    const sessionId = snapshot.sessions[0].id;
+    const began = performance.now();
+    const review = await request(directory, 'review/list', { sessionId }, 'during-admission');
+    assert.deepEqual(review.artifacts, []);
+    assert.deepEqual(review.evidence, []);
+    assert.ok(
+      performance.now() - began < 1500,
+      'journal reads do not wait for slow session admission',
+    );
+    await assert.rejects(
+      request(directory, 'review/list', { sessionId: 'unregistered' }),
+      /Unknown session/,
+    );
+    const result = await starting;
+    assert.equal(result.value?.status, 'applied', String(result.error));
+  },
+);
