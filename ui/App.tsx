@@ -177,6 +177,7 @@ export function App() {
       | 'account'
       | 'usage'
       | 'relay'
+      | 'inbox'
       | 'help'
       | null
     >(null),
@@ -214,6 +215,10 @@ export function App() {
     prefs.sessionLabels?.[row.id] ||
     (row.managedWorkspace?.source ?? row.workspace).split(/[\\/]/).filter(Boolean).at(-1) ||
     row.id;
+  const newMessages = (status.relayUnread ?? []).filter((entry) =>
+    status.sessions.some((row) => row.id === entry.sessionId),
+  );
+  const newMessageCount = newMessages.reduce((total, entry) => total + entry.count, 0);
   const selectedSession = useRef<string | undefined>(session?.id);
   selectedSession.current = session?.id;
   const nodes = session ? tasks(session, prefs) : [];
@@ -799,6 +804,15 @@ export function App() {
           <span className="edition">SPATIAL CODING</span>
         </a>
         <div className="top-actions">
+          {newMessageCount > 0 && (
+            <button
+              className="message-discovery"
+              disabled={!connected}
+              onClick={() => setModal('inbox')}
+            >
+              {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'}
+            </button>
+          )}
           {Object.keys(draftConflicts).length + Object.keys(relayDrafts.conflicts).length > 0 && (
             <button
               onClick={() => {
@@ -2296,23 +2310,25 @@ export function App() {
       <dialog ref={modalRef} onCancel={() => setModal(null)} aria-labelledby="dialog-heading">
         <div className="dialog-heading">
           <h2 id="dialog-heading">
-            {modal === 'help'
-              ? 'Lascoria help'
-              : modal === 'relay'
-                ? 'Local session messages'
-                : modal === 'usage'
-                  ? 'Muse usage'
-                  : modal === 'account'
-                    ? 'Your Muse connection'
-                    : modal === 'start'
-                      ? 'Start a Muse session'
-                      : modal === 'stop'
-                        ? 'Stop execution and quit'
-                        : modal === 'diagnostics'
-                          ? 'Performance diagnostics'
-                          : modal === 'settings'
-                            ? 'Session model and effort'
-                            : 'Command palette'}
+            {modal === 'inbox'
+              ? 'New local messages'
+              : modal === 'help'
+                ? 'Lascoria help'
+                : modal === 'relay'
+                  ? 'Local session messages'
+                  : modal === 'usage'
+                    ? 'Muse usage'
+                    : modal === 'account'
+                      ? 'Your Muse connection'
+                      : modal === 'start'
+                        ? 'Start a Muse session'
+                        : modal === 'stop'
+                          ? 'Stop execution and quit'
+                          : modal === 'diagnostics'
+                            ? 'Performance diagnostics'
+                            : modal === 'settings'
+                              ? 'Session model and effort'
+                              : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
@@ -2328,6 +2344,41 @@ export function App() {
               relay: Boolean(session && status.features?.includes('localRelay')),
             }}
           />
+        )}
+        {modal === 'inbox' && (
+          <section className="message-discovery-list" aria-label="Conversations with new messages">
+            <p>
+              Choose a conversation to review. Opening it does not mark messages viewed or send them
+              to Muse.
+            </p>
+            {newMessages.length === 0 && <p className="muted">All caught up.</p>}
+            {newMessages.map((entry) => {
+              const recipient = status.sessions.find((row) => row.id === entry.sessionId)!;
+              const sender = status.sessions.find((row) => row.id === entry.peerId);
+              return (
+                <button
+                  key={`${entry.sessionId}:${entry.peerId}`}
+                  onClick={() => {
+                    updatePrefs({ sessionId: entry.sessionId, selection: undefined });
+                    setRelayTarget({ source: entry.sessionId, peer: entry.peerId });
+                    setModal('relay');
+                  }}
+                >
+                  <strong>
+                    {sessionName(recipient)} <small>· {short(recipient.id)}</small>
+                  </strong>
+                  <span>
+                    From {sender ? sessionName(sender) : `Session ${short(entry.peerId)}`} ·{' '}
+                    {short(entry.peerId)}
+                  </span>
+                  <span>
+                    {entry.count} new {entry.count === 1 ? 'message' : 'messages'}
+                    {recipient.lifecycle === 'archived' ? ' · Archived session' : ''}
+                  </span>
+                </button>
+              );
+            })}
+          </section>
         )}
         {modal === 'relay' && session && (
           <SessionRelay

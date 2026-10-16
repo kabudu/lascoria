@@ -6,6 +6,28 @@ use serde_json::{Value, json};
 const KEY: &str = "local-relay-v1";
 const MAX_MESSAGES: usize = 256;
 
+// Counts only: status must not disclose message bodies or mark anything viewed.
+// The journal retains at most MAX_MESSAGES entries; unchanged status skips this read.
+pub fn unread_summary(db: &crate::db::Db) -> Result<Value> {
+    let state = db.get("presentation", KEY)?;
+    let mut counts = std::collections::BTreeMap::<(String, String), usize>::new();
+    if let Some(messages) = state.as_ref().and_then(|s| s["messages"].as_array()) {
+        for message in messages {
+            if message.get("viewedAtMillis").is_some() {
+                continue;
+            }
+            if let (Some(to), Some(from)) = (message["to"].as_str(), message["from"].as_str()) {
+                *counts.entry((to.to_owned(), from.to_owned())).or_default() += 1;
+            }
+        }
+    }
+    Ok(
+        json!(counts.into_iter().map(|((session_id, peer_id), count)|
+        json!({"sessionId":session_id,"peerId":peer_id,"count":count})
+    ).collect::<Vec<_>>()),
+    )
+}
+
 fn session(db: &crate::db::Db, id: &str) -> Result<Value> {
     db.get("sessions", id)?.context("Unknown local session")
 }
@@ -437,6 +459,65 @@ mod tests {
         }
         Arc::new(Mutex::new(db))
     }
+    #[test]
+    fn summary_groups_recipients_without_bodies_or_read_side_effects() {
+        let db = fixture();
+        assert_eq!(unread_summary(&db.lock().unwrap()).unwrap(), json!([]));
+        handle(
+            db.clone(),
+            "relay/connect",
+            &json!({"sessionId":"a","peerId":"b","expectedRevision":0}),
+            "connect",
+        )
+        .unwrap();
+        for id in ["one", "two"] {
+            handle(
+                db.clone(),
+                "relay/send",
+                &json!({"sessionId":"a","peerId":"b","body":"private body"}),
+                id,
+            )
+            .unwrap();
+        }
+        handle(
+            db.clone(),
+            "relay/send",
+            &json!({"sessionId":"b","peerId":"a","body":"reverse"}),
+            "reverse",
+        )
+        .unwrap();
+        let version = db.lock().unwrap().version().to_owned();
+        assert_eq!(
+            unread_summary(&db.lock().unwrap()).unwrap(),
+            json!([
+                {"sessionId":"a","peerId":"b","count":1},
+                {"sessionId":"b","peerId":"a","count":2}
+            ])
+        );
+        assert_eq!(db.lock().unwrap().version(), version);
+        handle(
+            db.clone(),
+            "relay/markViewed",
+            &json!({"sessionId":"b","messageIds":["one"]}),
+            "view",
+        )
+        .unwrap();
+        handle(
+            db.clone(),
+            "relay/disconnect",
+            &json!({"sessionId":"a","peerId":"b","expectedRevision":5}),
+            "disconnect",
+        )
+        .unwrap();
+        assert_eq!(
+            unread_summary(&db.lock().unwrap()).unwrap(),
+            json!([
+                {"sessionId":"a","peerId":"b","count":1},
+                {"sessionId":"b","peerId":"a","count":1}
+            ])
+        );
+    }
+
     #[test]
     fn viewed_receipts_are_recipient_owned_atomic_and_retry_safe() {
         let db = fixture();

@@ -180,19 +180,26 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     ).toBeVisible();
     await modal.getByRole('button', { name: 'Close dialog' }).click();
     await page.context().setOffline(false);
-    // Read the same durable exchange from the recipient's actual UI, not a fixture.
-    const prefs = await request(directory, 'presentation/get');
-    await request(directory, 'presentation/save', {
-      expectedRevision: prefs.revision,
-      value: { ...prefs.value, sessionId: b },
-    });
+    // Global discovery selects the recipient and exact sender without inference or receipts.
     await page.reload();
-    await page.getByLabel('Workspace menu').click();
-    await page.getByRole('button', { name: 'Local messages', exact: true }).click();
+    await page.getByRole('button', { name: '1 new message', exact: true }).click();
+    await expect(
+      modal.getByRole('heading', { name: 'New local messages', exact: true }),
+    ).toBeVisible();
+    const conversation = modal.getByRole('button').filter({ hasText: b.slice(-8) });
+    await expect(conversation).toContainText(a.slice(-8));
+    expect(
+      (await request(directory, 'relay/get', { sessionId: b })).messages[0].viewedAtMillis,
+    ).toBeUndefined();
+    expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
+    expect(await modal.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+    await conversation.click();
+    await expect(modal.getByLabel('Other session')).toHaveValue(a);
     await expect(modal.getByText('UI selected finding for B', { exact: true })).toBeVisible();
     await expect(modal.getByRole('status')).toHaveText('1 new message');
     await modal.getByRole('button', { name: 'Mark messages viewed' }).click();
     await expect(modal.getByRole('status')).toHaveText('0 new messages');
+    await expect(page.getByRole('button', { name: '1 new message', exact: true })).toHaveCount(0);
     await expect(modal.getByText('Viewed in Lascoria', { exact: true })).toBeVisible();
     expect(
       (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn'),

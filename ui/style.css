@@ -2214,3 +2214,23 @@ main {
   line-height: 1.65;
   margin: 0.75rem 0;
 }
+
+.message-discovery {
+  color: var(--accent);
+}
+.message-discovery-list {
+  display: grid;
+  gap: 12px;
+}
+.message-discovery-list > button {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+.message-discovery-list > button span,
+.message-discovery-list small {
+  color: var(--muted);
+  font-size: 0.85em;
+}

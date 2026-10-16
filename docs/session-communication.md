@@ -96,3 +96,10 @@ LASCORIA_RELAY_APP="$PWD/.dev/native-qa" node --test .dev/native-qa/testing/rela
 ```
 
 Set `MUSE_BIN` to the compatible vendor Muse binary. The test uses a local controlled provider and isolated temporary state, not a subscription or paid API key. The same portable test is included in the Windows QA package. Ubuntu 26.04 ARM64 with Rust 1.97.0, Node 24.17.0 and Muse 1.4.9-R6297.1 passed the packaged test in 20.5 seconds, including restart, drafts and viewed-state retention. This is native-OS runtime integration evidence; it does not establish Tauri desktop interaction or live-provider acceptance on Linux.
+
+
+## Finding new local messages
+
+The optional protocol-v1 `relayUnread` capability adds `relayUnread` to a full status snapshot: an array of `{sessionId, peerId, count}` grouped by recipient and sender. Counts cover retained messages without a local viewed receipt, including expired or disconnected exchanges that still need review. Expiry continues to govern model delivery separately. There are at most 256 messages; the summary contains no body text, performs no writes and uses the existing versioned status refresh. Unchanged snapshots skip the summary read.
+
+When new messages exist, the workspace header shows one compact entry. It opens a keyboard-accessible list with recipient, sender, stable short IDs and counts, then opens the exact conversation. Archived recipients remain reviewable. Opening neither marks messages viewed nor calls Muse; use the existing explicit actions for those separate decisions. Older supervisors omit the optional field and retain the existing Local messages menu. Curved spatial communication links and the full native platform matrix remain open.

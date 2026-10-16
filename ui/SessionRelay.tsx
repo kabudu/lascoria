@@ -114,7 +114,7 @@ export function SessionRelay({
         >
           <option value="">Choose a local session</option>
           {sessions
-            .filter((s) => s.id !== session.id && s.lifecycle !== 'archived')
+            .filter((s) => s.id !== session.id && (s.lifecycle !== 'archived' || s.id === peer))
             .map((s) => (
               <option key={s.id} value={s.id}>
                 {name(s.id)}
