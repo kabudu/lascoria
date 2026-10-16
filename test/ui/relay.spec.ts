@@ -115,6 +115,10 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     failStatus = true;
     await expect(links.locator('.session-link-owner')).toContainText('Unavailable');
     await expect(links.locator('.session-link-peer')).toContainText('Unavailable');
+    await expect(links.locator('.session-link-peer')).toHaveAttribute(
+      'aria-label',
+      /Unavailable.*Muse messaging enabled/,
+    );
     failStatus = false;
     await expect(links.locator('.session-link-owner')).toContainText('Idle');
     await expect(links.locator('.session-link-curve')).toHaveAttribute('d', / C /);

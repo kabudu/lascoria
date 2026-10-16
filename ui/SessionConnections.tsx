@@ -76,7 +76,7 @@ export function SessionConnections({
                 key={peer.id}
                 className="session-link-peer"
                 style={{ top: index * 112 + 8 }}
-                aria-label={`Open local conversation with ${name(peer)} (${peer.id.slice(-8)}), ${count} new for this session`}
+                aria-label={`Open local conversation with ${name(peer)} (${peer.id.slice(-8)}), ${activity(peer, connected)}, ${count} new for this session, ${agents ? 'Muse messaging enabled' : 'Selected text only'}`}
                 onClick={() => onOpen(peer.id)}
               >
                 <strong>{name(peer)}</strong>
