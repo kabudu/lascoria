@@ -1035,35 +1035,44 @@ export function App() {
             <div>
               <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
               <h1 title={sessionName(session)}>{sessionName(session)}</h1>
-              {session.projectContext && (
-                <details className="project-context">
-                  <summary>
-                    {session.projectContext.name} · {session.projectContext.folders.length} folders
-                  </summary>
-                  <p>
-                    {session.projectContextReceipt?.status === 'applied'
-                      ? 'Applied at session start'
-                      : 'Requested folders; native start not confirmed'}{' '}
-                    · revision {session.projectContext.revision}
-                  </p>
-                  <ol>
-                    {session.projectContext.folders.map((folder, i) => (
-                      <li key={folder.id}>
-                        <strong>
-                          {folder.name}
-                          {i === 0 ? ' (default)' : ''}
-                        </strong>
-                        <code>{folder.path}</code>
-                      </li>
-                    ))}
-                  </ol>
-                </details>
-              )}
-              {status.features?.includes('sessionNames') && (
-                <button className="session-settings-trigger" onClick={() => setModal('rename')}>
-                  Rename session
-                </button>
-              )}
+              <div className="session-identity-actions">
+                {status.features?.includes('sessionNames') && (
+                  <button className="session-settings-trigger" onClick={() => setModal('rename')}>
+                    Rename session
+                  </button>
+                )}
+                {session.projectContext && (
+                  <details className="project-context">
+                    <summary title={session.projectContext.name}>
+                      {session.projectContext.folders.length} folders
+                    </summary>
+                    <div
+                      className="project-context-popover"
+                      role="region"
+                      aria-label="Project folders"
+                    >
+                      <strong>{session.projectContext.name}</strong>
+                      <p>
+                        {session.projectContextReceipt?.status === 'applied'
+                          ? 'Applied at session start'
+                          : 'Requested folders; native start not confirmed'}{' '}
+                        · revision {session.projectContext.revision}
+                      </p>
+                      <ol>
+                        {session.projectContext.folders.map((folder, i) => (
+                          <li key={folder.id}>
+                            <strong>
+                              {folder.name}
+                              {i === 0 ? ' (default)' : ''}
+                            </strong>
+                            <code>{folder.path}</code>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  </details>
+                )}
+              </div>
               <p className="muted">Tasks, decisions and the evidence behind a change.</p>
             </div>
             <button className="primary" onClick={() => setModal('start')}>

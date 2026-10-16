@@ -94,52 +94,58 @@ export function ProjectStart({
   const locked = busy || !!attempt;
   return (
     <section className="project-setup" aria-label="Project setup">
-      <label>
-        Saved project
-        <select
-          value={project.revision ? project.id : ''}
-          disabled={locked}
-          onChange={(e) => {
-            const selected = projects.find((p) => p.id === e.target.value);
-            const next = selected ?? fresh();
-            setProject(next);
-            setSaved(selected ?? null);
-            setError('');
-          }}
-        >
-          <option value="">New project</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} · {p.id.slice(-8)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button
-        type="button"
-        disabled={locked}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            const result = await request('project/list');
-            if (!mounted.current) return;
-            setProjects(result.projects);
-            const latest = result.projects.find((p: Project) => p.id === project.id);
-            if (latest) {
-              setProject(latest);
-              setSaved(latest);
+      {projects.length > 0 && (
+        <label>
+          Saved project
+          <select
+            value={project.revision ? project.id : ''}
+            disabled={locked}
+            onChange={(e) => {
+              const selected = projects.find((p) => p.id === e.target.value);
+              const next = selected ?? fresh();
+              setProject(next);
+              setSaved(selected ?? null);
               setError('');
-            }
-          } catch (e) {
-            if (mounted.current) setError(String(e));
-          } finally {
-            if (mounted.current) setBusy(false);
-          }
-        }}
-      >
-        Reload saved project
-      </button>
-      <p className="muted">Reload replaces your unsaved setup with its latest saved version.</p>
+            }}
+          >
+            <option value="">New project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} · {p.id.slice(-8)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {project.revision > 0 && (
+        <>
+          <button
+            type="button"
+            disabled={locked}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const result = await request('project/list');
+                if (!mounted.current) return;
+                setProjects(result.projects);
+                const latest = result.projects.find((p: Project) => p.id === project.id);
+                if (latest) {
+                  setProject(latest);
+                  setSaved(latest);
+                  setError('');
+                }
+              } catch (e) {
+                if (mounted.current) setError(String(e));
+              } finally {
+                if (mounted.current) setBusy(false);
+              }
+            }}
+          >
+            Reload saved project
+          </button>
+          <p className="muted">Reload replaces your unsaved setup with its latest saved version.</p>
+        </>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -294,7 +300,17 @@ export function ProjectStart({
         />
       </label>
       {error && <p role="alert">{error}</p>}
-      {attempt ? (
+      {busy ? (
+        <p className="muted" aria-live="polite">
+          {attempt?.operation === 'project/save'
+            ? 'Saving project…'
+            : attempt?.operation === 'start'
+              ? 'Starting Muse session…'
+              : attempt?.operation === 'turn'
+                ? 'Sending your task…'
+                : 'Loading saved projects…'}
+        </p>
+      ) : attempt ? (
         <div className="row">
           <button disabled={busy} onClick={() => void run(attempt.operation, attempt.params)}>
             Retry exact request

@@ -925,8 +925,9 @@ main {
 .workspace-grid {
   display: block;
 }
+/* An absolute surface preserves viewport geometry without trapping tools below panels. */
 .task-surface {
-  position: fixed;
+  position: absolute;
   inset: 68px 0 0;
   border: 0;
   border-radius: 0;
@@ -2379,11 +2380,51 @@ dialog [aria-label='Session name conflict'] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.project-context[open] {
+.project-context-popover {
   max-height: 40vh;
   overflow: auto;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px;
+}
+
+/* Native macOS pop-up buttons ignore padding until their platform appearance is removed. */
+select {
+  appearance: none;
+  min-height: 40px;
+  padding-right: 34px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+.session-identity-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.session-identity-actions .session-settings-trigger {
+  margin: 0;
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+.project-context {
+  position: relative;
+  min-width: 0;
+}
+.project-context-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(360px, calc(100vw - 170px));
+  box-shadow: 0 12px 32px #0002;
+}
+.workspace-title:has(.project-context[open]) {
+  z-index: 26;
 }
