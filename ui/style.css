@@ -2341,3 +2341,49 @@ main {
 dialog [aria-label='Session name conflict'] {
   overflow-wrap: anywhere;
 }
+
+.project-folders {
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+.project-folders > li {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem;
+  min-width: 0;
+}
+.project-folder-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.project-context {
+  max-width: 250px;
+  font-size: 0.8rem;
+}
+.project-context code {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.project-setup p,
+.project-context {
+  overflow-wrap: anywhere;
+}
+.project-context summary {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-context[open] {
+  max-height: 40vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}

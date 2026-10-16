@@ -374,7 +374,13 @@ export async function createSession(send, onDeath) {
       const result = await runtime.command(
         operation === 'start' ? 'session/start' : 'session/resume',
         operation === 'start'
-          ? { sessionId, workspaceRoot: params.workspace, ...initialRoute, ...relayConfig }
+          ? {
+              sessionId,
+              workspaceRoot: params.workspace,
+              ...(params.workspaceRoots ? { workspaceRoots: params.workspaceRoots } : {}),
+              ...initialRoute,
+              ...relayConfig,
+            }
           : { sessionId, excludeItems: true, ...relayConfig },
         commandId,
       );

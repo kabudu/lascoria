@@ -1,3 +1,4 @@
+import { ProjectStart } from './ProjectStart';
 import { Help } from './Help';
 import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
@@ -170,6 +171,7 @@ export function App() {
     await flushDrafts();
     await relayDrafts.flushDrafts();
   };
+  const [startKind, setStartKind] = useState<'session' | 'project'>('session');
   const [modal, setModal] = useState<
       | 'rename'
       | 'start'
@@ -1033,6 +1035,30 @@ export function App() {
             <div>
               <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
               <h1 title={sessionName(session)}>{sessionName(session)}</h1>
+              {session.projectContext && (
+                <details className="project-context">
+                  <summary>
+                    {session.projectContext.name} · {session.projectContext.folders.length} folders
+                  </summary>
+                  <p>
+                    {session.projectContextReceipt?.status === 'applied'
+                      ? 'Applied at session start'
+                      : 'Requested folders; native start not confirmed'}{' '}
+                    · revision {session.projectContext.revision}
+                  </p>
+                  <ol>
+                    {session.projectContext.folders.map((folder, i) => (
+                      <li key={folder.id}>
+                        <strong>
+                          {folder.name}
+                          {i === 0 ? ' (default)' : ''}
+                        </strong>
+                        <code>{folder.path}</code>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
               {status.features?.includes('sessionNames') && (
                 <button className="session-settings-trigger" onClick={() => setModal('rename')}>
                   Rename session
@@ -1864,10 +1890,18 @@ export function App() {
                     )}
                     {tab === 'diff' && (
                       <section className="diff-review" aria-label="Saved changes">
+                        {session.projectContext && (
+                          <p className="muted">
+                            Project snapshots need a repository picker. Combined snapshots are
+                            unavailable; inspect changes in each repository directly.
+                          </p>
+                        )}
                         <div className="diff-toolbar">
                           <button
                             className="primary"
-                            disabled={!available || busy || !task?.turnId}
+                            disabled={
+                              !available || busy || !task?.turnId || !!session.projectContext
+                            }
                             onClick={() => void capture()}
                           >
                             Save snapshot
@@ -2518,91 +2552,112 @@ export function App() {
         {modal === 'start' && account?.managed && !account.authenticated && (
           <p role="alert">Sign in from Muse account before starting a session.</p>
         )}
-        {modal === 'start' && (
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const form = new FormData(e.currentTarget);
-              const modelId = String(form.get('model') ?? '');
-              const result = await mutate('start', {
-                workspace: String(form.get('workspace')),
-                ...(status.features?.includes('sessionNames')
-                  ? { name: String(form.get('sessionName') ?? '') }
-                  : {}),
-                isolated: form.get('isolated') === 'on',
-                ...(modelId ? { modelId } : {}),
-              });
-              if (result && result.status === 'applied') {
-                updatePrefs({ sessionId: result.sessionId, selection: undefined });
-                setModal(null);
-                const message = String(form.get('initial'));
-                if (message) await mutate('turn', { sessionId: result.sessionId, text: message });
-              }
-            }}
-          >
-            {status.features?.includes('sessionNames') && (
-              <label>
-                Session name (optional)
-                <input name="sessionName" maxLength={100} placeholder="Use the folder name" />
-              </label>
-            )}
-            <label>
-              Existing repository path
-              <input name="workspace" required placeholder="/Users/you/projects/repository" />
-            </label>
-            <label className="row">
-              <input
-                type="checkbox"
-                name="isolated"
-                defaultChecked={status.features?.includes('taskWorkspaces')}
-                disabled={!status.features?.includes('taskWorkspaces')}
-              />{' '}
-              Create an isolated task worktree from committed HEAD
-            </label>
-            <p className="muted">
-              {status.features?.includes('taskWorkspaces')
-                ? 'The isolated task starts from committed files. Existing uncommitted changes stay in the original checkout.'
-                : 'This supervisor does not support isolated tasks. Restart it to enable them; this session will use the existing checkout directly.'}
-            </p>
-            <label htmlFor="session-model">Model</label>
-            <select
-              id="session-model"
-              name="model"
-              defaultValue=""
-              disabled={!status.features?.includes('modelSelection')}
-            >
-              <option value="">Muse catalog default</option>
-              <option value="muse-wonder-1.0">Muse Wonder 1.0</option>
-              <option value="muse-spark-1.3">Muse Spark 1.3</option>
-            </select>
-            {!status.features?.includes('modelSelection') && (
-              <p className="muted">
-                This supervisor predates model selection. Restart it to enable explicit model
-                choices; existing sessions keep their routes.
-              </p>
-            )}
-            <label>
-              Initial task
-              <textarea
-                name="initial"
-                required
-                maxLength={16000}
-                placeholder="What should Muse work on?"
-              />
-            </label>
-            <p className="muted">
-              The default follows Muse's catalog. Explicit models require provider access; failures
-              remain visible. Model selection applies to this new session. Muse controls tool
-              permissions. Closing this window leaves the supervisor and sessions running.
-            </p>
-            <button
-              className="primary"
-              disabled={busy || !runtimeReady || (account?.managed && !account.authenticated)}
-            >
-              Start session
+        {modal === 'start' && status.features?.includes('projects') && (
+          <div className="segmented" role="group" aria-label="Start type">
+            <button aria-pressed={startKind === 'session'} onClick={() => setStartKind('session')}>
+              Session
             </button>
-          </form>
+            <button aria-pressed={startKind === 'project'} onClick={() => setStartKind('project')}>
+              Project
+            </button>
+          </div>
         )}
+        {modal === 'start' && startKind === 'project' && status.features?.includes('projects') && (
+          <ProjectStart
+            disabled={!runtimeReady || !!(account?.managed && !account.authenticated)}
+            started={(sessionId) => {
+              updatePrefs({ sessionId, selection: undefined });
+              setModal(null);
+              void refresh();
+            }}
+          />
+        )}
+        {modal === 'start' &&
+          (startKind === 'session' || !status.features?.includes('projects')) && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = new FormData(e.currentTarget);
+                const modelId = String(form.get('model') ?? '');
+                const result = await mutate('start', {
+                  workspace: String(form.get('workspace')),
+                  ...(status.features?.includes('sessionNames')
+                    ? { name: String(form.get('sessionName') ?? '') }
+                    : {}),
+                  isolated: form.get('isolated') === 'on',
+                  ...(modelId ? { modelId } : {}),
+                });
+                if (result && result.status === 'applied') {
+                  updatePrefs({ sessionId: result.sessionId, selection: undefined });
+                  setModal(null);
+                  const message = String(form.get('initial'));
+                  if (message) await mutate('turn', { sessionId: result.sessionId, text: message });
+                }
+              }}
+            >
+              {status.features?.includes('sessionNames') && (
+                <label>
+                  Session name (optional)
+                  <input name="sessionName" maxLength={100} placeholder="Use the folder name" />
+                </label>
+              )}
+              <label>
+                Existing repository path
+                <input name="workspace" required placeholder="/Users/you/projects/repository" />
+              </label>
+              <label className="row">
+                <input
+                  type="checkbox"
+                  name="isolated"
+                  defaultChecked={status.features?.includes('taskWorkspaces')}
+                  disabled={!status.features?.includes('taskWorkspaces')}
+                />{' '}
+                Create an isolated task worktree from committed HEAD
+              </label>
+              <p className="muted">
+                {status.features?.includes('taskWorkspaces')
+                  ? 'The isolated task starts from committed files. Existing uncommitted changes stay in the original checkout.'
+                  : 'This supervisor does not support isolated tasks. Restart it to enable them; this session will use the existing checkout directly.'}
+              </p>
+              <label htmlFor="session-model">Model</label>
+              <select
+                id="session-model"
+                name="model"
+                defaultValue=""
+                disabled={!status.features?.includes('modelSelection')}
+              >
+                <option value="">Muse catalog default</option>
+                <option value="muse-wonder-1.0">Muse Wonder 1.0</option>
+                <option value="muse-spark-1.3">Muse Spark 1.3</option>
+              </select>
+              {!status.features?.includes('modelSelection') && (
+                <p className="muted">
+                  This supervisor predates model selection. Restart it to enable explicit model
+                  choices; existing sessions keep their routes.
+                </p>
+              )}
+              <label>
+                Initial task
+                <textarea
+                  name="initial"
+                  required
+                  maxLength={16000}
+                  placeholder="What should Muse work on?"
+                />
+              </label>
+              <p className="muted">
+                The default follows Muse's catalog. Explicit models require provider access;
+                failures remain visible. Model selection applies to this new session. Muse controls
+                tool permissions. Closing this window leaves the supervisor and sessions running.
+              </p>
+              <button
+                className="primary"
+                disabled={busy || !runtimeReady || (account?.managed && !account.authenticated)}
+              >
+                Start session
+              </button>
+            </form>
+          )}
         {modal === 'stop' && (
           <>
             <p>
