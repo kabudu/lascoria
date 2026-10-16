@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Include portable relay recovery checks in native QA packages and verify the installed-resource runtime on ARM64 Linux.
+
 - Add searchable offline Help with contextual account, session, usage and local-message actions and clear current feature limits.
 
 - Wait for pending session and local-message draft saves before explicit supervisor shutdown.

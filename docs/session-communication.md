@@ -83,3 +83,16 @@ A separate native Windows trial used the existing subscription login and Muse Wo
 The optional `relayViews` capability adds owner-authenticated `relay/markViewed` with a recipient `sessionId` and 1 to 256 exact `messageIds`. Every identity must belong to a message received by that session; validation completes before any write. An invalid identity rejects the whole batch. Only those messages gain a persisted `viewedAtMillis`; later arrivals remain new. Repeating the action preserves the original timestamp without another revision/write. This presentation acknowledgement does not dispatch a turn, confer permissions or claim Muse read the message. Agents cannot access this UI-only operation.
 
 The conversation shows new-message counts for its selected peer (or all received messages when no peer is selected), an explicit **Mark messages viewed** action, and per-message local view state. Refresh remains explicit; there is no additional background polling or model call. Older supervisors without the capability retain the prior conversation UI. The existing 256-message global bound limits additional storage to one timestamp per message and limits validation to at most 65,536 identity comparisons. Read markers are not network read receipts. Spatial links, global unread navigation, Linux native acceptance and the complete R16 lifecycle matrix remain separate gates.
+
+
+## Repeatable installed-resource runtime test
+
+After building the debug supervisor and staging the runtime with the tested platform Node and SDK:
+
+```sh
+node scripts/package-runtime.js --debug
+node scripts/package-native-qa.js
+LASCORIA_RELAY_APP="$PWD/.dev/native-qa" node --test .dev/native-qa/testing/relay-agent.test.js
+```
+
+Set `MUSE_BIN` to the compatible vendor Muse binary. The test uses a local controlled provider and isolated temporary state, not a subscription or paid API key. The same portable test is included in the Windows QA package. Ubuntu 26.04 ARM64 with Rust 1.97.0, Node 24.17.0 and Muse 1.4.9-R6297.1 passed the packaged test in 20.5 seconds, including restart, drafts and viewed-state retention. This is native-OS runtime integration evidence; it does not establish Tauri desktop interaction or live-provider acceptance on Linux.
