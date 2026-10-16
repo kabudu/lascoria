@@ -8,6 +8,7 @@ import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
 import { SessionRelay } from './SessionRelay';
 import { SessionConnections } from './SessionConnections';
+import { RenameSession } from './RenameSession';
 import { SessionSettings } from './SessionSettings';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recordTiming, timingSnapshot } from './diagnostics';
@@ -170,6 +171,7 @@ export function App() {
     await relayDrafts.flushDrafts();
   };
   const [modal, setModal] = useState<
+      | 'rename'
       | 'start'
       | 'stop'
       | 'palette'
@@ -213,7 +215,7 @@ export function App() {
     status.sessions.find((s) => s.lifecycle !== 'archived') ??
     status.sessions[0];
   const sessionName = (row: SessionRow) =>
-    prefs.sessionLabels?.[row.id] ||
+    (row.displayName === undefined ? prefs.sessionLabels?.[row.id] : row.displayName) ||
     (row.managedWorkspace?.source ?? row.workspace).split(/[\\/]/).filter(Boolean).at(-1) ||
     row.id;
   const newMessages = (status.relayUnread ?? []).filter((entry) =>
@@ -789,8 +791,9 @@ export function App() {
               : '×'}
       </span>
       <span>
-        <small>
-          {entry.kind} · {short(entry.sessionId)}
+        <small title={sessionName(status.sessions.find((row) => row.id === entry.sessionId)!)}>
+          {entry.kind} · {short(entry.sessionId)} ·{' '}
+          {sessionName(status.sessions.find((row) => row.id === entry.sessionId)!)}
         </small>
         <strong>{entry.label}</strong>
       </span>
@@ -979,7 +982,7 @@ export function App() {
                   >
                     <span className="eyebrow">SESSION · {short(s.id)}</span>
                     {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
-                    <strong>{sessionName(s)}</strong>
+                    <strong title={sessionName(s)}>{sessionName(s)}</strong>
                     <span>
                       {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle}{' '}
                       · {queue.filter((q) => q.sessionId === s.id).length} attention
@@ -1029,7 +1032,12 @@ export function App() {
           <div className="workspace-title">
             <div>
               <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
-              <h1>{sessionName(session)}</h1>
+              <h1 title={sessionName(session)}>{sessionName(session)}</h1>
+              {status.features?.includes('sessionNames') && (
+                <button className="session-settings-trigger" onClick={() => setModal('rename')}>
+                  Rename session
+                </button>
+              )}
               <p className="muted">Tasks, decisions and the evidence behind a change.</p>
             </div>
             <button className="primary" onClick={() => setModal('start')}>
@@ -2003,21 +2011,23 @@ export function App() {
                   {task && (
                     <details className="layout-controls">
                       <summary>Task label, notes and relationships</summary>
-                      <label>
-                        Session display label
-                        <input
-                          value={prefs.sessionLabels?.[session.id] ?? ''}
-                          maxLength={100}
-                          onChange={(event) =>
-                            updatePrefs({
-                              sessionLabels: {
-                                ...prefs.sessionLabels,
-                                [session.id]: event.target.value,
-                              },
-                            })
-                          }
-                        />
-                      </label>
+                      {!status.features?.includes('sessionNames') && (
+                        <label>
+                          Session display label
+                          <input
+                            value={prefs.sessionLabels?.[session.id] ?? ''}
+                            maxLength={100}
+                            onChange={(event) =>
+                              updatePrefs({
+                                sessionLabels: {
+                                  ...prefs.sessionLabels,
+                                  [session.id]: event.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </label>
+                      )}
                       <label>
                         Task label
                         <input
@@ -2245,8 +2255,8 @@ export function App() {
                         />
                       )}
                       <div className="row">
-                        <span className="muted">
-                          Target session: {short(session.id)}
+                        <span className="muted session-target">
+                          Target session: {sessionName(session)} · {short(session.id)}
                           {session.state.activeTurnId
                             ? ' · turn ' + short(session.state.activeTurnId)
                             : ''}
@@ -2347,30 +2357,41 @@ export function App() {
       <dialog ref={modalRef} onCancel={() => setModal(null)} aria-labelledby="dialog-heading">
         <div className="dialog-heading">
           <h2 id="dialog-heading">
-            {modal === 'inbox'
-              ? 'New local messages'
-              : modal === 'help'
-                ? 'Lascoria help'
-                : modal === 'relay'
-                  ? 'Local session messages'
-                  : modal === 'usage'
-                    ? 'Muse usage'
-                    : modal === 'account'
-                      ? 'Your Muse connection'
-                      : modal === 'start'
-                        ? 'Start a Muse session'
-                        : modal === 'stop'
-                          ? 'Stop execution and quit'
-                          : modal === 'diagnostics'
-                            ? 'Performance diagnostics'
-                            : modal === 'settings'
-                              ? 'Session model and effort'
-                              : 'Command palette'}
+            {modal === 'rename'
+              ? 'Rename session'
+              : modal === 'inbox'
+                ? 'New local messages'
+                : modal === 'help'
+                  ? 'Lascoria help'
+                  : modal === 'relay'
+                    ? 'Local session messages'
+                    : modal === 'usage'
+                      ? 'Muse usage'
+                      : modal === 'account'
+                        ? 'Your Muse connection'
+                        : modal === 'start'
+                          ? 'Start a Muse session'
+                          : modal === 'stop'
+                            ? 'Stop execution and quit'
+                            : modal === 'diagnostics'
+                              ? 'Performance diagnostics'
+                              : modal === 'settings'
+                                ? 'Session model and effort'
+                                : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'rename' && session && (
+          <RenameSession
+            key={session.id}
+            session={session}
+            initialName={session.displayName ?? prefs.sessionLabels?.[session.id] ?? ''}
+            refresh={refresh}
+            close={() => setModal(null)}
+          />
+        )}
         {modal === 'help' && (
           <Help
             navigate={setModal}
@@ -2422,7 +2443,7 @@ export function App() {
             key={session.id}
             session={session}
             sessions={status.sessions}
-            labels={prefs.sessionLabels ?? {}}
+            labels={Object.fromEntries(status.sessions.map((row) => [row.id, sessionName(row)]))}
             draftStore={relayDrafts}
             draftsEnabled={Boolean(status.features?.includes('relayDrafts'))}
             viewsEnabled={Boolean(status.features?.includes('relayViews'))}
@@ -2461,8 +2482,9 @@ export function App() {
             return (
               <>
                 <p className="settings-summary">
-                  Session {short(settingsTarget)} <span>·</span> {model ?? 'Provider model'}{' '}
-                  <span>·</span> {effort ? `${effort} effort` : 'Model default effort'}
+                  {target ? sessionName(target) : 'Session'} · {short(settingsTarget)}{' '}
+                  <span>·</span> {model ?? 'Provider model'} <span>·</span>{' '}
+                  {effort ? `${effort} effort` : 'Model default effort'}
                 </p>
                 {settingsMessage && <p role="status">{settingsMessage}</p>}
                 {!settingsCatalog ? (
@@ -2504,6 +2526,9 @@ export function App() {
               const modelId = String(form.get('model') ?? '');
               const result = await mutate('start', {
                 workspace: String(form.get('workspace')),
+                ...(status.features?.includes('sessionNames')
+                  ? { name: String(form.get('sessionName') ?? '') }
+                  : {}),
                 isolated: form.get('isolated') === 'on',
                 ...(modelId ? { modelId } : {}),
               });
@@ -2515,6 +2540,12 @@ export function App() {
               }
             }}
           >
+            {status.features?.includes('sessionNames') && (
+              <label>
+                Session name (optional)
+                <input name="sessionName" maxLength={100} placeholder="Use the folder name" />
+              </label>
+            )}
             <label>
               Existing repository path
               <input name="workspace" required placeholder="/Users/you/projects/repository" />

@@ -2298,3 +2298,46 @@ main {
   color: var(--muted);
   font-size: 0.7rem;
 }
+
+/* Session names stay readable without displacing canvas controls. */
+.workspace-title > div {
+  min-width: 0;
+  max-width: min(250px, calc(100vw - 190px));
+}
+.workspace-title h1,
+.session-card strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-title > .primary {
+  flex-shrink: 0;
+}
+.attention-row > span:last-child {
+  min-width: 0;
+  flex: 1;
+}
+.attention-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.session-card strong {
+  min-width: 0;
+  width: 100%;
+}
+
+.session-target {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-summary,
+dialog [aria-label='Session name conflict'] {
+  overflow-wrap: anywhere;
+}

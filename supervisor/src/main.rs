@@ -5,6 +5,7 @@ mod metrics;
 mod relay;
 mod relay_mcp;
 mod review;
+mod session_names;
 mod worker;
 mod workspace;
 
@@ -252,7 +253,7 @@ impl Actor {
             let commands = db.all("commands")?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":db.all("sessions")?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -505,6 +506,7 @@ impl Actor {
             "Diagnostic command journal limit reached"
         );
         if operation == "start" {
+            let initial_name = session_names::validate(params.get("name"))?;
             ensure!(
                 self.db
                     .lock()
@@ -541,7 +543,7 @@ impl Actor {
                 let parent = lascoria_runtime::state_dir().join("worktrees");
                 fs::create_dir_all(&parent)?;
                 let target = dunce::canonicalize(&parent)?.join(&session);
-                let mut planned = json!({"id":session,"workspace":target,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false},"managedWorkspace":{"source":workspace,"path":target,"branch":format!("lascoria/{session}")}});
+                let mut planned = json!({"id":session,"initialName":initial_name,"workspace":target,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false},"managedWorkspace":{"source":workspace,"path":target,"branch":format!("lascoria/{session}")}});
                 self.save(&planned)?;
                 match workspace::create(&workspace, &target, &session).await {
                     Ok(value) => managed = value,
@@ -556,7 +558,7 @@ impl Actor {
             } else {
                 workspace
             };
-            let mut row = json!({"id":session,"workspace":workspace,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false}});
+            let mut row = json!({"id":session,"initialName":initial_name,"workspace":workspace,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false}});
             row["managedWorkspace"] = managed;
             self.save(&row)?;
             if let Err(error) = self.launch(&mut row).await {
@@ -671,7 +673,10 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+        }
+        if request["operation"] == "session/rename" {
+            return session_names::rename(&db.lock().unwrap(), &request["params"], request["id"].as_str().context("Request ID required")?);
         }
         // Review metadata is a bounded journal snapshot, not a session command.
         // A session row can be visible before its command lane is admitted.
