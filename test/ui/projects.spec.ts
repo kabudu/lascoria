@@ -30,6 +30,10 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
   });
   const context = await browser.newContext();
   const lostReplies = new Set(['project/save', 'start', 'turn']);
+  let releaseSave = () => {};
+  const saveGate = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
   try {
     await expect
       .poll(async () => {
@@ -45,6 +49,7 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
         command === 'connect_supervisor'
           ? { operation: 'status', params: {}, id: 'connect' }
           : args;
+      if (input.operation === 'project/save' && lostReplies.has('project/save')) await saveGate;
       const { stdout } = await exec(
         resolve('src-tauri/target/debug/spatial-constellation-desktop'),
         ['--bridge-json', JSON.stringify(input)],
@@ -70,6 +75,10 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
     await page.getByRole('button', { name: 'Start your first session', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Project', exact: true }).click();
+    await expect(
+      dialog.getByRole('button', { name: 'Reload saved project', exact: true }),
+    ).toHaveCount(0);
+    await expect(dialog.getByLabel('Saved project', { exact: true })).toHaveCount(0);
     await dialog.getByLabel('Project name', { exact: true }).fill('Cross-folder planner');
     await dialog.getByLabel('Full folder path').fill(workspace);
     const second = join(root, 'api');
@@ -80,6 +89,11 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
     await dialog.getByRole('button', { name: 'Move API up', exact: true }).click();
     await expect(dialog.getByLabel('Folder name', { exact: true }).first()).toHaveValue('API');
     await dialog.getByRole('button', { name: 'Save project', exact: true }).click();
+    await expect(dialog.getByText('Saving project…', { exact: true })).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Retry exact request', exact: true }),
+    ).toHaveCount(0);
+    releaseSave();
     await expect(dialog.getByRole('alert')).toContainText('lost project/save reply');
     await dialog.getByRole('button', { name: 'Retry exact request', exact: true }).click();
     await expect(dialog.getByRole('status')).toContainText('revision 1');
@@ -123,14 +137,43 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
     await expect(page.locator('.project-context')).toContainText(`${longAlias} (default)`);
     await expect(page.locator('.project-context')).toContainText('revision 3');
     expect(
-      await page.locator('.project-context').evaluate((e) => e.scrollWidth <= e.clientWidth + 1),
+      await page.locator('.project-context-popover').evaluate((e) => {
+        const r = e.getBoundingClientRect();
+        return e.scrollWidth <= e.clientWidth + 1 && r.left >= 0 && r.right <= innerWidth;
+      }),
     ).toBe(true);
+    expect(
+      await page
+        .locator('.project-context code')
+        .first()
+        .evaluate((el) => {
+          const rect = el.getBoundingClientRect();
+          return !!document
+            .elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+            ?.closest('.project-context');
+        }),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Rename session', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Rename session', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await page.locator('.project-context summary').click();
+    await page.getByRole('button', { name: 'Expand canvas controls', exact: true }).click();
+    expect(
+      await page.getByLabel('Search tasks', { exact: true }).evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        return !!document
+          .elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+          ?.closest('.surface-toolbar');
+      }),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Collapse canvas controls', exact: true }).click();
     await page.reload();
     await expect(page.getByRole('heading', { name: longName, exact: true })).toBeVisible();
     const final = await request(directory, 'status');
     expect(final.sessions).toHaveLength(1);
     expect(final.commands.filter((c: any) => c.operation === 'turn')).toHaveLength(1);
   } finally {
+    releaseSave();
     await context.close();
     if (daemon.exitCode === null && daemon.signalCode === null) {
       const stopped = new Promise((r) => daemon.once('exit', r));
