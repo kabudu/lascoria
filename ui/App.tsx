@@ -1,5 +1,5 @@
 import { DraftConflict } from './DraftConflict';
-import { useDurableDrafts } from './useDurableDrafts';
+import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
 import { Account } from './Account';
@@ -155,9 +155,18 @@ export function App() {
     conflicts: draftConflicts,
     resolveConflict,
   } = useDurableDrafts(Boolean(connected && status.features?.includes('drafts')), setError);
+  const relayDrafts = useDurableDrafts(
+    Boolean(connected && status.features?.includes('relayDrafts')),
+    setError,
+    relayDraftStore,
+  );
   const [draftToReview, setDraftToReview] = useState<string>();
+  const [relayTarget, setRelayTarget] = useState<{ source: string; peer: string }>();
   const flushDraftsRef = useRef(flushDrafts);
-  flushDraftsRef.current = flushDrafts;
+  flushDraftsRef.current = async () => {
+    await flushDrafts();
+    await relayDrafts.flushDrafts();
+  };
   const [modal, setModal] = useState<
       | 'start'
       | 'stop'
@@ -563,8 +572,12 @@ export function App() {
     setBusy(true);
     setError('');
     const id = crypto.randomUUID();
-    lastCommand.current = { id, operation, params };
+    let dispatched = false;
+    lastCommand.current = null;
     try {
+      if (operation === 'session/archive') await flushDraftsRef.current();
+      lastCommand.current = { id, operation, params };
+      dispatched = true;
       const result = await request(operation, params, id);
       const names: Record<string, string> = {
         start: 'Session',
@@ -589,7 +602,9 @@ export function App() {
       return result;
     } catch (e) {
       setError(
-        `${String(e)} Request ${id}. Inspect the journal before repeating an uncertain action.`,
+        dispatched
+          ? `${String(e)} Request ${id}. Inspect the journal before repeating an uncertain action.`
+          : String(e),
       );
     } finally {
       mutationPending.current = false;
@@ -782,17 +797,25 @@ export function App() {
           <span className="edition">SPATIAL CODING</span>
         </a>
         <div className="top-actions">
-          {Object.keys(draftConflicts).length > 0 && (
+          {Object.keys(draftConflicts).length + Object.keys(relayDrafts.conflicts).length > 0 && (
             <button
               onClick={() => {
                 const target = Object.keys(draftConflicts)[0];
-                setDraftToReview(target);
-                updatePrefs({ sessionId: target, selection: undefined });
-                setTab('transcript');
-                openInspector();
+                if (target) {
+                  setDraftToReview(target);
+                  updatePrefs({ sessionId: target, selection: undefined });
+                  setTab('transcript');
+                  openInspector();
+                } else {
+                  const [source, peer] = Object.keys(relayDrafts.conflicts)[0].split(':');
+                  updatePrefs({ sessionId: source, selection: undefined });
+                  setRelayTarget({ source, peer });
+                  setModal('relay');
+                }
               }}
             >
-              Review drafts ({Object.keys(draftConflicts).length})
+              Review drafts (
+              {Object.keys(draftConflicts).length + Object.keys(relayDrafts.conflicts).length})
             </button>
           )}
           <span className={`connection ${connected ? 'live' : ''}`}>
@@ -2296,6 +2319,9 @@ export function App() {
             session={session}
             sessions={status.sessions}
             labels={prefs.sessionLabels ?? {}}
+            draftStore={relayDrafts}
+            draftsEnabled={Boolean(status.features?.includes('relayDrafts'))}
+            initialPeer={relayTarget?.source === session.id ? relayTarget.peer : undefined}
           />
         )}
         {modal === 'usage' && (

@@ -1,7 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 type Draft = { text: string; revision: number; requestId?: string; expectedRevision?: number };
-export function useDurableDrafts(enabled: boolean, report: (message: string) => void) {
+type DraftStore = { read: string; save: string; params: (id: string) => Record<string, string> };
+const sessionStore: DraftStore = {
+  read: 'drafts/get',
+  save: 'drafts/save',
+  params: (sessionId) => ({ sessionId }),
+};
+export const relayDraftStore: DraftStore = {
+  read: 'relay/draftsGet',
+  save: 'relay/draftSave',
+  params: (id) => {
+    const [sessionId, peerId] = id.split(':');
+    return { sessionId, peerId };
+  },
+};
+export function useDurableDrafts(
+  enabled: boolean,
+  report: (message: string) => void,
+  store: DraftStore = sessionStore,
+) {
   const [drafts, render] = useState<Record<string, string>>({});
   const [conflicts, renderConflicts] = useState<Record<string, Draft>>({});
   const conflictValues = useRef<Record<string, Draft>>({});
@@ -14,6 +32,7 @@ export function useDurableDrafts(enabled: boolean, report: (message: string) => 
   }
   const values = useRef<Record<string, string>>({});
   const revisions = useRef<Record<string, number>>({});
+  const savedValues = useRef<Record<string, Draft>>({});
   const dirty = useRef(new Set<string>());
   const loading = useRef<Promise<void> | null>(null);
   const saving = useRef<Promise<void> | null>(null);
@@ -22,9 +41,16 @@ export function useDurableDrafts(enabled: boolean, report: (message: string) => 
     {},
   );
   function load() {
-    return (loading.current ??= request<{ drafts: Record<string, Draft> }>('drafts/get')
+    return (loading.current ??= request<{ drafts: Record<string, Draft> }>(store.read)
       .then((result) => {
         for (const [id, draft] of Object.entries(result.drafts)) {
+          if (
+            dirty.current.has(id) &&
+            draft.revision !== (revisions.current[id] ?? 0) &&
+            draft.text !== (values.current[id] ?? '')
+          )
+            setConflict(id, draft);
+          savedValues.current[id] = draft;
           revisions.current[id] = draft.revision;
           if (!dirty.current.has(id)) values.current[id] = draft.text;
         }
@@ -65,14 +91,14 @@ export function useDurableDrafts(enabled: boolean, report: (message: string) => 
             let result: Draft;
             try {
               result = await request<Draft>(
-                'drafts/save',
-                { sessionId, text, expectedRevision: intent.expectedRevision },
+                store.save,
+                { ...store.params(sessionId), text, expectedRevision: intent.expectedRevision },
                 intent.id,
               );
             } catch (error) {
               // A read can establish a conflict or recover a committed write whose reply was lost.
               // A failed read leaves the exact original intent intact for an idempotent retry.
-              const saved = await request<{ drafts: Record<string, Draft> }>('drafts/get').catch(
+              const saved = await request<{ drafts: Record<string, Draft> }>(store.read).catch(
                 () => null,
               );
               const remote = saved?.drafts[sessionId] ?? { text: '', revision: 0 };
@@ -92,6 +118,7 @@ export function useDurableDrafts(enabled: boolean, report: (message: string) => 
               }
             }
             delete pending.current[sessionId];
+            savedValues.current[sessionId] = result;
             revisions.current[sessionId] = result.revision;
             if (text === (values.current[sessionId] ?? '')) dirty.current.delete(sessionId);
           }),
@@ -110,7 +137,7 @@ export function useDurableDrafts(enabled: boolean, report: (message: string) => 
     const conflict = conflictValues.current[sessionId];
     if (!conflict) return;
     const localText = values.current[sessionId] ?? '';
-    const saved = await request<{ drafts: Record<string, Draft> }>('drafts/get');
+    const saved = await request<{ drafts: Record<string, Draft> }>(store.read);
     const remote = saved.drafts[sessionId] ?? { text: '', revision: 0 };
     if (remote.revision !== conflict.revision || remote.text !== conflict.text) {
       setConflict(sessionId, remote);
@@ -118,6 +145,7 @@ export function useDurableDrafts(enabled: boolean, report: (message: string) => 
     }
     if (localText !== (values.current[sessionId] ?? ''))
       throw new Error('Your draft changed while checking. Review it and choose again.');
+    savedValues.current[sessionId] = remote;
     revisions.current[sessionId] = remote.revision;
     delete pending.current[sessionId];
     if (choice === 'saved') {
@@ -163,5 +191,18 @@ export function useDurableDrafts(enabled: boolean, report: (message: string) => 
     }, 400);
     return () => clearTimeout(timer);
   }, [drafts, enabled]);
-  return { drafts, setDrafts, flushDrafts, conflicts, resolveConflict };
+  async function reloadDrafts() {
+    if (dirty.current.size) throw new Error('Save your changes before refreshing drafts.');
+    loading.current = null;
+    await load();
+  }
+  return {
+    drafts,
+    setDrafts,
+    flushDrafts,
+    conflicts,
+    resolveConflict,
+    reloadDrafts,
+    savedDraft: (id: string) => savedValues.current[id],
+  };
 }

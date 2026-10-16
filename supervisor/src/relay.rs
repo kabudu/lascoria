@@ -16,11 +16,14 @@ fn pair(a: &str, b: &str) -> Vec<String> {
 }
 pub fn handle(db: SharedDb, operation: &str, params: &Value, request_id: &str) -> Result<Value> {
     let db = db.lock().unwrap();
-    let owner = params["sessionId"].as_str().context("Session required")?;
-    let owner_row = session(&db, owner)?;
     let mut state = db
         .get("presentation", KEY)?
         .unwrap_or(json!({"revision":0,"connections":[],"messages":[]}));
+    if operation == "relay/draftsGet" {
+        return Ok(json!({"drafts":state.get("drafts").cloned().unwrap_or(json!({}))}));
+    }
+    let owner = params["sessionId"].as_str().context("Session required")?;
+    let owner_row = session(&db, owner)?;
     if operation == "relay/get" {
         let connections: Vec<_> = state["connections"]
             .as_array()
@@ -97,6 +100,36 @@ pub fn handle(db: SharedDb, operation: &str, params: &Value, request_id: &str) -
         .unwrap()
         .iter()
         .position(|c| c["sessions"] == ids);
+    let draft_key = format!("{owner}:{peer}");
+    if operation == "relay/draftSave" {
+        ensure!(index.is_some(), "Connect these sessions before composing");
+        let text = params["text"].as_str().context("Draft text required")?;
+        ensure!(text.len() <= 8192, "Message draft exceeds 8192 bytes");
+        let prior = state["drafts"][&draft_key].clone();
+        let prior = if prior.is_null() {
+            json!({"revision":0,"text":""})
+        } else {
+            prior
+        };
+        if prior["requestId"] == request_id {
+            ensure!(
+                prior["text"] == text && prior["expectedRevision"] == params["expectedRevision"],
+                "Draft retry changed"
+            );
+            return Ok(prior);
+        }
+        ensure!(
+            params["expectedRevision"] == prior["revision"],
+            "Draft changed in another window; retain your text and compare copies"
+        );
+        let draft = json!({"text":text,"revision":prior["revision"].as_u64().unwrap_or(0)+1,"requestId":request_id,"expectedRevision":params["expectedRevision"]});
+        if !state["drafts"].is_object() {
+            state["drafts"] = json!({});
+        }
+        state["drafts"][draft_key] = draft.clone();
+        db.put("presentation", KEY, &state)?;
+        return Ok(draft);
+    }
     let agent = matches!(operation, "relay/agentRead" | "relay/agentSend");
     let prior_agent_retry = operation == "relay/agentSend"
         && state["messages"]
@@ -235,6 +268,24 @@ pub fn handle(db: SharedDb, operation: &str, params: &Value, request_id: &str) -
                     "This connection's Muse message budget is exhausted; ask the user before starting another exchange"
                 );
             }
+            let clear_draft = if let Some(revision) = params.get("draftRevision") {
+                ensure!(!agent, "Agent messages cannot consume user drafts");
+                let draft = &state["drafts"][&draft_key];
+                ensure!(
+                    draft["revision"] == *revision
+                        && draft["requestId"] == request_id
+                        && draft["text"] == body,
+                    "Message draft changed; compare copies before sharing"
+                );
+                Some(
+                    draft["revision"]
+                        .as_u64()
+                        .context("Invalid draft revision")?
+                        + 1,
+                )
+            } else {
+                None
+            };
             let messages = state["messages"].as_array_mut().unwrap();
             ensure!(
                 messages.len() < MAX_MESSAGES,
@@ -253,6 +304,11 @@ pub fn handle(db: SharedDb, operation: &str, params: &Value, request_id: &str) -
             );
             let message = json!({"id":request_id,"from":owner,"to":peer,"body":body,"createdAtMillis":now,"expiresAtMillis":now+86_400_000,"origin":origin,"agentEpoch":if agent {agent_epoch.unwrap_or(Value::Null)} else {Value::Null},"state":"available"});
             messages.push(message.clone());
+            if let Some(revision) = clear_draft {
+                // Inbox insertion and draft consumption share the same atomic relay write.
+                state["drafts"][&draft_key] =
+                    json!({"text":"","revision":revision,"sentMessageId":request_id});
+            }
             message
         }
         _ => bail!("Unsupported relay operation"),
@@ -346,6 +402,60 @@ mod tests {
             db.put("sessions", id, &json!({"id":id,"lifecycle":"connected","state":{"current":true,"activeTurnId":null}})).unwrap();
         }
         Arc::new(Mutex::new(db))
+    }
+    #[test]
+    fn draft_compare_and_atomic_consumption_preserve_uncertain_sends() {
+        let db = fixture();
+        let pair = json!({"sessionId":"a","peerId":"b","expectedRevision":0});
+        handle(db.clone(), "relay/connect", &pair, "connect").unwrap();
+        let input = json!({"sessionId":"a","peerId":"b","text":"unsent","expectedRevision":0});
+        let saved = handle(db.clone(), "relay/draftSave", &input, "intent").unwrap();
+        assert_eq!(saved["revision"], 1);
+        assert_eq!(
+            handle(db.clone(), "relay/draftSave", &input, "intent").unwrap(),
+            saved
+        );
+        assert!(handle(db.clone(), "relay/draftSave", &input, "stale").is_err());
+        assert!(
+            handle(
+                db.clone(),
+                "relay/draftSave",
+                &json!({"sessionId":"a","peerId":"b","text":"x".repeat(8193),"expectedRevision":1}),
+                "huge"
+            )
+            .is_err()
+        );
+        let other = json!({"sessionId":"b","peerId":"a","text":"independent","expectedRevision":0});
+        handle(db.clone(), "relay/draftSave", &other, "other").unwrap();
+        let send = json!({"sessionId":"a","peerId":"b","body":"unsent","draftRevision":1});
+        assert!(handle(db.clone(), "relay/send", &send, "different").is_err());
+        let message = handle(db.clone(), "relay/send", &send, "intent").unwrap();
+        let drafts = handle(db.clone(), "relay/draftsGet", &json!({}), "read").unwrap();
+        assert_eq!(drafts["drafts"]["a:b"]["text"], "");
+        assert_eq!(drafts["drafts"]["a:b"]["revision"], 2);
+        assert_eq!(drafts["drafts"]["b:a"]["text"], "independent");
+        handle(
+            db.clone(),
+            "relay/draftSave",
+            &json!({"sessionId":"a","peerId":"b","text":"next draft","expectedRevision":2}),
+            "next",
+        )
+        .unwrap();
+        assert_eq!(
+            handle(db.clone(), "relay/send", &send, "intent").unwrap(),
+            message
+        );
+        assert_eq!(
+            handle(db.clone(), "relay/draftsGet", &json!({}), "read").unwrap()["drafts"]["a:b"]["text"],
+            "next draft"
+        );
+        assert_eq!(
+            handle(db, "relay/get", &json!({"sessionId":"a"}), "read").unwrap()["messages"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
     }
     #[test]
     fn expiry_reservation_disconnect_and_capacity() {

@@ -39,6 +39,8 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
       .toBe(daemon.pid);
     const a = (await request(directory, 'start', { workspace }, 'start-a')).sessionId;
     const b = (await request(directory, 'start', { workspace }, 'start-b')).sessionId;
+    let loseSendReply = true;
+    let heldDraftRead: Promise<void> | undefined;
     await context.exposeBinding('nativeBridge', async (_s, command, args) => {
       const input =
         command === 'connect_supervisor'
@@ -51,6 +53,15 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
       );
       const data = JSON.parse(stdout);
       if (data.error) throw new Error(data.error);
+      if (input.operation === 'relay/draftsGet' && heldDraftRead) {
+        const held = heldDraftRead;
+        heldDraftRead = undefined;
+        await held;
+      }
+      if (input.operation === 'relay/send' && loseSendReply) {
+        loseSendReply = false;
+        throw new Error('Simulated reply lost after durable inbox insertion');
+      }
       return data.result;
     });
     await context.addInitScript(() => {
@@ -74,7 +85,61 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await expect(modal.getByRole('checkbox', { name: 'Allow Muse' })).toBeChecked();
     await expect(modal.getByRole('checkbox', { name: 'Allow Muse' })).toBeDisabled();
     await modal.getByLabel('Message', { exact: true }).fill('UI selected finding for B');
+    await expect
+      .poll(async () => (await request(directory, 'relay/draftsGet')).drafts[`${a}:${b}`]?.text)
+      .toBe('UI selected finding for B');
+    await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await page.reload();
+    await page.getByLabel('Workspace menu').click();
+    await page.getByRole('button', { name: 'Local messages', exact: true }).click();
+    await modal.getByLabel('Other session').selectOption(b);
+    await expect(modal.getByLabel('Message', { exact: true })).toHaveValue(
+      'UI selected finding for B',
+    );
+    let releaseDraftRead!: () => void;
+    heldDraftRead = new Promise<void>((resolve) => {
+      releaseDraftRead = resolve;
+    });
+    const otherPage = await context.newPage();
+    await otherPage.goto('/');
+    await otherPage.getByLabel('Workspace menu').click();
+    await otherPage.getByRole('button', { name: 'Local messages', exact: true }).click();
+    const otherDialog = otherPage.getByRole('dialog');
+    await otherDialog.getByLabel('Other session').selectOption(b);
+    await otherDialog
+      .getByLabel('Message', { exact: true })
+      .fill('Typed before saved draft loaded');
+    releaseDraftRead();
+    await expect(otherDialog.getByRole('region', { name: 'Message draft conflict' })).toBeVisible();
+    await expect(otherDialog.getByLabel('Message', { exact: true })).toHaveValue(
+      'Typed before saved draft loaded',
+    );
+    await otherDialog.getByRole('button', { name: 'Close dialog' }).click();
+    await otherPage.getByRole('button', { name: 'Review drafts (1)', exact: true }).click();
+    await expect(otherDialog.getByRole('region', { name: 'Message draft conflict' })).toBeVisible();
+    await otherDialog.getByRole('button', { name: 'Use saved draft' }).click();
+    await expect(otherDialog.getByLabel('Message', { exact: true })).toHaveValue(
+      'UI selected finding for B',
+    );
+    await modal.getByLabel('Message', { exact: true }).fill('First window wins');
+    await expect
+      .poll(async () => (await request(directory, 'relay/draftsGet')).drafts[`${a}:${b}`]?.text)
+      .toBe('First window wins');
+    await otherDialog.getByLabel('Message', { exact: true }).fill('Other window retained');
+    await expect(otherDialog.getByRole('region', { name: 'Message draft conflict' })).toBeVisible();
+    await otherDialog.getByRole('button', { name: 'Use saved draft' }).click();
+    await expect(otherDialog.getByLabel('Message', { exact: true })).toHaveValue(
+      'First window wins',
+    );
+    await otherPage.close();
+    await modal.getByLabel('Message', { exact: true }).fill('UI selected finding for B');
+
     await modal.getByRole('button', { name: 'Share message', exact: true }).click();
+    await expect(modal.getByRole('alert')).toContainText('reply lost');
+    await modal.getByRole('button', { name: 'Share message', exact: true }).click();
+    await expect(modal.getByLabel('Message', { exact: true })).toHaveValue('');
+    expect((await request(directory, 'relay/get', { sessionId: a })).messages).toHaveLength(1);
+
     await expect(modal.getByText('UI selected finding for B', { exact: true })).toBeVisible();
     expect(
       (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn'),
@@ -110,10 +175,31 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
       modal.locator('.relay-messages').getByText('B replies from its own session', { exact: true }),
     ).toBeVisible();
     expect((await request(directory, 'relay/get', { sessionId: a })).messages).toHaveLength(2);
+    const draftKey = `${b}:${a}`;
+    const currentDraft = (await request(directory, 'relay/draftsGet')).drafts[draftKey];
+    await request(
+      directory,
+      'relay/draftSave',
+      {
+        sessionId: b,
+        peerId: a,
+        text: 'Another saved copy',
+        expectedRevision: currentDraft.revision,
+      },
+      'remote-draft-conflict',
+    );
+    await modal.getByLabel('Message', { exact: true }).fill('Local copy before disconnect');
+    await expect(modal.getByRole('region', { name: 'Message draft conflict' })).toBeVisible();
     await modal.getByRole('button', { name: 'Disconnect sessions' }).click();
     await expect(
       modal.getByRole('button', { name: 'Connect sessions', exact: true }),
     ).toBeVisible();
+    await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await page.getByRole('button', { name: 'Review drafts (1)', exact: true }).click();
+    await expect(modal.getByRole('region', { name: 'Message draft conflict' })).toBeVisible();
+    await modal.getByRole('button', { name: 'Use saved draft' }).click();
+    await expect(modal.getByLabel('Message', { exact: true })).toHaveValue('Another saved copy');
+    await expect(modal.getByRole('button', { name: 'Share message', exact: true })).toBeDisabled();
   } finally {
     await context.close();
     const done = new Promise((r) => daemon.once('exit', r));
