@@ -56,6 +56,40 @@ pub fn handle(db: SharedDb, operation: &str, params: &Value, request_id: &str) -
             json!({"revision":state["revision"],"connections":connections,"messages":messages}),
         );
     }
+    if operation == "relay/markViewed" {
+        let ids = params["messageIds"]
+            .as_array()
+            .context("Choose messages to mark viewed")?;
+        ensure!(
+            !ids.is_empty() && ids.len() <= MAX_MESSAGES,
+            "Choose 1 to 256 messages"
+        );
+        let mut indices = Vec::with_capacity(ids.len());
+        for id in ids {
+            let id = id.as_str().context("Invalid message identity")?;
+            let index = state["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|m| m["id"] == id && m["to"] == owner)
+                .context("Only received messages can be marked viewed")?;
+            indices.push(index);
+        }
+        let now = now_ms();
+        let mut changed = false;
+        for index in indices {
+            let message = &mut state["messages"][index];
+            if message.get("viewedAtMillis").is_none() {
+                message["viewedAtMillis"] = json!(now);
+                changed = true;
+            }
+        }
+        if changed {
+            state["revision"] = json!(state["revision"].as_u64().unwrap() + 1);
+            db.put("presentation", KEY, &state)?;
+        }
+        return Ok(json!({"marked":ids.len()}));
+    }
     if operation == "relay/agentPeers" {
         ensure!(
             owner_row["lifecycle"] == "connected" && owner_row["state"]["current"] == true,
@@ -402,6 +436,73 @@ mod tests {
             db.put("sessions", id, &json!({"id":id,"lifecycle":"connected","state":{"current":true,"activeTurnId":null}})).unwrap();
         }
         Arc::new(Mutex::new(db))
+    }
+    #[test]
+    fn viewed_receipts_are_recipient_owned_atomic_and_retry_safe() {
+        let db = fixture();
+        handle(
+            db.clone(),
+            "relay/connect",
+            &json!({"sessionId":"a","peerId":"b","expectedRevision":0}),
+            "connect",
+        )
+        .unwrap();
+        for id in ["one", "two"] {
+            handle(
+                db.clone(),
+                "relay/send",
+                &json!({"sessionId":"a","peerId":"b","body":id}),
+                id,
+            )
+            .unwrap();
+        }
+        let mark = json!({"sessionId":"b","messageIds":["one"]});
+        assert!(
+            handle(
+                db.clone(),
+                "relay/markViewed",
+                &json!({"sessionId":"a","messageIds":["one"]}),
+                "spoof"
+            )
+            .is_err()
+        );
+        assert!(
+            handle(
+                db.clone(),
+                "relay/markViewed",
+                &json!({"sessionId":"b","messageIds":["one","missing"]}),
+                "partial"
+            )
+            .is_err()
+        );
+        assert!(
+            handle(db.clone(), "relay/get", &json!({"sessionId":"b"}), "get").unwrap()["messages"]
+                [0]
+            .get("viewedAtMillis")
+            .is_none()
+        );
+        handle(db.clone(), "relay/markViewed", &mark, "view").unwrap();
+        let first = handle(db.clone(), "relay/get", &json!({"sessionId":"b"}), "get").unwrap();
+        handle(db.clone(), "relay/markViewed", &mark, "retry").unwrap();
+        assert_eq!(
+            handle(db.clone(), "relay/get", &json!({"sessionId":"b"}), "get").unwrap(),
+            first
+        );
+        assert!(first["messages"][0]["viewedAtMillis"].is_number());
+        assert!(first["messages"][1].get("viewedAtMillis").is_none());
+        handle(
+            db.clone(),
+            "relay/send",
+            &json!({"sessionId":"a","peerId":"b","body":"new arrival"}),
+            "three",
+        )
+        .unwrap();
+        handle(db.clone(), "relay/markViewed", &mark, "old-retry").unwrap();
+        assert!(
+            handle(db, "relay/get", &json!({"sessionId":"b"}), "get").unwrap()["messages"][2]
+                .get("viewedAtMillis")
+                .is_none()
+        );
     }
     #[test]
     fn draft_compare_and_atomic_consumption_preserve_uncertain_sends() {

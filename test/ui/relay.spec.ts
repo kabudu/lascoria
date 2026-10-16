@@ -158,6 +158,18 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await page.getByLabel('Workspace menu').click();
     await page.getByRole('button', { name: 'Local messages', exact: true }).click();
     await expect(modal.getByText('UI selected finding for B', { exact: true })).toBeVisible();
+    await expect(modal.getByRole('status')).toHaveText('1 new message');
+    await modal.getByRole('button', { name: 'Mark messages viewed' }).click();
+    await expect(modal.getByRole('status')).toHaveText('0 new messages');
+    await expect(modal.getByText('Viewed in Lascoria', { exact: true })).toBeVisible();
+    expect(
+      (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn'),
+    ).toHaveLength(0);
+    await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await page.reload();
+    await page.getByLabel('Workspace menu').click();
+    await page.getByRole('button', { name: 'Local messages', exact: true }).click();
+    await expect(modal.getByRole('status')).toHaveText('0 new messages');
     await modal.getByRole('button', { name: 'Ask Muse about this' }).click();
     await expect
       .poll(

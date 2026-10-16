@@ -2321,6 +2321,7 @@ export function App() {
             labels={prefs.sessionLabels ?? {}}
             draftStore={relayDrafts}
             draftsEnabled={Boolean(status.features?.includes('relayDrafts'))}
+            viewsEnabled={Boolean(status.features?.includes('relayViews'))}
             initialPeer={relayTarget?.source === session.id ? relayTarget.peer : undefined}
           />
         )}

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Distinguish new local session messages from text explicitly marked viewed in Lascoria, with durable recipient-owned receipts and no automatic model calls.
+
 - Preserve pair-specific local message drafts across close/restart, compare competing copies and share with atomic, duplicate-safe draft consumption; validate agent relay and live Wonder coordination in the Windows native app.
 
 - Add opt-in session-scoped Muse messaging tools, bounded agent exchanges, peer isolation, revocation and retry reconciliation; retain full platform/lifecycle release gates.

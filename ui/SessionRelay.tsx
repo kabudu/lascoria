@@ -12,6 +12,7 @@ type Message = {
   expiresAtMillis: number;
   delivery?: { id: string; status: string };
   origin: 'user' | 'agent';
+  viewedAtMillis?: number;
 };
 type Inbox = {
   revision: number;
@@ -24,6 +25,7 @@ export function SessionRelay({
   labels,
   draftStore,
   draftsEnabled,
+  viewsEnabled,
   initialPeer,
 }: {
   session: SessionRow;
@@ -31,6 +33,7 @@ export function SessionRelay({
   labels: Record<string, string>;
   draftStore: ReturnType<typeof useDurableDrafts>;
   draftsEnabled: boolean;
+  viewsEnabled: boolean;
   initialPeer?: string;
 }) {
   const [inbox, setInbox] = useState<Inbox>();
@@ -66,12 +69,39 @@ export function SessionRelay({
     session.state.relayToolsAvailable &&
     sessions.find((s) => s.id === peer)?.state.relayToolsAvailable,
   );
+  const received =
+    inbox?.messages.filter((m) => m.to === session.id && (!peer || m.from === peer)) ?? [];
+  const unviewed = received.filter((m) => !m.viewedAtMillis);
   return (
     <section className="session-relay" aria-label="Local session messages" aria-busy={busy}>
       <p>
         Share selected text with another Muse session on this computer. Files, permissions and
         conversation history stay separate.
       </p>
+      {viewsEnabled && received.length > 0 && (
+        <div className="relay-actions">
+          <span role="status">
+            {unviewed.length} new {unviewed.length === 1 ? 'message' : 'messages'}
+          </span>
+          <button
+            disabled={busy || !unviewed.length}
+            onClick={() =>
+              void run(async () => {
+                await request('relay/markViewed', {
+                  sessionId: session.id,
+                  messageIds: unviewed.map((m) => m.id),
+                });
+                await refresh();
+              })
+            }
+          >
+            Mark messages viewed
+          </button>
+          <p className="muted">
+            Viewed means reviewed in Lascoria. It does not mean Muse has received the message.
+          </p>
+        </div>
+      )}
       <label>
         Other session
         <select
@@ -87,7 +117,11 @@ export function SessionRelay({
             .filter((s) => s.id !== session.id && s.lifecycle !== 'archived')
             .map((s) => (
               <option key={s.id} value={s.id}>
-                {name(s.id)} · {s.workspace}
+                {name(s.id)}
+                {viewsEnabled && inbox
+                  ? ` · ${inbox.messages.filter((m) => m.from === s.id && m.to === session.id && !m.viewedAtMillis).length} new`
+                  : ''}{' '}
+                · {s.workspace}
               </option>
             ))}
         </select>
@@ -224,6 +258,9 @@ export function SessionRelay({
                 {new Date(m.createdAtMillis).toLocaleString()} · Saved in local inbox
               </p>
               <p className="relay-body">{m.body}</p>
+              {viewsEnabled && m.to === session.id && (
+                <p className="muted">{m.viewedAtMillis ? 'Viewed in Lascoria' : 'New message'}</p>
+              )}
               {!m.delivery && Date.now() >= m.expiresAtMillis && (
                 <p className="muted">Expired. Share a new message to ask Muse.</p>
               )}

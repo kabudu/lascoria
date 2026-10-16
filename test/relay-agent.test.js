@@ -277,6 +277,10 @@ test(
       text: 'Retained after native restart',
       expectedRevision: 0,
     };
+    const viewedMessage = (await api('relay/get', { sessionId: b })).messages.find(
+      (m) => m.to === b,
+    );
+    await api('relay/markViewed', { sessionId: b, messageIds: [viewedMessage.id] });
     const draft = await api('relay/draftSave', draftInput, 'restart-draft');
     assert.equal(draft.revision, 1);
     await Promise.all(helpers.map((h) => stop(h.child)));
@@ -288,6 +292,10 @@ test(
       'restart',
     );
     assert.equal((await api('relay/draftsGet')).drafts[`${a}:${b}`].text, draftInput.text);
+    assert.ok(
+      (await api('relay/get', { sessionId: b })).messages.find((m) => m.id === viewedMessage.id)
+        .viewedAtMillis,
+    );
     await api('resume', { sessionId: a }, 'resume-a');
     await api('resume', { sessionId: b }, 'resume-b');
     const resumed = await helper(a, env);
