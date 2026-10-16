@@ -2428,3 +2428,22 @@ select {
 .workspace-title:has(.project-context[open]) {
   z-index: 26;
 }
+.folder-path-field {
+  min-width: 0;
+}
+.folder-path-control {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+.folder-path-control input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.folder-path-control button {
+  flex-shrink: 0;
+  min-width: 100px;
+  margin: 0;
+}

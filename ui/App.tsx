@@ -1,4 +1,5 @@
 import { ProjectStart } from './ProjectStart';
+import { FolderPath } from './FolderPath';
 import { Help } from './Help';
 import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
@@ -172,6 +173,8 @@ export function App() {
     await relayDrafts.flushDrafts();
   };
   const [startKind, setStartKind] = useState<'session' | 'project'>('session');
+  const [startFolder, setStartFolder] = useState('');
+  const [folderPicking, setFolderPicking] = useState(false);
   const [modal, setModal] = useState<
       | 'rename'
       | 'start'
@@ -2587,6 +2590,7 @@ export function App() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
+                if (folderPicking) return;
                 const form = new FormData(e.currentTarget);
                 const modelId = String(form.get('model') ?? '');
                 const result = await mutate('start', {
@@ -2611,10 +2615,15 @@ export function App() {
                   <input name="sessionName" maxLength={100} placeholder="Use the folder name" />
                 </label>
               )}
-              <label>
-                Existing repository path
-                <input name="workspace" required placeholder="/Users/you/projects/repository" />
-              </label>
+              <FolderPath
+                label="Existing repository path"
+                browseLabel="Browse for repository"
+                name="workspace"
+                value={startFolder}
+                onChange={setStartFolder}
+                disabled={busy}
+                onPicking={setFolderPicking}
+              />
               <label className="row">
                 <input
                   type="checkbox"
@@ -2662,7 +2671,12 @@ export function App() {
               </p>
               <button
                 className="primary"
-                disabled={busy || !runtimeReady || (account?.managed && !account.authenticated)}
+                disabled={
+                  busy ||
+                  folderPicking ||
+                  !runtimeReady ||
+                  (account?.managed && !account.authenticated)
+                }
               >
                 Start session
               </button>

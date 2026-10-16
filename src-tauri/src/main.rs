@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod folder_picker;
 mod muse_setup;
 use serde_json::{Value, json};
 use std::{path::PathBuf, process::Stdio};
@@ -257,10 +258,13 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(folder_picker::FolderPicker::default())
         .manage(muse_setup::Setup::default())
         .invoke_handler(tauri::generate_handler![
             supervisor_request,
             connect_supervisor,
+            folder_picker::pick_workspace_folder,
             open_account_browser,
             finish_quit,
             muse_setup::runtime_status,

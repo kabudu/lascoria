@@ -34,6 +34,17 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
   const saveGate = new Promise<void>((resolve) => {
     releaseSave = resolve;
   });
+  let releasePicker = () => {};
+  const pickerGate = new Promise<void>((resolve) => {
+    releasePicker = resolve;
+  });
+  let releaseLatePicker = () => {};
+  const latePickerGate = new Promise<void>((resolve) => {
+    releaseLatePicker = resolve;
+  });
+  let pickerCalls = 0;
+  const second = join(root, 'api');
+  await mkdir(second);
   try {
     await expect
       .poll(async () => {
@@ -45,6 +56,20 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
       })
       .toBe(daemon.pid);
     await context.exposeBinding('nativeBridge', async (_s, command, args) => {
+      // The OS chooser itself is native acceptance; the rest uses the real Rust bridge.
+      if (command === 'pick_workspace_folder') {
+        pickerCalls++;
+        if (pickerCalls === 1) {
+          await pickerGate;
+          return null;
+        }
+        if (pickerCalls === 2) throw new Error('Synthetic picker unavailable');
+        if (pickerCalls === 6) {
+          await latePickerGate;
+          return second;
+        }
+        return pickerCalls === 5 ? second : workspace;
+      }
       const input =
         command === 'connect_supervisor'
           ? { operation: 'status', params: {}, id: 'connect' }
@@ -74,18 +99,35 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
     await page.goto('/');
     await page.getByRole('button', { name: 'Start your first session', exact: true }).click();
     const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Existing repository path').fill('keep my typed path');
+    await dialog.getByRole('button', { name: 'Browse for repository', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Start session', exact: true })).toBeDisabled();
+    await expect(
+      dialog.getByRole('button', { name: 'Browse for repository', exact: true }),
+    ).toBeDisabled();
+    releasePicker();
+    await expect(dialog.getByLabel('Existing repository path')).toBeEnabled();
+    await expect(dialog.getByLabel('Existing repository path')).toHaveValue('keep my typed path');
+    await dialog.getByRole('button', { name: 'Browse for repository', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('enter the full path');
+    await expect(dialog.getByLabel('Existing repository path')).toHaveValue('keep my typed path');
+    await dialog.getByRole('button', { name: 'Browse for repository', exact: true }).click();
+    await expect(dialog.getByLabel('Existing repository path')).toHaveValue(workspace);
+    expect((await request(directory, 'status')).sessions).toHaveLength(0);
+    expect((await request(directory, 'project/list')).projects).toHaveLength(0);
     await dialog.getByRole('button', { name: 'Project', exact: true }).click();
     await expect(
       dialog.getByRole('button', { name: 'Reload saved project', exact: true }),
     ).toHaveCount(0);
     await expect(dialog.getByLabel('Saved project', { exact: true })).toHaveCount(0);
     await dialog.getByLabel('Project name', { exact: true }).fill('Cross-folder planner');
-    await dialog.getByLabel('Full folder path').fill(workspace);
-    const second = join(root, 'api');
-    await mkdir(second);
+    await dialog.getByRole('button', { name: 'Browse for folder 1', exact: true }).click();
+    await expect(dialog.getByLabel('Full folder path')).toHaveValue(workspace);
     await dialog.getByRole('button', { name: 'Add folder', exact: true }).click();
     await dialog.getByLabel('Folder name', { exact: true }).nth(1).fill('API');
-    await dialog.getByLabel('Full folder path').nth(1).fill(second);
+    await dialog.getByRole('button', { name: 'Browse for folder 2', exact: true }).click();
+    await expect(dialog.getByLabel('Full folder path').nth(1)).toHaveValue(second);
+    expect((await request(directory, 'project/list')).projects).toHaveLength(0);
     await dialog.getByRole('button', { name: 'Move API up', exact: true }).click();
     await expect(dialog.getByLabel('Folder name', { exact: true }).first()).toHaveValue('API');
     await dialog.getByRole('button', { name: 'Save project', exact: true }).click();
@@ -172,7 +214,19 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
     const final = await request(directory, 'status');
     expect(final.sessions).toHaveLength(1);
     expect(final.commands.filter((c: any) => c.operation === 'turn')).toHaveLength(1);
+    await page.getByRole('button', { name: 'New session', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Project', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Browse for folder 1', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Save project', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'Add folder', exact: true })).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Session', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Project', exact: true }).click();
+    releaseLatePicker();
+    await expect(dialog.getByLabel('Full folder path')).toHaveValue('');
+    expect((await request(directory, 'status')).sessions).toHaveLength(1);
   } finally {
+    releasePicker();
+    releaseLatePicker();
     releaseSave();
     await context.close();
     if (daemon.exitCode === null && daemon.signalCode === null) {
