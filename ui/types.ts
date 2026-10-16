@@ -4,6 +4,8 @@ export type Item = import('@muse-code/sdk/dist/src/msp.js').Item & {
   [key: string]: Json;
 };
 export interface SessionRow {
+  displayName?: string;
+  nameRevision?: number;
   id: string;
   workspace: string;
   workspaceDiscarded?: boolean;

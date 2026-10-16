@@ -135,7 +135,13 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
       .toBe('completed');
     await expect(page.getByRole('heading', { name: 'source', exact: true })).toBeVisible();
     await page.getByText('Task label, notes and relationships', { exact: true }).click();
-    await page.getByLabel('Session display label').fill('Lascoria interval planner');
+    await page.getByRole('button', { name: 'Rename session', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByLabel('Session name', { exact: true })
+      .fill('Lascoria interval planner');
+    await page.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
     await expect(
       page.getByRole('heading', { name: 'Lascoria interval planner', exact: true }),
     ).toBeVisible();

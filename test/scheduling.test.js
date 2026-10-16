@@ -165,7 +165,12 @@ test(
       (s) => s.pid === daemon.pid,
       'ready',
     );
-    const starting = request(directory, 'start', { workspace }, 'admitting').then(
+    const starting = request(
+      directory,
+      'start',
+      { workspace, name: ' Initial name ' },
+      'admitting',
+    ).then(
       (value) => ({ value }),
       (error) => ({ error }),
     );
@@ -175,6 +180,13 @@ test(
       'registered',
     );
     const sessionId = snapshot.sessions[0].id;
+    assert.equal(snapshot.sessions[0].displayName, 'Initial name');
+    await request(
+      directory,
+      'session/rename',
+      { sessionId, name: 'During admission', expectedRevision: 0 },
+      'rename-admitting',
+    );
     const began = performance.now();
     const review = await request(directory, 'review/list', { sessionId }, 'during-admission');
     assert.deepEqual(review.artifacts, []);
@@ -189,5 +201,11 @@ test(
     );
     const result = await starting;
     assert.equal(result.value?.status, 'applied', String(result.error));
+    assert.equal((await request(directory, 'status')).sessions[0].displayName, 'During admission');
+    await assert.rejects(
+      request(directory, 'start', { workspace, name: 42 }, 'invalid-name'),
+      /Session name must be text/,
+    );
+    assert.equal((await request(directory, 'status')).sessions.length, 1);
   },
 );

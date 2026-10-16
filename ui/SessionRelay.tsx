@@ -117,7 +117,7 @@ export function SessionRelay({
             .filter((s) => s.id !== session.id && (s.lifecycle !== 'archived' || s.id === peer))
             .map((s) => (
               <option key={s.id} value={s.id}>
-                {name(s.id)}
+                {name(s.id)} · {s.id.slice(-8)}
                 {viewsEnabled && inbox
                   ? ` · ${inbox.messages.filter((m) => m.from === s.id && m.to === session.id && !m.viewedAtMillis).length} new`
                   : ''}{' '}

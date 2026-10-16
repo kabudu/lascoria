@@ -634,7 +634,13 @@ test('real Muse implementation, tests and review through React and the native Ru
     await page.reload();
     await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
     await page.getByText('Task label, notes and relationships', { exact: true }).click();
-    await page.getByLabel('Session display label', { exact: true }).fill('Implementation');
+    await page.getByRole('button', { name: 'Rename session', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByLabel('Session name', { exact: true })
+      .fill('Implementation');
+    await page.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
     await page.getByLabel('Task label', { exact: true }).fill('Implement addition');
     await expect
       .poll(
