@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add searchable offline Help with contextual account, session, usage and local-message actions and clear current feature limits.
+
+- Wait for pending session and local-message draft saves before explicit supervisor shutdown.
+
 - Distinguish new local session messages from text explicitly marked viewed in Lascoria, with durable recipient-owned receipts and no automatic model calls.
 
 - Preserve pair-specific local message drafts across close/restart, compare competing copies and share with atomic, duplicate-safe draft consumption; validate agent relay and live Wonder coordination in the Windows native app.

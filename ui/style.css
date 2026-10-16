@@ -2194,3 +2194,23 @@ main {
   flex: 0 0 auto;
   margin-top: 0.15rem;
 }
+
+.help-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+.help-panel > p {
+  margin: 0;
+}
+.help-results details {
+  border-top: 1px solid var(--line);
+  padding: 1rem 0;
+}
+.help-results summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+.help-results p {
+  line-height: 1.65;
+  margin: 0.75rem 0;
+}

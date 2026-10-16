@@ -1,3 +1,4 @@
+import { Help } from './Help';
 import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
@@ -176,6 +177,7 @@ export function App() {
       | 'account'
       | 'usage'
       | 'relay'
+      | 'help'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
@@ -575,7 +577,7 @@ export function App() {
     let dispatched = false;
     lastCommand.current = null;
     try {
-      if (operation === 'session/archive') await flushDraftsRef.current();
+      if (operation === 'session/archive' || operation === 'stop') await flushDraftsRef.current();
       lastCommand.current = { id, operation, params };
       dispatched = true;
       const result = await request(operation, params, id);
@@ -887,6 +889,7 @@ export function App() {
               >
                 Usage
               </button>
+              <button onClick={() => setModal('help')}>Help</button>
               <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
               <button
                 disabled={!status.features?.includes('diagnostics')}
@@ -2293,26 +2296,39 @@ export function App() {
       <dialog ref={modalRef} onCancel={() => setModal(null)} aria-labelledby="dialog-heading">
         <div className="dialog-heading">
           <h2 id="dialog-heading">
-            {modal === 'relay'
-              ? 'Local session messages'
-              : modal === 'usage'
-                ? 'Muse usage'
-                : modal === 'account'
-                  ? 'Your Muse connection'
-                  : modal === 'start'
-                    ? 'Start a Muse session'
-                    : modal === 'stop'
-                      ? 'Stop execution and quit'
-                      : modal === 'diagnostics'
-                        ? 'Performance diagnostics'
-                        : modal === 'settings'
-                          ? 'Session model and effort'
-                          : 'Command palette'}
+            {modal === 'help'
+              ? 'Lascoria help'
+              : modal === 'relay'
+                ? 'Local session messages'
+                : modal === 'usage'
+                  ? 'Muse usage'
+                  : modal === 'account'
+                    ? 'Your Muse connection'
+                    : modal === 'start'
+                      ? 'Start a Muse session'
+                      : modal === 'stop'
+                        ? 'Stop execution and quit'
+                        : modal === 'diagnostics'
+                          ? 'Performance diagnostics'
+                          : modal === 'settings'
+                            ? 'Session model and effort'
+                            : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'help' && (
+          <Help
+            navigate={setModal}
+            available={{
+              account: Boolean(status.features?.includes('accounts')),
+              start: connected,
+              usage: Boolean(session && status.features?.includes('usage')),
+              relay: Boolean(session && status.features?.includes('localRelay')),
+            }}
+          />
+        )}
         {modal === 'relay' && session && (
           <SessionRelay
             key={session.id}
