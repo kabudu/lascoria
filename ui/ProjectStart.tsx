@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import type { Json } from './types';
+import { FolderPath } from './FolderPath';
 type Folder = { id: string; name: string; path: string };
 type Project = { id: string; name: string; revision: number; folders: Folder[] };
 const fresh = (): Project => ({
@@ -21,6 +22,7 @@ export function ProjectStart({
   const [project, setProject] = useState<Project>(fresh);
   const [saved, setSaved] = useState<Project | null>(null);
   const [busy, setBusy] = useState(true);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState('');
   const [task, setTask] = useState('');
   const [model, setModel] = useState('');
@@ -50,7 +52,7 @@ export function ProjectStart({
     setError('');
   }
   async function run(operation: string, params: Json) {
-    if (busy) return;
+    if (busy || picking) return;
     const next = attempt ?? { operation, params, id: crypto.randomUUID() };
     setAttempt(next);
     setBusy(true);
@@ -91,7 +93,7 @@ export function ProjectStart({
       if (mounted.current) setBusy(false);
     }
   }
-  const locked = busy || !!attempt;
+  const locked = busy || picking || !!attempt;
   return (
     <section className="project-setup" aria-label="Project setup">
       {projects.length > 0 && (
@@ -233,24 +235,19 @@ export function ProjectStart({
                   }
                 />
               </label>
-              <label>
-                Full folder path
-                <input
-                  value={folder.path}
-                  maxLength={4096}
-                  required
-                  disabled={locked}
-                  placeholder="Absolute path to an existing folder"
-                  onChange={(e) =>
-                    edit({
-                      ...project,
-                      folders: project.folders.map((f) =>
-                        f.id === folder.id ? { ...f, path: e.target.value } : f,
-                      ),
-                    })
-                  }
-                />
-              </label>
+              <FolderPath
+                label="Full folder path"
+                browseLabel={`Browse for folder ${index + 1}`}
+                value={folder.path}
+                disabled={locked}
+                onPicking={setPicking}
+                onChange={(path) =>
+                  edit({
+                    ...project,
+                    folders: project.folders.map((f) => (f.id === folder.id ? { ...f, path } : f)),
+                  })
+                }
+              />
             </li>
           ))}
         </ol>
@@ -328,7 +325,7 @@ export function ProjectStart({
       ) : (
         <button
           className="primary"
-          disabled={disabled || busy || !saved || !task.trim()}
+          disabled={disabled || locked || !saved || !task.trim()}
           onClick={() =>
             void run('start', {
               projectId: saved!.id,
