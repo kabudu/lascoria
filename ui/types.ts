@@ -4,6 +4,13 @@ export type Item = import('@muse-code/sdk/dist/src/msp.js').Item & {
   [key: string]: Json;
 };
 export interface SessionRow {
+  projectContextReceipt?: { requestId: string; status: string; commandId?: string };
+  projectContext?: {
+    id: string;
+    name: string;
+    revision: number;
+    folders: { id: string; name: string; path: string }[];
+  };
   displayName?: string;
   nameRevision?: number;
   id: string;

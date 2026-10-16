@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add reusable named Projects with ordered native Muse folder context, safe revision-bound starts, durable configuration and explicit Git limitations.
+
 - Add optional session names at creation and a discoverable Rename action, with durable per-session conflicts, safe save retries and consistent names across the workspace and local messaging.
 
 - Add an opt-in floating Session links view with curved local-message connections, current peer status, new-message counts and direct conversation navigation.

@@ -74,6 +74,12 @@ export function Workspace({
         <span className="eyebrow">Task workspace</span>
         <h3>{session.managedWorkspace?.branch ?? 'Existing checkout'}</h3>
         <code className="workspace-path">{session.workspace}</code>
+        {session.projectContext && (
+          <p className="muted">
+            This preview and file browser cover only the default Project folder. Other folders are
+            available to Muse but have separate Git changes.
+          </p>
+        )}
         <p className="muted">
           {session.managedWorkspace
             ? 'Isolated from your original checkout. Commits stay on this task branch.'

@@ -296,6 +296,10 @@ pub async fn handle(
             .context("Workspace required")?,
     );
     if operation == "artifact/capture" {
+        ensure!(
+            session.get("projectContext").is_none(),
+            "Project diff captures need repository selection and are not supported yet"
+        );
         let key = format!("capture_{request_id}");
         if let Some(prior) = db.lock().unwrap().get("artifacts", &key)? {
             ensure!(

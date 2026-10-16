@@ -2,6 +2,7 @@ mod auth;
 mod db;
 mod dedicated;
 mod metrics;
+mod projects;
 mod relay;
 mod relay_mcp;
 mod review;
@@ -69,6 +70,7 @@ impl Actor {
             .put("sessions", row["id"].as_str().unwrap(), row)
     }
     async fn launch(&mut self, row: &mut Value) -> Result<()> {
+        projects::check_session(row).await?;
         let id = row["id"].as_str().unwrap().to_string();
         // Persist the intended budget, then retain interruption facts written during old-worker drain.
         self.save(row)?;
@@ -253,7 +255,7 @@ impl Actor {
             let commands = db.all("commands")?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -506,6 +508,14 @@ impl Actor {
             "Diagnostic command journal limit reached"
         );
         if operation == "start" {
+            let project = projects::selected(&self.db.lock().unwrap(), &params)?;
+            ensure!(
+                project.is_none() || params["isolated"] != true,
+                "Project sessions use their existing folders; isolated project worktrees are not supported"
+            );
+            if let Some(project) = &project {
+                projects::check_session(&json!({"projectContext":project})).await?;
+            }
             let initial_name = session_names::validate(params.get("name"))?;
             ensure!(
                 self.db
@@ -528,9 +538,19 @@ impl Actor {
                     "Invalid model ID"
                 );
             }
-            let workspace =
-                dunce::canonicalize(params["workspace"].as_str().context("Workspace required")?)?;
-            ensure!(workspace.is_dir(), "Workspace must be a directory");
+            let workspace = if let Some(project) = &project {
+                PathBuf::from(
+                    project["folders"][0]["path"]
+                        .as_str()
+                        .context("Project default folder required")?,
+                )
+            } else {
+                let path = dunce::canonicalize(
+                    params["workspace"].as_str().context("Workspace required")?,
+                )?;
+                ensure!(path.is_dir(), "Workspace must be a directory");
+                path
+            };
             ensure!(
                 self.db.lock().unwrap().count("sessions")? < 100,
                 "Retained session limit reached (100)"
@@ -560,6 +580,10 @@ impl Actor {
             };
             let mut row = json!({"id":session,"initialName":initial_name,"workspace":workspace,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false}});
             row["managedWorkspace"] = managed;
+            if let Some(project) = &project {
+                row["projectContext"] = project.clone();
+                row["projectContextReceipt"] = json!({"requestId":id,"status":"requested"});
+            }
             self.save(&row)?;
             if let Err(error) = self.launch(&mut row).await {
                 row["lifecycle"] = json!("failed");
@@ -571,6 +595,16 @@ impl Actor {
                 return Err(error);
             }
             let mut wire = json!({"sessionId":session,"workspace":workspace});
+            if let Some(project) = &project {
+                wire["workspaceRoots"] = json!(
+                    project["folders"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|f| f["path"].clone())
+                        .collect::<Vec<_>>()
+                );
+            }
             if let Some(model) = params.get("modelId") {
                 wire["modelId"] = model.clone();
             }
@@ -581,6 +615,9 @@ impl Actor {
             let mut row = db
                 .get("sessions", &session)?
                 .context("Started session disappeared")?;
+            if project.is_some() {
+                row["projectContextReceipt"] = json!({"requestId":id,"status":result["status"],"commandId":result["commandId"]});
+            }
             row["lifecycle"] = json!(if result["status"] == "applied"
                 && row["state"]["current"] == true
             {
@@ -600,6 +637,7 @@ impl Actor {
             "Archived sessions are read-only"
         );
         if operation == "turn" {
+            projects::check_session(&row).await?;
             workspace::idle(&self.db, &row)?;
         }
         if operation == "resume" {
@@ -673,7 +711,13 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+        }
+        if request["operation"] == "project/list" {
+            return Ok(json!({"projects":projects::list(&db.lock().unwrap())?}));
+        }
+        if request["operation"] == "project/save" {
+            return projects::save_request(db.clone(), request["params"].clone(), request["id"].as_str().context("Request ID required")?.to_string()).await;
         }
         if request["operation"] == "session/rename" {
             return session_names::rename(&db.lock().unwrap(), &request["params"], request["id"].as_str().context("Request ID required")?);

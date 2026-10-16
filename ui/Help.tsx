@@ -16,7 +16,7 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Start a session and choose a folder',
-    text: 'A session is an independent Muse conversation attached to a folder. New session can create an isolated Git worktree from committed files, leaving uncommitted changes in the original checkout. Check the chosen folder before starting. Session name is optional at creation; Rename session beside the heading changes it later. Blank names use the folder name. Reusable multi-folder projects are not available yet.',
+    text: 'A session is an independent Muse conversation attached to a folder. New session can create an isolated Git worktree from committed files, leaving uncommitted changes in the original checkout. Check the chosen folder before starting. Session name is optional at creation; Rename session beside the heading changes it later. Blank names use the folder name. Choose Project in the start dialog to save a named set of up to eight separate folders. Save validates the full paths; the first folder is the default. Start project session sends these roots to Muse. Edit a saved Project for future sessions; existing sessions keep their applied revision. Project worktrees and combined diff captures are unavailable.',
     destination: 'start',
     action: 'New session',
   },

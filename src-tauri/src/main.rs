@@ -28,6 +28,8 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "workspace/discard",
         "session/archive",
         "session/rename",
+        "project/list",
+        "project/save",
         "status",
         "diagnostics",
         "models",
