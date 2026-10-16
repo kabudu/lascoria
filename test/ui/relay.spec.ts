@@ -27,6 +27,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     stdio: 'ignore',
   });
   const context = await browser.newContext();
+  let releaseQuitDraft: (() => void) | undefined;
   try {
     await expect
       .poll(async () => {
@@ -41,11 +42,23 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     const b = (await request(directory, 'start', { workspace }, 'start-b')).sessionId;
     let loseSendReply = true;
     let heldDraftRead: Promise<void> | undefined;
+    let heldQuitDraft: Promise<void> | undefined;
+    let quitDraftStarted = false;
+    let stopCalls = 0;
+    let draftAtStop: string | undefined;
     await context.exposeBinding('nativeBridge', async (_s, command, args) => {
       const input =
         command === 'connect_supervisor'
           ? { operation: 'status', params: {}, id: 'connect' }
           : args;
+      if (input.operation === 'relay/draftSave' && heldQuitDraft) {
+        quitDraftStarted = true;
+        await heldQuitDraft;
+      }
+      if (input.operation === 'stop') {
+        stopCalls++;
+        draftAtStop = (await request(directory, 'relay/draftsGet')).drafts[`${b}:${a}`]?.text;
+      }
       const { stdout } = await exec(
         resolve('src-tauri/target/debug/spatial-constellation-desktop'),
         ['--bridge-json', JSON.stringify(input)],
@@ -148,6 +161,25 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     expect(await modal.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
     expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
     await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await page.context().setOffline(true);
+    await page.getByLabel('Workspace menu').click();
+    await page.getByRole('button', { name: 'Help', exact: true }).click();
+    const help = page.getByRole('dialog');
+    await help.getByLabel('Search help').fill('attachments');
+    await expect(help.getByText('Files and attachments', { exact: true })).toBeVisible();
+    await expect(help).toContainText('are not available yet');
+    await help.getByLabel('Search help').fill('no-match-fixture');
+    await expect(help).toContainText('No matching guides');
+    await help.getByRole('button', { name: 'show all guides', exact: true }).click();
+    await expect(help.getByRole('status')).toHaveText('12 guides');
+    expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
+    await help.getByLabel('Search help').fill('messages between local sessions');
+    await help.getByRole('button', { name: 'Open local messages', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Local session messages', exact: true }),
+    ).toBeVisible();
+    await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await page.context().setOffline(false);
     // Read the same durable exchange from the recipient's actual UI, not a fixture.
     const prefs = await request(directory, 'presentation/get');
     await request(directory, 'presentation/save', {
@@ -212,7 +244,24 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await modal.getByRole('button', { name: 'Use saved draft' }).click();
     await expect(modal.getByLabel('Message', { exact: true })).toHaveValue('Another saved copy');
     await expect(modal.getByRole('button', { name: 'Share message', exact: true })).toBeDisabled();
+    heldQuitDraft = new Promise<void>((resolve) => {
+      releaseQuitDraft = resolve;
+    });
+    await modal.getByLabel('Message', { exact: true }).fill('Retained before explicit quit');
+    await expect.poll(() => quitDraftStarted).toBe(true);
+    await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await page.getByLabel('Workspace menu').click();
+    await page.getByRole('button', { name: 'Quit & stop', exact: true }).click();
+    await modal.getByRole('button', { name: 'Stop all sessions', exact: true }).click();
+    await expect(
+      modal.getByRole('button', { name: 'Stop all sessions', exact: true }),
+    ).toBeDisabled();
+    expect(stopCalls).toBe(0);
+    releaseQuitDraft!();
+    await expect.poll(() => daemon.exitCode, { timeout: 10000 }).toBe(0);
+    expect(draftAtStop).toBe('Retained before explicit quit');
   } finally {
+    releaseQuitDraft?.();
     await context.close();
     const done = new Promise((r) => daemon.once('exit', r));
     if (daemon.exitCode === null && daemon.signalCode === null) {
