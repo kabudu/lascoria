@@ -107,6 +107,9 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await page.setViewportSize({ width: 800, height: 650 });
     await page.getByRole('button', { name: 'Expand canvas controls' }).click();
     await page.getByRole('button', { name: 'Session links', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Expand canvas controls', exact: true }),
+    ).toBeVisible();
     const links = page.getByRole('region', { name: 'Session links panel', exact: true });
     await expect(
       links.getByRole('button', { name: new RegExp(`Open local conversation.*${b.slice(-8)}`) }),

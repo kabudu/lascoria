@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Keep Project folder details, Rename and expanded canvas tools accessible above floating panels; improve native dropdown sizing and Project submission feedback.
+- Keep Project folder details, Rename and expanded canvas tools accessible above floating panels; tuck tools away when opening Session links, and improve native dropdown sizing and Project submission feedback.
 
 - Add reusable named Projects with ordered native Muse folder context, safe revision-bound starts, durable configuration and explicit Git limitations.
 
