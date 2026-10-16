@@ -1154,15 +1154,16 @@ export function App() {
                   <div className="canvas-tools" hidden={!!prefs.canvasControlsCollapsed}>
                     {status.features?.includes('relayMap') && (
                       <button
-                        onClick={() =>
+                        onClick={() => {
                           panelChange('connections', {
                             x:
                               prefs.panels?.connections?.x ??
                               Math.max(16, window.innerWidth / 2 - 210),
                             y: prefs.panels?.connections?.y ?? 160,
                             collapsed: false,
-                          })
-                        }
+                          });
+                          updatePrefs({ canvasControlsCollapsed: true });
+                        }}
                       >
                         Session links
                       </button>
