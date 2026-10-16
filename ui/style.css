@@ -2234,3 +2234,67 @@ main {
   color: var(--muted);
   font-size: 0.85em;
 }
+
+.floating-panel[aria-label='Session links panel'] {
+  width: 420px;
+}
+.session-links-scroll {
+  max-height: 340px;
+  overflow: auto;
+}
+.session-links-map {
+  position: relative;
+}
+.session-links-map svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.session-links-map path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.session-links-map .session-link-hit {
+  stroke: transparent;
+  stroke-width: 20;
+  stroke-dasharray: none;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.session-link-owner,
+.session-link-peer {
+  position: absolute;
+  width: 40%;
+  height: 96px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 14px;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.session-link-owner {
+  left: 0;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.session-link-peer {
+  right: 0;
+}
+.session-links-map strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-links-map small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}

@@ -83,6 +83,10 @@ test(
     const note = await call('relay/send', share, 'note-a');
     const summary = await call('status');
     assert.ok(summary.features.includes('relayUnread'));
+    assert.ok(summary.features.includes('relayMap'));
+    assert.deepEqual(summary.relayConnections, [
+      { sessions: [a, b].sort(), allowAgentMessages: false },
+    ]);
     assert.deepEqual(summary.relayUnread, [{ sessionId: b, peerId: a, count: 1 }]);
     assert.equal(
       summary.relayUnread.some((row) => row.sessionId === c),

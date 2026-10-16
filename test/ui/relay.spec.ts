@@ -102,6 +102,40 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
       .poll(async () => (await request(directory, 'relay/draftsGet')).drafts[`${a}:${b}`]?.text)
       .toBe('UI selected finding for B');
     await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await page.setViewportSize({ width: 800, height: 650 });
+    await page.getByRole('button', { name: 'Expand canvas controls' }).click();
+    await page.getByRole('button', { name: 'Session links', exact: true }).click();
+    const links = page.getByRole('region', { name: 'Session links panel', exact: true });
+    await expect(
+      links.getByRole('button', { name: new RegExp(`Open local conversation.*${b.slice(-8)}`) }),
+    ).toBeVisible();
+    await expect(links.locator('.session-link-curve')).toHaveCount(1);
+    await expect(links.locator('.session-link-curve')).toHaveAttribute('d', / C /);
+    expect(
+      (await new AxeBuilder({ page }).include('[aria-label="Session links panel"]').analyze())
+        .violations,
+    ).toEqual([]);
+    expect(await links.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+    await links.getByRole('button', { name: 'Collapse Session links panel', exact: true }).click();
+    await expect(links.getByRole('button', { name: /Open local conversation/ })).toBeHidden();
+    await links.getByRole('button', { name: 'Expand Session links panel', exact: true }).click();
+    await links.locator('.session-link-hit').click();
+    await expect(modal.getByLabel('Other session')).toHaveValue(b);
+    await modal.getByRole('button', { name: 'Close dialog' }).click();
+    const peerLink = links.getByRole('button', {
+      name: new RegExp(`Open local conversation.*${b.slice(-8)}`),
+    });
+    await peerLink.focus();
+    await peerLink.press('Enter');
+    await expect(modal.getByLabel('Other session')).toHaveValue(b);
+    await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await links.getByRole('button', { name: 'Collapse Session links panel', exact: true }).click();
+    await expect
+      .poll(
+        async () =>
+          (await request(directory, 'presentation/get')).value.panels?.connections?.collapsed,
+      )
+      .toBe(true);
     await page.reload();
     await page.getByLabel('Workspace menu').click();
     await page.getByRole('button', { name: 'Local messages', exact: true }).click();
@@ -246,6 +280,10 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
       modal.getByRole('button', { name: 'Connect sessions', exact: true }),
     ).toBeVisible();
     await modal.getByRole('button', { name: 'Close dialog' }).click();
+    await links.getByRole('button', { name: 'Expand Session links panel', exact: true }).click();
+    await expect(links.getByText('No connected sessions yet.', { exact: true })).toBeVisible();
+    await expect(links.locator('.session-link-curve')).toHaveCount(0);
+    await links.getByRole('button', { name: 'Collapse Session links panel', exact: true }).click();
     await page.getByRole('button', { name: 'Review drafts (1)', exact: true }).click();
     await expect(modal.getByRole('region', { name: 'Message draft conflict' })).toBeVisible();
     await modal.getByRole('button', { name: 'Use saved draft' }).click();

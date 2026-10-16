@@ -27,6 +27,7 @@ export interface SessionRow {
 }
 export type StatusReply = Status | { unchanged: true; version: string; pid: number };
 export interface Status {
+  relayConnections?: { sessions: string[]; allowAgentMessages: boolean }[];
   relayUnread?: { sessionId: string; peerId: string; count: number }[];
   version?: string;
   features?: string[];
