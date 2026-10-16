@@ -2331,6 +2331,7 @@ export function App() {
           onChange={(value) => panelChange('connections', value)}
         >
           <SessionConnections
+            connected={connected}
             session={session}
             sessions={status.sessions}
             connections={status.relayConnections ?? []}

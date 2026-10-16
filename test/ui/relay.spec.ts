@@ -41,6 +41,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     const a = (await request(directory, 'start', { workspace }, 'start-a')).sessionId;
     const b = (await request(directory, 'start', { workspace }, 'start-b')).sessionId;
     let loseSendReply = true;
+    let failStatus = false;
     let heldDraftRead: Promise<void> | undefined;
     let heldQuitDraft: Promise<void> | undefined;
     let quitDraftStarted = false;
@@ -51,6 +52,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
         command === 'connect_supervisor'
           ? { operation: 'status', params: {}, id: 'connect' }
           : args;
+      if (input.operation === 'status' && failStatus) throw new Error('Synthetic IPC disconnect');
       if (input.operation === 'relay/draftSave' && heldQuitDraft) {
         quitDraftStarted = true;
         await heldQuitDraft;
@@ -110,6 +112,11 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
       links.getByRole('button', { name: new RegExp(`Open local conversation.*${b.slice(-8)}`) }),
     ).toBeVisible();
     await expect(links.locator('.session-link-curve')).toHaveCount(1);
+    failStatus = true;
+    await expect(links.locator('.session-link-owner')).toContainText('Unavailable');
+    await expect(links.locator('.session-link-peer')).toContainText('Unavailable');
+    failStatus = false;
+    await expect(links.locator('.session-link-owner')).toContainText('Idle');
     await expect(links.locator('.session-link-curve')).toHaveAttribute('d', / C /);
     expect(
       (await new AxeBuilder({ page }).include('[aria-label="Session links panel"]').analyze())
