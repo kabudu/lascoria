@@ -6,9 +6,9 @@ use serde_json::{Value, json};
 const KEY: &str = "local-relay-v1";
 const MAX_MESSAGES: usize = 256;
 
-// Counts only: status must not disclose message bodies or mark anything viewed.
+// Counts and explicit pairs only: never disclose bodies or mark anything viewed.
 // The journal retains at most MAX_MESSAGES entries; unchanged status skips this read.
-pub fn unread_summary(db: &crate::db::Db) -> Result<Value> {
+pub fn snapshot(db: &crate::db::Db) -> Result<Value> {
     let state = db.get("presentation", KEY)?;
     let mut counts = std::collections::BTreeMap::<(String, String), usize>::new();
     if let Some(messages) = state.as_ref().and_then(|s| s["messages"].as_array()) {
@@ -21,11 +21,14 @@ pub fn unread_summary(db: &crate::db::Db) -> Result<Value> {
             }
         }
     }
-    Ok(
-        json!(counts.into_iter().map(|((session_id, peer_id), count)|
+    let connections: Vec<_> = state.as_ref().and_then(|s| s["connections"].as_array())
+        .into_iter().flatten().filter(|connection| connection["active"] == true)
+        .map(|connection| json!({"sessions":connection["sessions"],"allowAgentMessages":connection["allowAgentMessages"] == true}))
+        .collect();
+    let unread: Vec<_> = counts.into_iter().map(|((session_id, peer_id), count)|
         json!({"sessionId":session_id,"peerId":peer_id,"count":count})
-    ).collect::<Vec<_>>()),
-    )
+    ).collect();
+    Ok(json!({"unread":unread,"connections":connections}))
 }
 
 fn session(db: &crate::db::Db, id: &str) -> Result<Value> {
@@ -462,7 +465,7 @@ mod tests {
     #[test]
     fn summary_groups_recipients_without_bodies_or_read_side_effects() {
         let db = fixture();
-        assert_eq!(unread_summary(&db.lock().unwrap()).unwrap(), json!([]));
+        assert_eq!(snapshot(&db.lock().unwrap()).unwrap()["unread"], json!([]));
         handle(
             db.clone(),
             "relay/connect",
@@ -486,9 +489,13 @@ mod tests {
             "reverse",
         )
         .unwrap();
+        assert_eq!(
+            snapshot(&db.lock().unwrap()).unwrap()["connections"],
+            json!([{"sessions":["a","b"],"allowAgentMessages":false}])
+        );
         let version = db.lock().unwrap().version().to_owned();
         assert_eq!(
-            unread_summary(&db.lock().unwrap()).unwrap(),
+            snapshot(&db.lock().unwrap()).unwrap()["unread"],
             json!([
                 {"sessionId":"a","peerId":"b","count":1},
                 {"sessionId":"b","peerId":"a","count":2}
@@ -510,7 +517,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            unread_summary(&db.lock().unwrap()).unwrap(),
+            snapshot(&db.lock().unwrap()).unwrap()["connections"],
+            json!([])
+        );
+        assert_eq!(
+            snapshot(&db.lock().unwrap()).unwrap()["unread"],
             json!([
                 {"sessionId":"a","peerId":"b","count":1},
                 {"sessionId":"b","peerId":"a","count":1}

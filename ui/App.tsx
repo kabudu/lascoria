@@ -7,6 +7,7 @@ import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
 import { SessionRelay } from './SessionRelay';
+import { SessionConnections } from './SessionConnections';
 import { SessionSettings } from './SessionSettings';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recordTiming, timingSnapshot } from './diagnostics';
@@ -1108,6 +1109,21 @@ export function App() {
                     </button>
                   </div>
                   <div className="canvas-tools" hidden={!!prefs.canvasControlsCollapsed}>
+                    {status.features?.includes('relayMap') && (
+                      <button
+                        onClick={() =>
+                          panelChange('connections', {
+                            x:
+                              prefs.panels?.connections?.x ??
+                              Math.max(16, window.innerWidth / 2 - 210),
+                            y: prefs.panels?.connections?.y ?? 160,
+                            collapsed: false,
+                          })
+                        }
+                      >
+                        Session links
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         mapRef.current?.scrollTo({ left: 0, top: 0 });
@@ -2307,6 +2323,26 @@ export function App() {
           </>
         )}
       </main>
+      {session && prefs.panels?.connections && status.features?.includes('relayMap') && (
+        <FloatingPanel
+          title="Session links"
+          layout={prefs.panels.connections}
+          initial={{ x: 320, y: 160 }}
+          onChange={(value) => panelChange('connections', value)}
+        >
+          <SessionConnections
+            session={session}
+            sessions={status.sessions}
+            connections={status.relayConnections ?? []}
+            unread={status.relayUnread ?? []}
+            name={sessionName}
+            onOpen={(peer) => {
+              setRelayTarget(peer ? { source: session.id, peer } : undefined);
+              setModal('relay');
+            }}
+          />
+        </FloatingPanel>
+      )}
       <dialog ref={modalRef} onCancel={() => setModal(null)} aria-labelledby="dialog-heading">
         <div className="dialog-heading">
           <h2 id="dialog-heading">
