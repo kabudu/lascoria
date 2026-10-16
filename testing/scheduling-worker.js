@@ -7,6 +7,8 @@ emit({ kind: 'ready', durability: 'durable', handshake: { fixture: true } });
 readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   const message = JSON.parse(line);
   log({ operation: message.operation, params: message.params });
+  if (message.operation === 'start' && process.env.SCH_DELAY_START === '1')
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   if (message.operation === 'turn' && message.params?.text === 'auth-failure') {
     emit({
       kind: 'state',

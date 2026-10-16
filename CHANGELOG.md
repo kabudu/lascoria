@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep saved-review reads available during session admission, preventing a transient error when a newly created session first appears.
+
 - Include portable relay recovery checks in native QA packages and verify the installed-resource runtime on ARM64 Linux.
 
 - Add searchable offline Help with contextual account, session, usage and local-message actions and clear current feature limits.

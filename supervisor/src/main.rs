@@ -671,6 +671,18 @@ async fn connection(
             }
             return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews"],"sessions":db.all("sessions")?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
+        // Review metadata is a bounded journal snapshot, not a session command.
+        // A session row can be visible before its command lane is admitted.
+        if request["operation"] == "review/list" {
+            let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+            ensure!(params.is_object(), "Params must be an object");
+            let id = request["id"].as_str().context("Request ID required")?;
+            ensure!(
+                !id.is_empty() && id.len() <= 100 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
+                "Invalid request ID"
+            );
+            return review::handle(db.clone(), "review/list", &params, id).await;
+        }
         let (tx, rx) = oneshot::channel();
         sender
             .try_send(Call {
