@@ -1,8 +1,8 @@
 import type { SessionRow, Status } from './types';
 
-function activity(row: SessionRow) {
+function activity(row: SessionRow, connected: boolean) {
   if (row.lifecycle === 'archived') return 'Archived';
-  if (!row.state.current) return 'Unavailable';
+  if (!connected || !row.state.current) return 'Unavailable';
   if (row.state.userInputs?.length) return 'Answer needed';
   if (row.state.approvals?.length) return 'Permission needed';
   return row.state.activeTurnId ? 'Muse working' : 'Idle';
@@ -10,6 +10,7 @@ function activity(row: SessionRow) {
 
 export function SessionConnections({
   session,
+  connected,
   sessions,
   connections,
   unread,
@@ -17,6 +18,7 @@ export function SessionConnections({
   onOpen,
 }: {
   session: SessionRow;
+  connected: boolean;
   sessions: SessionRow[];
   connections: NonNullable<Status['relayConnections']>;
   unread: NonNullable<Status['relayUnread']>;
@@ -65,7 +67,7 @@ export function SessionConnections({
             <div className="session-link-owner" style={{ top: ownerY - 48 }}>
               <strong>{name(session)}</strong>
               <small>
-                {session.id.slice(-8)} · {activity(session)}
+                {session.id.slice(-8)} · {activity(session, connected)}
               </small>
               <small>This session</small>
             </div>
@@ -79,7 +81,7 @@ export function SessionConnections({
               >
                 <strong>{name(peer)}</strong>
                 <small>
-                  {peer.id.slice(-8)} · {activity(peer)}
+                  {peer.id.slice(-8)} · {activity(peer, connected)}
                 </small>
                 <small>
                   {count
