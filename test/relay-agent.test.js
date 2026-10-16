@@ -6,9 +6,18 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { randomUUID } from 'node:crypto';
-import { request } from '../src/client.js';
+import { pathToFileURL } from 'node:url';
+const app = process.env.LASCORIA_RELAY_APP;
+const supervisor = app
+  ? join(app, 'runtime', `constellation-supervisor${process.platform === 'win32' ? '.exe' : ''}`)
+  : resolve('supervisor/target/debug/constellation-supervisor');
+const { request } = await import(
+  app ? pathToFileURL(join(app, 'runtime/workers/client.js')).href : '../src/client.js'
+);
 import { provider } from '../testing/provider.js';
-import { bounded } from '../src/runtime.js';
+const { bounded } = await import(
+  app ? pathToFileURL(join(app, 'runtime/workers/runtime.js')).href : '../src/runtime.js'
+);
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(action, predicate, label) {
   let last;
@@ -27,14 +36,18 @@ async function stop(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const done = new Promise((r) => child.once('exit', r));
   child.kill('SIGTERM');
-  await done;
+  try {
+    await bounded(done, 8000);
+  } catch {
+    child.kill('SIGKILL');
+    await bounded(done, 2000);
+  }
 }
 async function helper(session, env) {
-  const child = spawn(
-    resolve('supervisor/target/debug/constellation-supervisor'),
-    ['--relay-mcp', session],
-    { env, stdio: ['pipe', 'pipe', 'pipe'] },
-  );
+  const child = spawn(supervisor, ['--relay-mcp', session], {
+    env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
   const pending = new Map();
   let seq = 0;
   const lines = readline.createInterface({ input: child.stdout });
@@ -49,12 +62,17 @@ async function helper(session, env) {
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
     return await bounded(result, 15000);
   };
-  const initialized = await call('initialize', {
-    protocolVersion: '2025-11-25',
-    capabilities: {},
-    clientInfo: { name: 'test', version: '1' },
-  });
-  assert.equal(initialized.result.protocolVersion, '2025-11-25');
+  try {
+    const initialized = await call('initialize', {
+      protocolVersion: '2025-11-25',
+      capabilities: {},
+      clientInfo: { name: 'test', version: '1' },
+    });
+    assert.equal(initialized.result.protocolVersion, '2025-11-25');
+  } catch (error) {
+    await stop(child);
+    throw error;
+  }
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   return {
     child,
@@ -77,6 +95,7 @@ test(
     const model = await provider(root, { relay: true });
     const env = {
       ...process.env,
+      ...(app ? { SCH_RESOURCES: join(app, 'runtime'), SCH_NODE: process.execPath } : {}),
       SCH_STATE_DIR: directory,
       SCH_PROVIDER: 'meta',
       ...model.env,
@@ -84,7 +103,7 @@ test(
       XDG_DATA_HOME: join(root, 'data'),
       XDG_CACHE_HOME: join(root, 'cache'),
     };
-    const daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
+    let daemon = spawn(supervisor, [], {
       env,
       stdio: 'ignore',
     });
@@ -171,7 +190,7 @@ test(
     inbox = await api('relay/get', { sessionId: b });
     if (!inbox.messages.length)
       await writeFile(
-        '.dev/relay-agent-failure.json',
+        join(root, 'relay-agent-failure.json'),
         JSON.stringify(
           {
             sessions: (await api('status')).sessions,
@@ -251,5 +270,42 @@ test(
       ).isError,
       'lost reply reconciles after revocation without another message',
     );
+    // Installed-platform proof: the durable composer survives a real supervisor restart.
+    const draftInput = {
+      sessionId: a,
+      peerId: b,
+      text: 'Retained after native restart',
+      expectedRevision: 0,
+    };
+    const draft = await api('relay/draftSave', draftInput, 'restart-draft');
+    assert.equal(draft.revision, 1);
+    await Promise.all(helpers.map((h) => stop(h.child)));
+    await stop(daemon);
+    daemon = spawn(supervisor, [], { env, stdio: 'ignore' });
+    await until(
+      () => api('status'),
+      (s) => s.pid === daemon.pid,
+      'restart',
+    );
+    assert.equal((await api('relay/draftsGet')).drafts[`${a}:${b}`].text, draftInput.text);
+    await api('resume', { sessionId: a }, 'resume-a');
+    await api('resume', { sessionId: b }, 'resume-b');
+    const resumed = await helper(a, env);
+    helpers.push(resumed);
+    assert.deepEqual(
+      JSON.parse((await resumed.tool('local_peers')).content[0].text).peers,
+      [],
+      'revocation survives restart',
+    );
+    assert.equal((await resumed.tool('read_messages', { peerId: b })).isError, true);
+    const sendDraft = { sessionId: a, peerId: b, body: draftInput.text, draftRevision: 1 };
+    await assert.rejects(api('relay/send', sendDraft, 'restart-draft'), /Connect/);
+    inbox = await api('relay/get', { sessionId: a });
+    await api('relay/connect', { sessionId: a, peerId: b, expectedRevision: inbox.revision });
+    const sent = await api('relay/send', sendDraft, 'restart-draft');
+    assert.equal(sent.origin, 'user');
+    assert.deepEqual(await api('relay/send', sendDraft, 'restart-draft'), sent);
+    assert.equal((await api('relay/draftsGet')).drafts[`${a}:${b}`].text, '');
+    assert.equal((await api('relay/get', { sessionId: a })).messages.length, 9);
   },
 );

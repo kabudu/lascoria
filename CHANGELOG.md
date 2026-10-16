@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve pair-specific local message drafts across close/restart, compare competing copies and share with atomic, duplicate-safe draft consumption; validate agent relay and live Wonder coordination in the Windows native app.
+
 - Add opt-in session-scoped Muse messaging tools, bounded agent exchanges, peer isolation, revocation and retry reconciliation; retain full platform/lifecycle release gates.
 
 - Add explicit local session connections and selected-text inboxes, with idle-only Muse delivery, bounded durable identities and no automatic model calls or permission sharing. Full agent-to-agent coordination remains a release gate.

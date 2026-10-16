@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { request } from './api';
+import type { useDurableDrafts } from './useDurableDrafts';
 import type { Json, SessionRow } from './types';
 
 type Message = {
@@ -21,19 +22,27 @@ export function SessionRelay({
   session,
   sessions,
   labels,
+  draftStore,
+  draftsEnabled,
+  initialPeer,
 }: {
   session: SessionRow;
   sessions: SessionRow[];
   labels: Record<string, string>;
+  draftStore: ReturnType<typeof useDurableDrafts>;
+  draftsEnabled: boolean;
+  initialPeer?: string;
 }) {
   const [inbox, setInbox] = useState<Inbox>();
-  const [peer, setPeer] = useState('');
-  const [text, setText] = useState('');
+  const [peer, setPeer] = useState(initialPeer ?? '');
+  const draftKey = `${session.id}:${peer}`;
+  const text = draftStore.drafts[draftKey] ?? '';
+  const conflict = draftStore.conflicts[draftKey];
+  const setText = (text: string) => draftStore.setDrafts((old) => ({ ...old, [draftKey]: text }));
   const [allowAgents, setAllowAgents] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [receipts, setReceipts] = useState<Record<string, Json>>({});
-  const pending = useRef<{ id: string; peer: string; text: string } | undefined>(undefined);
   const name = (id: string) => labels[id] || `Session ${id.slice(-8)}`;
   const refresh = async () =>
     setInbox(await request<Inbox>('relay/get', { sessionId: session.id }));
@@ -51,8 +60,8 @@ export function SessionRelay({
       setBusy(false);
     }
   };
-  const connection = inbox?.connections.find((c) => c.active && c.sessions.includes(peer));
-  const active = Boolean(connection);
+  const connection = inbox?.connections.find((c) => c.sessions.includes(peer));
+  const active = Boolean(connection?.active);
   const toolsReady = Boolean(
     session.state.relayToolsAvailable &&
     sessions.find((s) => s.id === peer)?.state.relayToolsAvailable,
@@ -67,7 +76,7 @@ export function SessionRelay({
         Other session
         <select
           value={peer}
-          disabled={busy || Boolean(pending.current)}
+          disabled={busy}
           onChange={(e) => {
             setPeer(e.target.value);
             setAllowAgents(false);
@@ -107,7 +116,7 @@ export function SessionRelay({
       )}
       <div className="relay-actions">
         <button
-          disabled={busy || !peer || !inbox || Boolean(pending.current)}
+          disabled={busy || !peer || !inbox}
           onClick={() =>
             void run(async () => {
               await request(active ? 'relay/disconnect' : 'relay/connect', {
@@ -126,38 +135,78 @@ export function SessionRelay({
           Refresh messages
         </button>
       </div>
-      {peer && active && (
+      {peer && connection && !draftsEnabled && (
+        <p>Reconnect with the current Lascoria runtime to compose saved messages.</p>
+      )}
+      {peer && connection && draftsEnabled && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void run(async () => {
-              const intent = pending.current ?? { id: crypto.randomUUID(), peer, text };
-              pending.current = intent;
+              if (!active) throw new Error('Reconnect these sessions before sharing.');
+              await draftStore.flushDrafts();
+              const saved = draftStore.savedDraft(draftKey);
+              if (!saved?.requestId || saved.text !== text)
+                throw new Error('Draft changed; review it before sharing.');
               await request(
                 'relay/send',
-                { sessionId: session.id, peerId: intent.peer, body: intent.text },
-                intent.id,
+                {
+                  sessionId: session.id,
+                  peerId: peer,
+                  body: saved.text,
+                  draftRevision: saved.revision,
+                },
+                saved.requestId,
               );
-              pending.current = undefined;
-              setText('');
+              await draftStore.reloadDrafts();
               await refresh();
             });
           }}
         >
-          <label>
-            Message
-            <textarea
-              value={text}
-              maxLength={8192}
-              disabled={busy || Boolean(pending.current)}
-              onChange={(e) => setText(e.target.value)}
-            />
-          </label>
+          <label htmlFor="relay-message">Message</label>
+          <textarea
+            id="relay-message"
+            value={text}
+            maxLength={8192}
+            disabled={busy}
+            onChange={(e) => setText(e.target.value)}
+          />
           <p className="muted">
             Only this text is shared. Sending to the inbox does not call a model.
           </p>
-          <button disabled={busy || !text.trim() || new TextEncoder().encode(text).length > 8192}>
-            {pending.current ? 'Retry same message' : 'Share message'}
+          {conflict && (
+            <section aria-label="Message draft conflict">
+              <p>Another window saved a different message. Compare both copies before sharing.</p>
+              <strong>Your draft</strong>
+              <pre className="relay-body">{text}</pre>
+              <strong>Saved draft</strong>
+              <pre className="relay-body">{conflict.text}</pre>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void run(() => draftStore.resolveConflict(draftKey, 'mine'))}
+              >
+                Keep my draft
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void run(() => draftStore.resolveConflict(draftKey, 'saved'))}
+              >
+                Use saved draft
+              </button>
+            </section>
+          )}
+          <button
+            disabled={
+              busy ||
+              !active ||
+              Boolean(conflict) ||
+              !text.trim() ||
+              new TextEncoder().encode(text).length > 8192
+            }
+          >
+            Share message
           </button>
         </form>
       )}

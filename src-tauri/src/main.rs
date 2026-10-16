@@ -47,6 +47,8 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "presentation/get",
         "presentation/save",
         "relay/get",
+        "relay/draftsGet",
+        "relay/draftSave",
         "relay/connect",
         "relay/disconnect",
         "relay/send",
