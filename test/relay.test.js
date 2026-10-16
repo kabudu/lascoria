@@ -81,6 +81,15 @@ test(
       /changed/,
     );
     const note = await call('relay/send', share, 'note-a');
+    const summary = await call('status');
+    assert.ok(summary.features.includes('relayUnread'));
+    assert.deepEqual(summary.relayUnread, [{ sessionId: b, peerId: a, count: 1 }]);
+    assert.equal(
+      summary.relayUnread.some((row) => row.sessionId === c),
+      false,
+    );
+    assert.equal((await get(b)).messages[0].viewedAtMillis, undefined);
+    assert.equal((await call('status', { since: summary.version })).unchanged, true);
     assert.equal(note.origin, 'user');
     assert.equal(note.state, 'available');
     assert.deepEqual(await call('relay/send', share, 'note-a'), note);
@@ -152,6 +161,7 @@ test(
       note,
       'lost acknowledgement reconciles after disconnect',
     );
+    const beforeRestart = (await call('status')).relayUnread;
     await stop();
     daemon = boot();
     await until(
@@ -159,6 +169,7 @@ test(
       (s) => s.pid === daemon.pid,
       'reboot',
     );
+    assert.deepEqual((await call('status')).relayUnread, beforeRestart);
     assert.equal((await get(a)).messages.length, 2);
     assert.equal(
       (await call('relay/deliver', { sessionId: b, messageId: note.id })).id,

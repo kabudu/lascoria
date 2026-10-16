@@ -44,7 +44,7 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Messages between local sessions',
-    text: 'Connect sessions selects another Lascoria-managed Muse session for the same user on this computer. Sharing saves selected text in a local inbox without calling a model. Ask Muse about this explicitly starts a task when the recipient is idle. Viewed in Lascoria is a separate user acknowledgement. Optional Muse messaging permission allows at most eight agent messages per connection; disconnect revokes access. Files, conversation histories and tool permissions stay separate.',
+    text: 'Connect sessions selects another Lascoria-managed Muse session for the same user on this computer. Sharing saves selected text in a local inbox without calling a model. Ask Muse about this explicitly starts a task when the recipient is idle. The header shows new messages across sessions and opens the exact conversation. Opening does not mark messages viewed. Viewed in Lascoria is a separate user acknowledgement. Optional Muse messaging permission allows at most eight agent messages per connection; disconnect revokes access. Files, conversation histories and tool permissions stay separate.',
     destination: 'relay',
     action: 'Open local messages',
   },
