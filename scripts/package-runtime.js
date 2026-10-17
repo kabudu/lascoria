@@ -35,6 +35,7 @@ for (const name of [
   'auth-worker.js',
   'session-worker.js',
   'runtime.js',
+  'muse-version.js',
 ])
   await copy(join(root, 'src', name), join(output, 'workers', name));
 await writeFile(join(output, 'package.json'), JSON.stringify({ private: true, type: 'module' }));

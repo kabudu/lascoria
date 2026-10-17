@@ -31,7 +31,7 @@ For a native development build, run `npm run desktop:build`. Cross-built Windows
 
 ## Run the diagnostic client
 
-Development prerequisites: Rust 1.97+, Node.js 24+, Git, and Muse Code 1.4.9 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.9 and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
+Development prerequisites: Rust 1.97+, Node.js 24+, Git, and Muse Code 1.4.10 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.10 (`src/muse-version.js`, `runtime-support` and `package.json` must agree; the repository check enforces it) and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
 
 ```sh
 npm ci
@@ -80,7 +80,7 @@ npm run check
 npm test
 ```
 
-The suite requires the real Muse 1.4.9 binary. It uses temporary repositories and isolated XDG configuration/data directories. Its scripted model binds only to loopback, uses a dummy credential, and exercises real Muse tools and approvals without a paid provider. It also uses explicit fault fixtures for lost acknowledgements and incompatible handshakes. Test-owned processes and temporary data are cleaned up.
+The suite requires the real Muse 1.4.10 binary. Muse's own launcher can update itself and remove the pinned binary; point `MUSE_BIN` at a pinned native binary when that happens. It uses temporary repositories and isolated XDG configuration/data directories. Its scripted model binds only to loopback, uses a dummy credential, and exercises real Muse tools and approvals without a paid provider. It also uses explicit fault fixtures for lost acknowledgements and incompatible handshakes. Test-owned processes and temporary data are cleaned up.
 
 [Stage A requirements, evidence, and limits](docs/stage-a.md) distinguish real runtime proof from injected scenarios. [Architecture decisions](docs/architecture.md) describe the Rust/Node boundary and later SDK replacement option. [Revised product plan](docs/Spatial_Constellation_Harness_Revised_Plan.docx) remains the source plan; the Rust ownership decision in the architecture document supersedes its provisional Node supervisor choice.
 

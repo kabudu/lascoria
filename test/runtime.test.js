@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Session, readSessionDurability, createUuidV7Mint } from '@muse-code/sdk';
 import { spawnRuntime } from '../src/runtime.js';
+import { MUSE_VERSION } from '../src/muse-version.js';
 
 test('SDK fold: duplicate and stale item revisions, gaps and unknown durability', () => {
   const session = new Session({ sessionId: 'session', durability: { kind: 'durable' } });
@@ -101,6 +102,6 @@ test(
     );
     const ephemeral = await open(['--no-session-log']);
     assert.equal(ephemeral.profile.kind, 'ephemeral');
-    assert.equal(first.handshake.serverInfo.version, '1.4.9');
+    assert.equal(first.handshake.serverInfo.version, MUSE_VERSION);
   },
 );

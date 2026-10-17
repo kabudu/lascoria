@@ -23,7 +23,7 @@ Lascoria is the primary product name. The existing repository URL, internal bina
 - There are ten active sessions and at most 100 retained session records. The command journal remains capped at 2,000 records and status presents its latest 100. Existing artifact, file and output budgets still apply. Archive is retention, not an unlimited storage or garbage-collection facility.
 - Muse can omit resumable history for an empty session with no turns; a native `sessionNotFound` recovery failure stays visible. The desktop requires an initial task. Failed or unavailable sessions can be archived without deleting their worktree or local journal.
 - Journal schema 3 preserves existing data and prevents older schema-2 binaries from reopening archived sessions accidentally. Downgrade is refused. Back up the state directory while the supervisor is stopped before testing older builds.
-- Muse and the official SDK are now pinned to 1.4.9 after the installed Muse binary advanced. Exact binary version and schema checks remain enforced. Historical Stage A/B/C measurements retain the version on which they were recorded.
+- Muse and the official SDK are now pinned to 1.4.10 (previously 1.4.9) after the installed Muse binary advanced. Exact binary version and schema checks remain enforced. Historical Stage A/B/C measurements retain the version on which they were recorded.
 
 ## Acceptance and remaining product work
 

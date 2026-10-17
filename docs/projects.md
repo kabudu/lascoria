@@ -12,7 +12,7 @@ Before starting, show exactly which folders Muse will work with and which is the
 
 ## Native context, not just labels
 
-The pinned official SDK 1.4.9 declares `session/start.workspaceRoots`: an ordered set of absolute, canonical, existing directories. Its first root is the native CWD/default folder. Additional roots receive native workspace rules but grant no Project Trust. If the singular `workspaceRoot` is also supplied, it must match the first canonical root.
+The pinned official SDK 1.4.10 (same MSP schema fingerprint as 1.4.9) declares `session/start.workspaceRoots`: an ordered set of absolute, canonical, existing directories. Its first root is the native CWD/default folder. Additional roots receive native workspace rules but grant no Project Trust. If the singular `workspaceRoot` is also supplied, it must match the first canonical root.
 
 The SDK also declares `turn/start.workspaceRoots` as a sticky replacement taking effect at that turn's launch. Omission keeps the current roots. Explicit null is invalid, and a root replacement cannot be sent with an immediate steer. These declarations require native/provider verification before shipping; naming folders in Lascoria or adding a text manifest alone does not implement native multi-folder context.
 
@@ -57,7 +57,7 @@ Validation for this increment uses the actual pinned Muse runtime and official S
 
 An isolated native trial with browser subscription login and Muse Wonder completed a real question/answer, read and edited one file in each of two synthetic repositories, left tests unchanged and passed both suites. Closing the UI left the QA supervisor available. After an isolated supervisor restart, the recovered live session ran both suites again with its original roots and primary CWD. Editing the saved Project name/order advanced its revision without changing the existing session snapshot. The native 800px review also checked folder disclosure, Rename access, dropdown sizing and the default-folder Git guards. This establishes an initial macOS workflow, not the complete R15 platform or permission matrix.
 
-Pinned SDK compatibility: Muse 1.4.9 refused a bash tool's direct `workdir` in the secondary root with `workdir escapes workspace`. Native file reads/edits in that root worked, and explicitly changing directory inside the bash command ran its tests. Treat the first root as the reliable initial shell CWD; do not promise identical direct-workdir support across every native tool. SDK upgrade/parity verification and secondary-root permission/refusal coverage remain part of R15.
+Pinned SDK compatibility: Muse 1.4.9 refused a bash tool's direct `workdir` in the secondary root with `workdir escapes workspace`. Native file reads/edits in that root worked, and explicitly changing directory inside the bash command ran its tests. It has not been re-tested on 1.4.10. Treat the first root as the reliable initial shell CWD; do not promise identical direct-workdir support across every native tool. SDK upgrade/parity verification and secondary-root permission/refusal coverage remain part of R15.
 
 
 ## Native folder intake

@@ -7,6 +7,8 @@ type Runtime = {
   phase?: string;
   path?: string;
   version?: string;
+  /** Muse release this Lascoria requires, reported when no compatible runtime is ready. */
+  required?: string;
   bytes?: number;
   total?: number;
   message?: string;
@@ -141,9 +143,10 @@ export function MuseSetup({ onReady }: { onReady: (ready: boolean) => void }) {
           {confirm && (
             <div className="account-confirm runtime-confirm" aria-label="Confirm Muse installation">
               <p>
-                Download Muse 1.4.9 from Meta, verify its checksum and protocol, and install it in
-                Lascoria’s private runtime directory. The download is approximately 350–500 MB.
-                Existing installations will not be replaced. No model request or paid trial is sent.
+                Download {runtime.required ? `Muse ${runtime.required}` : 'Muse'} from Meta, verify
+                its checksum and protocol, and install it in Lascoria’s private runtime directory.
+                The download is approximately 350–500 MB. Existing installations will not be
+                replaced. No model request or paid trial is sent.
               </p>
               <div className="account-actions">
                 <button onClick={() => setConfirm(false)}>Cancel</button>

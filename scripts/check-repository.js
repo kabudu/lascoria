@@ -133,6 +133,25 @@ export function checkRepository(root = process.cwd()) {
   const app = JSON.parse(readFileSync(resolve(root, 'src-tauri/tauri.conf.json')));
   if (pkg.name !== 'lascoria' || app.productName !== 'Lascoria' || pkg.version !== app.version)
     throw Error('Package/application identity or version mismatch');
+  // One pinned Muse release across the SDK, the Node workers and the Rust installer.
+  const sdk = pkg.dependencies?.['@muse-code/sdk'];
+  const lock = JSON.parse(readFileSync(resolve(root, 'package-lock.json')));
+  const worker = readFileSync(resolve(root, 'src/muse-version.js'), 'utf8').match(
+    /MUSE_VERSION = '([^']+)'/,
+  )?.[1];
+  const rust = readFileSync(resolve(root, 'runtime-support/src/lib.rs'), 'utf8');
+  const rustVersion = rust.match(/MUSE_VERSION: &str = "([^"]+)"/)?.[1];
+  const rustBuild = rust.match(/MUSE_BUILD: &str = "([^"]+)"/)?.[1];
+  if (
+    !sdk ||
+    lock.packages?.['node_modules/@muse-code/sdk']?.version !== sdk ||
+    worker !== sdk ||
+    rustVersion !== sdk ||
+    !rustBuild?.startsWith(`${sdk}-R`)
+  )
+    throw Error(
+      'Pinned Muse version mismatch across package.json, package-lock.json, src/muse-version.js and runtime-support',
+    );
   console.log(
     `Repository checks passed: ${names.length} tracked files; text/links, secret scan and application metadata.`,
   );

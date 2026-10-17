@@ -72,8 +72,8 @@ test('account onboarding through native Rust bridge: key, subscription priority,
     await expect(page.getByRole('heading', { name: 'Your Muse connection' })).toBeVisible();
     await expect(page.getByText('Checking your Muse runtime…')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Install Muse', exact: true })).toHaveCount(0);
-    finishRuntime({ ready: true, version: '1.4.9', path: '/fixture/muse' });
-    await expect(page.getByText('Muse 1.4.9 · ready')).toBeVisible();
+    finishRuntime({ ready: true, version: '1.4.10', path: '/fixture/muse' });
+    await expect(page.getByText('Muse 1.4.10 · ready')).toBeVisible();
     const audit = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
       .analyze();

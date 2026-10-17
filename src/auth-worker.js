@@ -2,6 +2,7 @@
 import readline from 'node:readline';
 import { spawnMspConnection } from '@muse-code/sdk';
 import { bounded } from './runtime.js';
+import { MUSE_VERSION } from './muse-version.js';
 const transport = spawnMspConnection({
   command: process.env.MUSE_BIN ?? 'muse',
   args: ['serve', '--provider', 'meta'],
@@ -15,7 +16,7 @@ const host = await bounded(
 );
 if (
   host.fingerprintWarning ||
-  host.initializeResult.serverInfo.version !== '1.4.9' ||
+  host.initializeResult.serverInfo.version !== MUSE_VERSION ||
   !host.initializeResult.experimentalApi
 ) {
   await host.close();

@@ -6,7 +6,7 @@ Status: design and release requirement R14, not an implemented attachment featur
 
 The workspace inspector can insert a bounded repository file excerpt into the task draft. The composer currently submits text or a typed Muse skill. It has no image/file picker, drag and drop, clipboard image intake, staged media store or attachment preview. A path in a prompt is not proof that file bytes were attached.
 
-The pinned official SDK 1.4.9 declares these native paths. Declarations establish the integration shape, not successful native/provider acceptance:
+The pinned official SDK 1.4.10 (schema unchanged from 1.4.9) declares these native paths. Declarations establish the integration shape, not successful native/provider acceptance:
 
 | Content | Native path | Lascoria requirement |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ The pinned official SDK 1.4.9 declares these native paths. Declarations establis
 | Video | Chunked `media/upload` with session-owned upload receipt, then `video` input | Separate upload/retry/cancellation semantics; expose only after native/model compatibility and limits are proved. |
 | PDF, audio, archives or arbitrary binary files | No general file input part in the pinned schema | Do not pretend these are supported by sending a filename or routing them through the video API. Prove a native supported path before enabling each format. |
 
-Primary references: [turn input parts](https://meta-models.github.io/muse-code-sdk/next/generated/msp/types/turninputpart/), [media upload](https://meta-models.github.io/muse-code-sdk/next/generated/msp/methods/media-upload/). The website's next documentation can differ from the pinned SDK; installed types and real 1.4.9 native trials determine shipped behaviour. Attachments on answers to Muse questions are reserved/rejected in the pinned schema and must not be advertised.
+Primary references: [turn input parts](https://meta-models.github.io/muse-code-sdk/next/generated/msp/types/turninputpart/), [media upload](https://meta-models.github.io/muse-code-sdk/next/generated/msp/methods/media-upload/). The website's next documentation can differ from the pinned SDK; installed types and real native trials on the pinned release determine shipped behaviour. Attachments on answers to Muse questions are reserved/rejected in the pinned schema and must not be advertised.
 
 ## Proposed composer experience
 
