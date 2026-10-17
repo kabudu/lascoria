@@ -1,6 +1,8 @@
 // Private SDK bridge. Only the Rust supervisor owns the public control API.
 import { Session } from '@muse-code/sdk';
 import { isDeepStrictEqual } from 'node:util';
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { bounded, spawnRuntime } from './runtime.js';
 
 export async function createSession(send, onDeath) {
@@ -449,6 +451,25 @@ export async function createSession(send, onDeath) {
         input = [{ type: 'skill', selector: shortcut[1], arguments: shortcut[2] ?? '' }];
       }
       wire = { sessionId, input };
+      if (params.images !== undefined) {
+        // Verified private files staged by the supervisor; bytes are read only now, on send.
+        if (operation !== 'turn' || !Array.isArray(params.images) || params.images.length > 4)
+          throw new ValidationError('Images can be added to a new task only');
+        if (input[0].type !== 'text')
+          throw new ValidationError('Add images to a plain task, not a shortcut');
+        for (const image of params.images) {
+          const bytes = await readFile(image.path);
+          if (createHash('sha256').update(bytes).digest('hex') !== image.sha256)
+            throw new ValidationError('An attached image changed after it was checked');
+          input.push({
+            type: 'image',
+            mediaType: image.mediaType,
+            base64Data: bytes.toString('base64'),
+            width: image.width,
+            height: image.height,
+          });
+        }
+      }
       if (params.workspaceRoots !== undefined) {
         // Sticky native replacement, bound at this turn's launch (turn/start.workspaceRoots).
         // The supervisor validated the saved Project; refuse anything that is not an idle new task.

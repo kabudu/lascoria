@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add images to a task: choose, paste or drop PNG, JPEG, GIF or WebP images onto the composer. They wait privately for that session, survive reloads and are sent only with the next task you start.
+
 - Apply an edited Project's folders to an existing session with its next task: the composer shows what changed and applies it only when you tick the box; running tasks and the default folder never change underneath you.
 
 - Require Muse 1.4.10 and the official SDK 1.4.10 (same protocol schema as 1.4.9). Setup now finds a compatible Muse even when an older one was selected before, and one repository check keeps the pinned version consistent across the SDK, workers and installer.

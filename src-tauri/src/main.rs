@@ -74,6 +74,11 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "data/removeArchived",
         "data/compact",
         "search",
+        "attachment/begin",
+        "attachment/append",
+        "attachment/finish",
+        "attachment/discard",
+        "attachment/list",
     ]
     .contains(&operation)
     {

@@ -1,3 +1,4 @@
+mod attachments;
 mod auth;
 mod data;
 mod db;
@@ -255,7 +256,7 @@ impl Actor {
             let commands = db.all("commands")?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -412,6 +413,8 @@ impl Actor {
             archived["state"]["current"] = json!(false);
             archived["archivedAtMillis"] = json!(db::now_ms());
             self.save(&archived)?;
+            // An archived session is read-only, so images waiting in its composer can go.
+            attachments::remove_session(&lascoria_runtime::state_dir(), session);
             let result = if operation == "workspace/discard" {
                 workspace::discard(&archived, &params).await
             } else {
@@ -696,23 +699,56 @@ impl Actor {
             row["lifecycle"] == "connected" && row["state"]["current"] == true,
             "Session state is not current; recover before issuing commands"
         );
-        let Some(project) = replacement else {
+        // Images travel as verified private files read by the worker; the journal keeps IDs only.
+        let images = match params.get("attachments") {
+            Some(ids) => {
+                ensure!(
+                    operation == "turn",
+                    "Images can be added to a new task, not to steering or other actions"
+                );
+                Some(attachments::for_turn(
+                    &lascoria_runtime::state_dir(),
+                    session,
+                    ids,
+                )?)
+            }
+            None => None,
+        };
+        if replacement.is_none() && images.is_none() {
             return self
                 .dispatch(id, operation, params.clone(), session, None)
                 .await;
-        };
-        // Durable intent before dispatch: the confirmed context stays authoritative until the
-        // native turn receipt confirms the replacement.
-        row["projectContextPending"] = json!({"revision":project["revision"],"requestId":id,"status":"requested","project":project});
-        self.save(&row)?;
+        }
         let mut wire = params.clone();
-        wire.as_object_mut().unwrap().remove("projectRevision");
-        wire["workspaceRoots"] = projects::root_paths(&project);
-        wire["projectNote"] = json!(projects::change_note(&project));
+        let fields = wire.as_object_mut().unwrap();
+        fields.remove("projectRevision");
+        fields.remove("attachments");
+        if let Some(images) = &images {
+            wire["images"] = json!(images);
+        }
+        if let Some(project) = &replacement {
+            // Durable intent before dispatch: the confirmed context stays authoritative until
+            // the native turn receipt confirms the replacement.
+            row["projectContextPending"] = json!({"revision":project["revision"],"requestId":id,"status":"requested","project":project});
+            self.save(&row)?;
+            wire["workspaceRoots"] = projects::root_paths(project);
+            wire["projectNote"] = json!(projects::change_note(project));
+        }
         let result = self
             .dispatch(id, operation, params.clone(), session, Some(wire))
             .await;
-        projects::settle_pending(&self.db.lock().unwrap(), session)?;
+        if replacement.is_some() {
+            projects::settle_pending(&self.db.lock().unwrap(), session)?;
+        }
+        if let Ok(command) = &result
+            && ["applied", "accepted"].contains(&command["status"].as_str().unwrap_or(""))
+        {
+            attachments::sent(
+                &lascoria_runtime::state_dir(),
+                session,
+                &params["attachments"],
+            );
+        }
         result
     }
     async fn stop(&mut self) {
@@ -772,7 +808,7 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
         // Data lifecycle work is file I/O under the journal lock; keep it off async workers.
         if request["operation"].as_str().is_some_and(|op| op.starts_with("data/")) {
@@ -789,6 +825,22 @@ async fn connection(
             )
             .await
             .context("Data operation is still running; refresh before retrying")??;
+        }
+        if request["operation"].as_str().is_some_and(|op| op.starts_with("attachment/")) {
+            let operation = request["operation"].as_str().unwrap().to_owned();
+            let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+            if operation == "attachment/begin" {
+                // Staging needs a live session, which also bounds how many staging folders exist.
+                let row = db.lock().unwrap().get("sessions", params["sessionId"].as_str().unwrap_or_default())?;
+                ensure!(
+                    row.is_some_and(|r| r["lifecycle"] != "archived"),
+                    "Images can be added only to an open session"
+                );
+            }
+            return tokio::task::spawn_blocking(move || {
+                attachments::handle(&lascoria_runtime::state_dir(), &operation, &params)
+            })
+            .await?;
         }
         if request["operation"] == "search" {
             return search::run(&db.lock().unwrap(), &request["params"]);
