@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Bind supervisor control to the desktop app that started it, so repository scripts and tools that can read the control token cannot approve permissions or drive sessions; the session message helper is limited to its three tools and the diagnostic bridge exists only in debug builds.
+
+- Search the messages Lascoria keeps for every session, including archived ones, and continue archived work in a linked new session without starting a model turn.
+
+- Replace Quit & stop with one Log out entry that asks whether to keep work running, pause and quit, or sign out and quit, and can remember the choice for closing the window. Show Muse's account label and the weekly allowance left in the workspace menu.
+
+- Add Data & backups: private verified backups, export and import, restores applied safely on the next start without changing sign-in or billing, removal of archived sessions with an automatic backup, and compaction of older command history that never replays a request.
+
 - Choose Session and Project folders with a native Browse action, retaining editable paths, local-only staging and clear cancellation/failure behaviour.
 
 - Keep Project folder details, Rename and expanded canvas tools accessible above floating panels; tuck tools away when opening Session links, and improve native dropdown sizing and Project submission feedback.

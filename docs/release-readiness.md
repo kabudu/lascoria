@@ -133,7 +133,7 @@ Historical reference only: [14 October Stage C memory results](stage-c-memory.md
 
 ### R12 - Full security review before public release
 
-Added 15 October at the user's request. This is a release gate requiring an evidence-based review and remediation, not a claim that the current implementation has passed a security audit.
+Added 15 October at the user's request. This is a release gate requiring an evidence-based review and remediation, not a claim that the current implementation has passed a security audit. The threat model and findings register are in [security review](security-review.md).
 
 - [ ] Document the threat model, assets, trust boundaries and supported deployment assumptions across React/WebView, Tauri commands, Rust supervisor, local IPC, Node SDK workers, Muse, tools, repositories, plugins/skills, provider APIs and release infrastructure. Treat repository files, model/tool output, transcripts and remote metadata as untrusted input; distinguish same-user code execution from other local users and remote attackers.
 - [ ] Review authentication and authorization end to end: subscription/API-key precedence, logout/recovery barriers, account/session isolation, credential expiry/revocation, native-vault use, secret lifetimes and redaction. Verify no credentials leak into frontend persistence, argv, command journals, logs, crash reports, diagnostics, exports, Git history or artifacts; cover unavailable/locked vaults and explicit BYOK data disclosure.

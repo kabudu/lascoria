@@ -1,11 +1,14 @@
 mod auth;
+mod data;
 mod db;
 mod dedicated;
 mod metrics;
+mod peer;
 mod projects;
 mod relay;
 mod relay_mcp;
 mod review;
+mod search;
 mod session_names;
 mod worker;
 mod workspace;
@@ -125,10 +128,7 @@ impl Actor {
         }
         {
             let db = self.db.lock().unwrap();
-            ensure!(
-                db.all("commands")?.len() < 2000,
-                "Diagnostic command journal limit reached"
-            );
+            db.journal_admits()?;
             db.put("commands", id, &command)?; // synchronous=FULL: durable before dispatch
         }
         let worker = self
@@ -255,7 +255,7 @@ impl Actor {
             let commands = db.all("commands")?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -358,10 +358,7 @@ impl Actor {
                 "Invalid request ID"
             );
             if let Some(previous) = self.db.lock().unwrap().get("commands", id)? {
-                ensure!(
-                    previous["operation"] == operation && previous["params"] == params,
-                    "Request ID reused with different payload"
-                );
+                db::same_request(&previous, operation, &params)?;
                 return Ok(previous);
             }
             if operation == "session/archive" {
@@ -497,16 +494,10 @@ impl Actor {
             "Invalid request ID"
         );
         if let Some(previous) = self.db.lock().unwrap().get("commands", id)? {
-            ensure!(
-                previous["operation"] == operation && previous["params"] == params,
-                "Request ID reused with different payload"
-            );
+            db::same_request(&previous, operation, &params)?;
             return Ok(previous); // No automatic replay of uncertain side effects.
         }
-        ensure!(
-            self.db.lock().unwrap().all("commands")?.len() < 2000,
-            "Diagnostic command journal limit reached"
-        );
+        self.db.lock().unwrap().journal_admits()?;
         if operation == "start" {
             let project = projects::selected(&self.db.lock().unwrap(), &params)?;
             ensure!(
@@ -517,6 +508,24 @@ impl Actor {
                 projects::check_session(&json!({"projectContext":project})).await?;
             }
             let initial_name = session_names::validate(params.get("name"))?;
+            // Continuing archived work starts a separate session; the archive stays read-only.
+            let continued_from = match params.get("continuedFrom") {
+                None => None,
+                Some(value) => {
+                    let from = value.as_str().context("Invalid continued session")?;
+                    let prior = self
+                        .db
+                        .lock()
+                        .unwrap()
+                        .get("sessions", from)?
+                        .context("Unknown archived session")?;
+                    ensure!(
+                        prior["lifecycle"] == "archived",
+                        "Only archived sessions can be continued"
+                    );
+                    Some(from.to_owned())
+                }
+            };
             ensure!(
                 self.db
                     .lock()
@@ -580,6 +589,9 @@ impl Actor {
             };
             let mut row = json!({"id":session,"initialName":initial_name,"workspace":workspace,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false}});
             row["managedWorkspace"] = managed;
+            if let Some(from) = &continued_from {
+                row["continuedFrom"] = json!(from);
+            }
             if let Some(project) = &project {
                 row["projectContext"] = project.clone();
                 row["projectContextReceipt"] = json!({"requestId":id,"status":"requested"});
@@ -687,8 +699,16 @@ async fn connection(
     db: SharedDb,
     metrics: Arc<Mutex<metrics::Metrics>>,
     auth: Arc<tokio::sync::Mutex<auth::Auth>>,
+    policy: Arc<peer::Policy>,
 ) -> Result<()> {
     lascoria_runtime::platform::check_peer(&stream)?;
+    // Identify the connecting program before reading any request (finding F1).
+    // Classification may hash an executable the first time it connects; keep that file I/O
+    // off the async workers that serve every other connection.
+    let executable = lascoria_runtime::platform::peer_executable(&stream)
+        .ok()
+        .flatten();
+    let peer_class = tokio::task::spawn_blocking(move || policy.classify(executable)).await?;
     let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(65536));
     let (delivered_tx, delivered_rx) = oneshot::channel();
     let mut started = None;
@@ -701,6 +721,11 @@ async fn connection(
             request["version"] == 1 && request["token"] == token,
             "Invalid version or authentication"
         );
+        let peer_class = peer_class?;
+        peer::authorise(
+            peer_class,
+            request["operation"].as_str().context("Operation required")?,
+        )?;
         started = Some(Instant::now());
         if request["operation"] == "account/status" { return auth.lock().await.status().await; }
         if request["operation"] == "diagnostics" { return Ok(metrics.lock().unwrap().snapshot()); }
@@ -711,7 +736,26 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+        }
+        // Data lifecycle work is file I/O under the journal lock; keep it off async workers.
+        if request["operation"].as_str().is_some_and(|op| op.starts_with("data/")) {
+            let operation = request["operation"].as_str().unwrap().to_owned();
+            let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+            let id = request["id"].as_str().context("Request ID required")?.to_owned();
+            let db = db.clone();
+            return timeout(
+                Duration::from_secs(280),
+                tokio::task::spawn_blocking(move || {
+                    let root = lascoria_runtime::state_dir();
+                    data::handle(&db.lock().unwrap(), &root, &operation, &params, &id)
+                }),
+            )
+            .await
+            .context("Data operation is still running; refresh before retrying")??;
+        }
+        if request["operation"] == "search" {
+            return search::run(&db.lock().unwrap(), &request["params"]);
         }
         if request["operation"] == "project/list" {
             return Ok(json!({"projects":projects::list(&db.lock().unwrap())?}));
@@ -791,6 +835,10 @@ async fn supervisor_main() -> Result<()> {
     let database_path = directory.join("state.sqlite");
     let database_file = lascoria_runtime::platform::private_file(&database_path, false)?;
     drop(database_file);
+    // A staged restore is applied only here: under the owner lock, before any reader, worker or client.
+    if let Some(outcome) = data::apply_pending_restore(&directory, &database_path)? {
+        eprintln!("Data restore: {}", outcome["status"]);
+    }
     let db = Arc::new(Mutex::new(Db::open(&database_path)?));
     {
         let db = db.lock().unwrap();
@@ -876,6 +924,10 @@ async fn supervisor_main() -> Result<()> {
     let accept_metrics = metrics.clone();
     let accept_db = db.clone();
     let accept_account = account.clone();
+    let policy = Arc::new(peer::Policy::from_env()?);
+    if policy.enforced() {
+        eprintln!("IPC: control bound to the desktop app");
+    }
     let accept_task = tokio::spawn(async move {
         while let Ok(stream) = listener.accept().await {
             if let Ok(permit) = permits.clone().try_acquire_owned() {
@@ -884,10 +936,11 @@ async fn supervisor_main() -> Result<()> {
                 let db = accept_db.clone();
                 let metrics = accept_metrics.clone();
                 let account = accept_account.clone();
+                let policy = policy.clone();
                 tokio::spawn(async move {
                     let _permit = permit;
                     if let Err(error) =
-                        connection(stream, token, sender, db, metrics, account).await
+                        connection(stream, token, sender, db, metrics, account, policy).await
                     {
                         eprintln!("IPC: {error}");
                     }

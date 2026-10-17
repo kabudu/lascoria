@@ -199,16 +199,10 @@ pub fn begin(
 ) -> Result<Option<Value>> {
     let db = db.lock().unwrap();
     if let Some(previous) = db.get("commands", id)? {
-        ensure!(
-            previous["operation"] == operation && previous["params"] == *params,
-            "Request ID reused with different payload"
-        );
+        crate::db::same_request(&previous, operation, params)?;
         return Ok(Some(previous));
     }
-    ensure!(
-        db.count("commands")? < 2000,
-        "Command journal limit reached"
-    );
+    db.journal_admits()?;
     db.put("commands", id, &json!({"id":id,"operation":operation,"params":params,"sessionId":session,"status":"outcomeUnknown","createdAtMillis":now_ms()}))?;
     Ok(None)
 }

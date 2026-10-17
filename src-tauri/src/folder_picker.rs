@@ -1,4 +1,5 @@
-//! A directory-only chooser. Selection never reads contents or grants Muse permissions.
+//! Native choosers. Selection never reads contents or grants Muse permissions; the supervisor
+//! validates every chosen path again before it reads or writes.
 use std::{path::PathBuf, sync::Arc};
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
@@ -52,6 +53,88 @@ pub async fn pick_workspace_folder(
     receive
         .await
         .map_err(|_| "Folder chooser closed unexpectedly")?
+}
+
+/// Save location for an exported backup. The native dialog owns overwrite confirmation.
+#[tauri::command]
+pub async fn pick_backup_destination(
+    window: tauri::WebviewWindow,
+    picker: tauri::State<'_, FolderPicker>,
+    suggested: String,
+) -> Result<Option<String>, String> {
+    let permit = picker
+        .0
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "A file chooser is already open")?;
+    let name = if suggested.len() <= 200
+        && !suggested.is_empty()
+        && suggested
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_. ".contains(c))
+    {
+        suggested
+    } else {
+        "lascoria-backup.sqlite".into()
+    };
+    let (send, receive) = oneshot::channel();
+    window
+        .app_handle()
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title("Export Lascoria backup")
+        .set_file_name(name)
+        .add_filter("Lascoria backup", &["sqlite"])
+        .save_file(move |selection| {
+            let _permit = permit;
+            let result = selection
+                .map(|file| {
+                    file.into_path()
+                        .map_err(|e| e.to_string())
+                        .and_then(selected_path)
+                })
+                .transpose();
+            let _ = send.send(result);
+        });
+    receive
+        .await
+        .map_err(|_| "File chooser closed unexpectedly")?
+}
+
+/// Backup file to import. Only a path leaves the chooser; the supervisor validates the file.
+#[tauri::command]
+pub async fn pick_backup_file(
+    window: tauri::WebviewWindow,
+    picker: tauri::State<'_, FolderPicker>,
+) -> Result<Option<String>, String> {
+    let permit = picker
+        .0
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "A file chooser is already open")?;
+    let (send, receive) = oneshot::channel();
+    window
+        .app_handle()
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title("Import Lascoria backup")
+        .add_filter("Lascoria backup", &["sqlite"])
+        .pick_file(move |selection| {
+            let _permit = permit;
+            let result = selection
+                .map(|file| {
+                    file.into_path()
+                        .map_err(|e| e.to_string())
+                        .and_then(selected_path)
+                })
+                .transpose();
+            let _ = send.send(result);
+        });
+    receive
+        .await
+        .map_err(|_| "File chooser closed unexpectedly")?
 }
 
 #[cfg(test)]

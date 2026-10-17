@@ -222,7 +222,7 @@ export function Account({
       </p>
       {(account?.authenticated || account?.mode !== 'loggedOut') && account?.managed && (
         <button disabled={busy} onClick={() => setConfirm('logout')}>
-          Sign out of Lascoria…
+          Sign out of Muse…
         </button>
       )}
       {confirm && (
@@ -230,7 +230,7 @@ export function Account({
           className="account-confirm"
           aria-label={confirm === 'logout' ? 'Confirm sign out' : 'Confirm forget API key'}
         >
-          <h3>{confirm === 'logout' ? 'Sign out of Lascoria?' : 'Forget the saved API key?'}</h3>
+          <h3>{confirm === 'logout' ? 'Sign out of Muse?' : 'Forget the saved API key?'}</h3>
           <p>
             {confirm === 'logout'
               ? 'Active turns will be cancelled before Muse hosts stop. Saved conversation history and worktrees remain available to continue after sign-in. The saved API key stays inactive until you explicitly choose it again. Your Muse CLI login is retained; returning here requires browser approval.'

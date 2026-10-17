@@ -151,6 +151,91 @@ pub fn check_peer(stream: &Stream) -> io::Result<()> {
     let _ = stream;
     Ok(())
 }
+/// Executable of the connected peer process, for binding control authority to an installed
+/// binary rather than to a file any same-user process can read. `None` where the platform
+/// cannot report the peer process.
+pub fn peer_executable(stream: &Stream) -> io::Result<Option<std::path::PathBuf>> {
+    #[cfg(unix)]
+    {
+        let Some(pid) = stream.peer_cred()?.pid() else {
+            return Ok(None);
+        };
+        process_executable(pid as u32).map(Some)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        let mut pid = 0;
+        if unsafe {
+            windows_sys::Win32::System::Pipes::GetNamedPipeClientProcessId(
+                stream.as_raw_handle(),
+                &mut pid,
+            )
+        } == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        process_executable(pid).map(Some)
+    }
+}
+#[cfg(target_os = "linux")]
+pub fn process_executable(pid: u32) -> io::Result<std::path::PathBuf> {
+    fs::read_link(format!("/proc/{pid}/exe"))
+}
+#[cfg(target_os = "macos")]
+pub fn process_executable(pid: u32) -> io::Result<std::path::PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    let mut buffer = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    let length = unsafe {
+        libc::proc_pidpath(
+            pid as libc::c_int,
+            buffer.as_mut_ptr().cast(),
+            buffer.len() as u32,
+        )
+    };
+    if length <= 0 {
+        return Err(io::Error::last_os_error());
+    }
+    buffer.truncate(length as usize);
+    Ok(std::ffi::OsString::from_vec(buffer).into())
+}
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+pub fn process_executable(_pid: u32) -> io::Result<std::path::PathBuf> {
+    Err(io::Error::other(
+        "Peer executable lookup is unsupported on this platform",
+    ))
+}
+#[cfg(windows)]
+pub fn process_executable(pid: u32) -> io::Result<std::path::PathBuf> {
+    use std::os::windows::{
+        ffi::OsStringExt,
+        io::{AsRawHandle, FromRawHandle, OwnedHandle},
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        QueryFullProcessImageNameW,
+    };
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let process = OwnedHandle::from_raw_handle(process);
+        let mut buffer = vec![0u16; 32768];
+        let mut length = buffer.len() as u32;
+        if QueryFullProcessImageNameW(
+            process.as_raw_handle(),
+            PROCESS_NAME_WIN32,
+            buffer.as_mut_ptr(),
+            &mut length,
+        ) == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        buffer.truncate(length as usize);
+        Ok(std::ffi::OsString::from_wide(&buffer).into())
+    }
+}
 pub async fn terminate_signal() {
     #[cfg(unix)]
     {

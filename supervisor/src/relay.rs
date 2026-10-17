@@ -441,10 +441,7 @@ pub fn delivery(db: SharedDb, params: &Value) -> Result<(String, Value, bool)> {
             && recipient_row["state"]["activeTurnId"].is_null(),
         "Recipient must be connected and idle"
     );
-    ensure!(
-        db.count("commands")? < 2000,
-        "Command journal limit reached"
-    );
+    db.journal_admits()?;
     // Reserve under the same lock as the connection check. A disconnect that follows
     // cannot retract admitted inference; a crash before dispatch is never replayed.
     db.put("commands", &command_id, &json!({"id":command_id,"operation":"turn","params":wire,"sessionId":recipient,"commandId":uuid::Uuid::now_v7().to_string(),"status":"sending","relayReservation":true,"relayMessageId":id,"createdAtMillis":now_ms()}))?;

@@ -65,6 +65,15 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "artifact/read",
         "review/list",
         "evidence/record",
+        "data/summary",
+        "data/backup",
+        "data/export",
+        "data/import",
+        "data/restore",
+        "data/cancelRestore",
+        "data/removeArchived",
+        "data/compact",
+        "search",
     ]
     .contains(&operation)
     {
@@ -82,6 +91,9 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
     }
     let duration = if operation == "status" {
         Duration::from_millis(500)
+    } else if operation.starts_with("data/") && operation != "data/summary" {
+        // Backups copy the whole journal; the supervisor bounds this at 280 seconds.
+        Duration::from_secs(300)
     } else {
         Duration::from_secs(30)
     };
@@ -116,8 +128,11 @@ async fn supervisor_request(operation: String, params: Value, id: String) -> Res
 }
 #[tauri::command]
 async fn connect_supervisor(app: tauri::AppHandle) -> Result<Value, String> {
-    if let Ok(status) = request("status", json!({}), "desktop-connect".into()).await {
-        return Ok(status);
+    match request("status", json!({}), "desktop-connect".into()).await {
+        Ok(status) => return Ok(status),
+        // A running supervisor bound to another copy of the app: starting a second one cannot help.
+        Err(error) if error.contains("Only the Lascoria app") => return Err(error),
+        Err(_) => {}
     }
     let resources = app
         .path()
@@ -130,7 +145,10 @@ async fn connect_supervisor(app: tauri::AppHandle) -> Result<Value, String> {
         return Err("Installed Lascoria runtime is missing. Reinstall Lascoria or rebuild the runtime bundle.".into());
     }
     let mut cmd = std::process::Command::new(binary);
+    // Binds supervisor control to this executable (security finding F1).
+    let desktop = std::env::current_exe().map_err(|e| e.to_string())?;
     cmd.env("SCH_RESOURCES", &resources)
+        .env("SCH_DESKTOP_EXE", dunce::simplified(&desktop))
         .env(
             "SCH_NODE",
             resources.join(lascoria_runtime::executable("node")),
@@ -234,8 +252,9 @@ fn finish_quit(app: tauri::AppHandle) {
     app.exit(0);
 }
 fn main() {
-    // Diagnostic entry point exercises the exact native bridge without a WebView.
-    if std::env::args().nth(1).as_deref() == Some("--bridge-json") {
+    // Diagnostic entry point exercises the exact native bridge without a WebView. Debug builds
+    // only: in a release build it would let any program borrow the app's control authority.
+    if cfg!(debug_assertions) && std::env::args().nth(1).as_deref() == Some("--bridge-json") {
         let input: Value = serde_json::from_str(&std::env::args().nth(2).expect("JSON required"))
             .expect("Invalid JSON");
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -265,6 +284,8 @@ fn main() {
             supervisor_request,
             connect_supervisor,
             folder_picker::pick_workspace_folder,
+            folder_picker::pick_backup_destination,
+            folder_picker::pick_backup_file,
             open_account_browser,
             finish_quit,
             muse_setup::runtime_status,
