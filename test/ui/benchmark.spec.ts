@@ -72,7 +72,8 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
             window: {
               usedPercent: 20,
               resetsAtMs: 1800010000000,
-              windowDurationMins: usageReads === 1 ? 300 : 90,
+              // Read 1: workspace menu opening. Read 2: Usage dialog. Read 3: explicit refresh.
+              windowDurationMins: usageReads <= 2 ? 300 : 90,
             },
           },
         };
@@ -110,13 +111,17 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
     }
 
     await page.getByLabel('Workspace menu', { exact: true }).click();
-    await page.getByRole('button', { name: 'Usage', exact: true }).click();
+    // Opening the menu reads the weekly allowance once; nothing polls in the background.
+    await expect(page.getByText('· 0% weekly left')).toBeVisible();
+    expect(usageReads).toBe(1);
+    await page.getByRole('button', { name: /^Usage/ }).click();
+    await expect.poll(() => usageReads).toBe(2);
     await expect(page.getByText('125% used · 0% remaining')).toBeVisible();
     await expect(page.getByText('20% used · 80% remaining')).toBeVisible();
     await expect(page.getByText(/5-hour window/)).toBeVisible();
     await expect(page.getByText(/300 minute/)).toHaveCount(0);
     await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
-    await expect.poll(() => usageReads).toBe(2);
+    await expect.poll(() => usageReads).toBe(3);
     await expect(page.getByText(/1-hour 30-minute window/)).toBeVisible();
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     expect(await sceneGeometry()).toEqual(originalScene);

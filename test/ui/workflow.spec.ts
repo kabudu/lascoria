@@ -758,9 +758,10 @@ test('real Muse implementation, tests and review through React and the native Ru
     await page.locator('.session-card').nth(1).click();
     await expect(page.locator('.command-area textarea')).toHaveValue('Independent unsent draft');
     await page.getByLabel('Workspace menu', { exact: true }).click();
-    await page.getByRole('button', { name: 'Quit & stop', exact: true }).click();
-    await expect(page.getByRole('dialog')).toContainText('registered sessions');
-    await page.getByRole('button', { name: 'Stop all sessions', exact: true }).click();
+    await page.getByRole('button', { name: 'Log out…', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('What should happen?');
+    await page.getByRole('radio', { name: /Pause work and quit/ }).check();
+    await page.getByRole('button', { name: 'Pause and quit', exact: true }).click();
     await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
     await expect.poll(() => daemon.exitCode, { timeout: 10000 }).toBe(0);
   } finally {

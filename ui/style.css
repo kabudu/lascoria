@@ -2447,3 +2447,230 @@ select {
   min-width: 100px;
   margin: 0;
 }
+
+.data-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+.data-panel p,
+.data-panel h3,
+.data-panel h4 {
+  margin: 0;
+}
+.data-panel h3 {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+}
+.data-intro {
+  color: var(--muted);
+}
+.data-usage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+}
+.data-usage div {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.data-usage dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.data-usage dd {
+  margin: 0.2rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.data-actions,
+.data-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.data-actions button,
+.data-row-actions button {
+  min-height: 40px;
+  font-size: 0.8rem;
+  padding: 0.5rem 0.8rem;
+}
+.data-panel button.quiet {
+  background: transparent;
+}
+.data-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.data-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.data-list li > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.data-archived {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.data-archived label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  overflow-wrap: anywhere;
+}
+.data-notice,
+.data-confirm {
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--attention);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.6rem;
+}
+.data-confirm {
+  border-color: var(--accent);
+  background: var(--accent-surface);
+}
+.data-error {
+  color: var(--error);
+}
+
+.exit-dialog {
+  display: grid;
+  gap: 0.85rem;
+  max-width: 560px;
+}
+.exit-dialog p {
+  margin: 0;
+}
+.exit-sessions {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
+.exit-choices {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.exit-choices legend {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+.exit-choices label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.exit-choices label.selected {
+  border-color: var(--accent);
+  background: var(--accent-surface);
+}
+.exit-choices label > span {
+  display: grid;
+  gap: 0.2rem;
+}
+.exit-remember {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.menu-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 6px 9px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  max-width: 260px;
+}
+.menu-identity > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+.menu-identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+.menu-identity small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.menu-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-surface);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.menu-usage {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.history-search {
+  display: grid;
+  gap: 0.75rem;
+}
+.history-search p {
+  margin: 0;
+}
+.history-search label {
+  display: grid;
+  gap: 0.35rem;
+}
+.history-results {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 50vh;
+  overflow: auto;
+}
+.history-results button {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.banner.archived {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}

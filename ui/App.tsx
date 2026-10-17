@@ -1,6 +1,9 @@
 import { ProjectStart } from './ProjectStart';
 import { FolderPath } from './FolderPath';
 import { Help } from './Help';
+import { DataLifecycle } from './DataLifecycle';
+import { ExitDialog, type ExitChoice } from './ExitDialog';
+import { HistorySearch } from './HistorySearch';
 import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
@@ -82,6 +85,13 @@ export function App() {
       });
   }, []);
   const [account, setAccount] = useState<AccountStatus | null>(null);
+  // Last weekly allowance read when the menu opened; never polled in the background.
+  const [menuUsage, setMenuUsage] = useState<{
+    sessionId: string;
+    weeklyRemaining: number;
+    observedAtMs: number;
+    readAtMs: number;
+  } | null>(null);
   const accountOnboarded = useRef(false);
   const accountRequest = useRef(0);
   const accountAccepted = useRef(0);
@@ -187,6 +197,8 @@ export function App() {
       | 'relay'
       | 'inbox'
       | 'help'
+      | 'data'
+      | 'search'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
@@ -453,6 +465,51 @@ export function App() {
     }, 600);
     return () => clearTimeout(timer);
   }, [prefs]);
+  // Pausing names every registered session from a fresh snapshot; a changed set is refused.
+  async function pauseAll() {
+    const fresh = await request<Status>('status');
+    await request('stop', { sessions: fresh.sessions.map((s) => s.id) });
+  }
+  async function pauseIfPreferred() {
+    if (latestPrefs.current.closeBehavior === 'pause') await pauseAll();
+  }
+  async function exitLascoria(choice: ExitChoice, remember: boolean) {
+    if (remember && choice !== 'signOut') updatePrefs({ closeBehavior: choice });
+    setBusy(true);
+    setError('');
+    try {
+      await flushDraftsRef.current();
+      await flushPrefs();
+    } catch (e) {
+      setBusy(false);
+      setError(`Nothing was stopped because drafts or layout could not be saved: ${String(e)}`);
+      return;
+    }
+    try {
+      if (choice === 'signOut') await request('account/logout', {});
+      if (choice !== 'keepRunning') await pauseAll();
+    } catch (e) {
+      setBusy(false);
+      setError(
+        choice === 'signOut'
+          ? `Sign-out or pausing could not be confirmed: ${String(e)}. Check Muse account before retrying.`
+          : `Work could not be paused: ${String(e)}. Refresh and try again.`,
+      );
+      return;
+    }
+    setBusy(false);
+    if ((window as any).__TAURI_INTERNALS__?.metadata) {
+      await getCurrentWindow().destroy();
+      return;
+    }
+    setModal(null);
+    if (choice !== 'keepRunning') setConnected(false);
+    setNotice(
+      choice === 'keepRunning'
+        ? 'You can close this window. Work continues in the background.'
+        : 'Lascoria stopped. Close the window, or reconnect to resume saved sessions.',
+    );
+  }
   useEffect(() => {
     // Native window close flushes presentation only; execution belongs to the supervisor.
     if (!(window as any).__TAURI_INTERNALS__?.metadata) return;
@@ -463,9 +520,10 @@ export function App() {
       try {
         await flushDraftsRef.current();
         await flushPrefs();
+        await pauseIfPreferred();
         await invoke('finish_quit');
       } catch (e) {
-        setError(`Quit paused because drafts or layout could not be saved: ${String(e)}`);
+        setError(`Quit paused because drafts, layout or work could not be saved: ${String(e)}`);
       }
     }).then((fn) => {
       if (disposed) fn();
@@ -477,9 +535,10 @@ export function App() {
         try {
           await flushDraftsRef.current();
           await flushPrefs();
+          await pauseIfPreferred();
           await getCurrentWindow().destroy();
         } catch (e) {
-          setError(`Close paused because drafts or layout could not be saved: ${String(e)}`);
+          setError(`Close paused because drafts, layout or work could not be saved: ${String(e)}`);
         }
       })
       .then((fn) => {
@@ -868,6 +927,29 @@ export function App() {
           <details
             className="workspace-menu"
             ref={workspaceMenu}
+            onToggle={(event) => {
+              if (!event.currentTarget.open || !session?.state.current) return;
+              if (!status.features?.includes('usage') || account?.mode === 'apiKey') return;
+              if (menuUsage?.sessionId === session.id && Date.now() - menuUsage.readAtMs < 60_000)
+                return;
+              const sessionId = session.id;
+              void request<{
+                usage?: { weekly: { usedPercent: number }; observedAtMs: number };
+              }>('usage', { sessionId }).then(
+                (result) =>
+                  setMenuUsage(
+                    result.usage
+                      ? {
+                          sessionId,
+                          weeklyRemaining: Math.max(0, 100 - result.usage.weekly.usedPercent),
+                          observedAtMs: result.usage.observedAtMs,
+                          readAtMs: Date.now(),
+                        }
+                      : null,
+                  ),
+                () => setMenuUsage(null),
+              );
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Escape' && event.currentTarget.open) {
                 event.preventDefault();
@@ -886,6 +968,34 @@ export function App() {
           >
             <summary aria-label="Workspace menu">•••</summary>
             <div className="workspace-menu-items">
+              {account?.managed && (
+                <div className="menu-identity">
+                  <span className="menu-avatar" aria-hidden="true">
+                    {(account.subscription?.label ?? (account.mode === 'apiKey' ? 'API' : 'M'))
+                      .trim()
+                      .slice(0, 1)
+                      .toUpperCase()}
+                  </span>
+                  <span>
+                    <strong>
+                      {account.authenticated
+                        ? account.mode === 'subscription'
+                          ? (account.subscription?.label ?? 'Muse subscription')
+                          : 'Meta API key'
+                        : 'Signed out'}
+                    </strong>
+                    <small>
+                      {account.authenticated
+                        ? account.mode === 'subscription'
+                          ? account.subscription?.label
+                            ? 'Muse subscription'
+                            : 'Account name not reported by Muse'
+                          : 'API billing with your provider'
+                        : 'Sign in to start new work'}
+                    </small>
+                  </span>
+                </div>
+              )}
               <span className="eyebrow">Workspace</span>
               <button
                 disabled={!status.features?.includes('accounts')}
@@ -909,9 +1019,23 @@ export function App() {
               <button
                 disabled={!session || !status.features?.includes('usage')}
                 onClick={() => setModal('usage')}
+                title={
+                  menuUsage?.sessionId === session?.id && menuUsage
+                    ? `Weekly allowance as of ${new Date(menuUsage.observedAtMs).toLocaleString()}`
+                    : undefined
+                }
               >
                 Usage
+                {menuUsage && menuUsage.sessionId === session?.id && (
+                  <span className="menu-usage"> · {menuUsage.weeklyRemaining}% weekly left</span>
+                )}
               </button>
+              {status.features?.includes('search') && (
+                <button onClick={() => setModal('search')}>Search history</button>
+              )}
+              {status.features?.includes('dataLifecycle') && (
+                <button onClick={() => setModal('data')}>Data &amp; backups</button>
+              )}
               <button onClick={() => setModal('help')}>Help</button>
               <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
               <button
@@ -949,7 +1073,7 @@ export function App() {
               >
                 Diagnostics
               </button>
-              <button onClick={() => setModal('stop')}>Quit &amp; stop</button>
+              <button onClick={() => setModal('stop')}>Log out…</button>
             </div>
           </details>
         </div>
@@ -1095,6 +1219,74 @@ export function App() {
               {notice}
               <button aria-label="Dismiss notification" onClick={() => setNotice('')}>
                 ×
+              </button>
+            </div>
+          )}
+          {session && session.lifecycle === 'archived' && (
+            <div className="banner archived" role="status">
+              {(() => {
+                const continuation = status.sessions.find((s) => s.continuedFrom === session.id);
+                const folder = session.workspaceDiscarded
+                  ? session.managedWorkspace?.source
+                  : (session.managedWorkspace?.path ?? session.workspace);
+                return (
+                  <>
+                    <span>
+                      Archived session. Its transcript and saved changes are read-only.
+                      {session.projectContext
+                        ? ' Start a new Project session to continue this work.'
+                        : ''}
+                    </span>
+                    {continuation ? (
+                      <button
+                        onClick={() =>
+                          updatePrefs({ sessionId: continuation.id, selection: undefined })
+                        }
+                      >
+                        Open continued session
+                      </button>
+                    ) : (
+                      status.features?.includes('continuation') &&
+                      !session.projectContext &&
+                      folder && (
+                        <button
+                          disabled={busy}
+                          title={`Starts a new session in ${folder}`}
+                          onClick={async () => {
+                            const result = await mutate('start', {
+                              workspace: folder,
+                              name: `${sessionName(session).slice(0, 88)} (continued)`,
+                              isolated: false,
+                              continuedFrom: session.id,
+                            });
+                            if (result?.status === 'applied')
+                              updatePrefs({ sessionId: result.sessionId, selection: undefined });
+                          }}
+                        >
+                          Continue in a new session
+                        </button>
+                      )
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+          {session && session.continuedFrom && session.lifecycle !== 'archived' && (
+            <div className="banner" role="status">
+              Continues archived work from{' '}
+              {(() => {
+                const prior = status.sessions.find((s) => s.id === session.continuedFrom);
+                return prior ? sessionName(prior) : `session ${short(session.continuedFrom!)}`;
+              })()}
+              .
+              <button
+                onClick={() => {
+                  setShowArchived(true);
+                  updatePrefs({ sessionId: session.continuedFrom, selection: undefined });
+                }}
+              >
+                View archive
               </button>
             </div>
           )}
@@ -2410,21 +2602,25 @@ export function App() {
                 ? 'New local messages'
                 : modal === 'help'
                   ? 'Lascoria help'
-                  : modal === 'relay'
-                    ? 'Local session messages'
-                    : modal === 'usage'
-                      ? 'Muse usage'
-                      : modal === 'account'
-                        ? 'Your Muse connection'
-                        : modal === 'start'
-                          ? 'Start a Muse session'
-                          : modal === 'stop'
-                            ? 'Stop execution and quit'
-                            : modal === 'diagnostics'
-                              ? 'Performance diagnostics'
-                              : modal === 'settings'
-                                ? 'Session model and effort'
-                                : 'Command palette'}
+                  : modal === 'data'
+                    ? 'Data and backups'
+                    : modal === 'search'
+                      ? 'Search history'
+                      : modal === 'relay'
+                        ? 'Local session messages'
+                        : modal === 'usage'
+                          ? 'Muse usage'
+                          : modal === 'account'
+                            ? 'Your Muse connection'
+                            : modal === 'start'
+                              ? 'Start a Muse session'
+                              : modal === 'stop'
+                                ? 'Log out of Lascoria'
+                                : modal === 'diagnostics'
+                                  ? 'Performance diagnostics'
+                                  : modal === 'settings'
+                                    ? 'Session model and effort'
+                                    : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
@@ -2449,6 +2645,22 @@ export function App() {
               relay: Boolean(session && status.features?.includes('localRelay')),
             }}
           />
+        )}
+        {modal === 'search' && (
+          <HistorySearch
+            sessions={status.sessions}
+            name={sessionName}
+            open={(sessionId) => {
+              if (status.sessions.find((s) => s.id === sessionId)?.lifecycle === 'archived')
+                setShowArchived(true);
+              updatePrefs({ sessionId, selection: undefined });
+              setTab('transcript');
+              setModal(null);
+            }}
+          />
+        )}
+        {modal === 'data' && (
+          <DataLifecycle refreshStatus={refresh} quit={() => setModal('stop')} />
         )}
         {modal === 'inbox' && (
           <section className="message-discovery-list" aria-label="Conversations with new messages">
@@ -2683,50 +2895,15 @@ export function App() {
             </form>
           )}
         {modal === 'stop' && (
-          <>
-            <p>
-              This stops the supervisor and drains all {status.sessions.length} registered sessions.
-              It can interrupt active work.
-            </p>
-            <ul>
-              {status.sessions.map((s) => (
-                <li key={s.id}>
-                  {s.workspace} · {short(s.id)}
-                </li>
-              ))}
-            </ul>
-            <div className="row">
-              <button onClick={() => setModal(null)}>Keep running</button>
-              <button
-                className="danger"
-                disabled={busy}
-                onClick={async () => {
-                  try {
-                    await flushPrefs();
-                  } catch (error) {
-                    setError(String(error));
-                    return;
-                  }
-                  const result = await mutate('stop', {
-                    sessions: status.sessions.map((s) => s.id),
-                  });
-                  if (result) {
-                    if ((window as any).__TAURI_INTERNALS__?.metadata) {
-                      await getCurrentWindow().destroy();
-                      return;
-                    }
-                    setModal(null);
-                    setConnected(false);
-                    setNotice(
-                      'Supervisor stopped. Close the window or reconnect to recover durable sessions.',
-                    );
-                  }
-                }}
-              >
-                Stop all sessions
-              </button>
-            </div>
-          </>
+          <ExitDialog
+            sessions={status.sessions}
+            account={account ?? undefined}
+            name={sessionName}
+            closeBehavior={prefs.closeBehavior}
+            busy={busy}
+            onExit={(choice, remember) => void exitLascoria(choice, remember)}
+            onCancel={() => setModal(null)}
+          />
         )}
         {modal === 'palette' && (
           <>

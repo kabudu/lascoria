@@ -10,14 +10,35 @@ pub fn now_ms() -> u128 {
         .as_millis()
 }
 
+/// Highest journal schema this supervisor reads. Newer databases and backups are refused, never downgraded.
+pub const SCHEMA_VERSION: u32 = 3;
+/// Full command records retained for review. Older terminal records can be compacted to tombstones.
+pub const JOURNAL_LIMIT: usize = 2000;
+/// Tombstones keep request identity forever; this hard bound keeps the journal finite.
+pub const JOURNAL_ROW_LIMIT: usize = 20_000;
+
+/// Exact retry identity. A compacted record keeps the request ID but never its payload,
+/// so a retry is refused rather than replayed.
+pub fn same_request(previous: &Value, operation: &str, params: &Value) -> Result<()> {
+    ensure!(
+        previous["compacted"] != true,
+        "This request belongs to compacted history; refresh status instead of retrying"
+    );
+    ensure!(
+        previous["operation"] == operation && previous["params"] == *params,
+        "Request ID reused with different payload"
+    );
+    Ok(())
+}
+
 pub struct Db(pub Connection, String);
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let db = Connection::open(path)?;
         let version: u32 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         ensure!(
-            version <= 3,
-            "Unsupported supervisor journal schema {version}"
+            version <= SCHEMA_VERSION,
+            "This Lascoria data was written by a newer version (schema {version}); install that version or restore an older backup"
         );
         db.execute_batch(
             "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;
@@ -49,6 +70,19 @@ impl Db {
             }
         }
         Ok(false)
+    }
+    /// One admission rule for every journal writer, with an action the user can take.
+    pub fn journal_admits(&self) -> Result<()> {
+        let (rows, full): (i64, i64) = self.0.query_row(
+            "SELECT count(*), count(*) FILTER (WHERE json_extract(value,'$.compacted') IS NULL) FROM commands",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        ensure!(
+            (full as usize) < JOURNAL_LIMIT && (rows as usize) < JOURNAL_ROW_LIMIT,
+            "Command history is full ({JOURNAL_LIMIT} entries). Open Data & backups to back up and compact older history"
+        );
+        Ok(())
     }
     pub fn version(&self) -> String {
         format!("{}:{}", self.1, self.0.total_changes())

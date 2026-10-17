@@ -219,7 +219,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await help.getByLabel('Search help').fill('no-match-fixture');
     await expect(help).toContainText('No matching guides');
     await help.getByRole('button', { name: 'show all guides', exact: true }).click();
-    await expect(help.getByRole('status')).toHaveText('12 guides');
+    await expect(help.getByRole('status')).toHaveText('13 guides');
     expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
     await help.getByLabel('Search help').fill('messages between local sessions');
     await help.getByRole('button', { name: 'Open local messages', exact: true }).click();
@@ -310,11 +310,11 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await expect.poll(() => quitDraftStarted).toBe(true);
     await modal.getByRole('button', { name: 'Close dialog' }).click();
     await page.getByLabel('Workspace menu').click();
-    await page.getByRole('button', { name: 'Quit & stop', exact: true }).click();
-    await modal.getByRole('button', { name: 'Stop all sessions', exact: true }).click();
-    await expect(
-      modal.getByRole('button', { name: 'Stop all sessions', exact: true }),
-    ).toBeDisabled();
+    await page.getByRole('button', { name: 'Log out…', exact: true }).click();
+    await modal.getByRole('radio', { name: /Pause work and quit/ }).check();
+    await modal.getByRole('button', { name: 'Pause and quit', exact: true }).click();
+    // Nothing stops until the pending draft save settles.
+    await expect(modal.getByRole('button', { name: 'Saving…', exact: true })).toBeDisabled();
     expect(stopCalls).toBe(0);
     releaseQuitDraft!();
     await expect.poll(() => daemon.exitCode, { timeout: 10000 }).toBe(0);

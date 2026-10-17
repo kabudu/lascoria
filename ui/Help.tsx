@@ -29,6 +29,10 @@ const guides: { title: string; text: string; destination?: Destination; action?:
     text: 'Open Session model & effort in the task inspector. Model changes apply at the next model call, which may occur within a running task. Effort changes apply to subsequent tasks. The slider uses the selected model’s supported levels and default. Changing settings retains the conversation and existing approvals.',
   },
   {
+    title: 'Find and continue earlier work',
+    text: 'Search history in the workspace menu finds words in the latest 100 messages Lascoria keeps for each session, including archived sessions. Choose a result to open that session. An archived session is read-only; Continue in a new session starts a separate session in its retained task folder, or in the original folder if the task folder was discarded, and links the two. Nothing is sent to Muse until you start a task.',
+  },
+  {
     title: 'Understand usage and tokens',
     text: 'Usage shows Muse’s last reported current-window and weekly subscription allowance, its reset times and observation time. It does not send a model request or interrupt work. Missing observations mean unknown usage. Subscription allowance is different from task tokens and API billing; provider billing details remain with your provider. Enter /usage in the composer for the same local view.',
     destination: 'usage',
@@ -54,7 +58,7 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Background work, drafts and recovery',
-    text: 'Closing the window leaves the supervisor and authorised work running. Reopening reconnects to retained progress. Drafts save locally; resolve competing copies before closing. Signing out stops Muse hosts and retains interrupted work for later continuation. An uncertain command is not automatically repeated: inspect its acknowledgement and transcript before retrying. Backups and in-app update recovery are not available yet.',
+    text: 'Log out in the workspace menu asks what should happen: close Lascoria and keep work running, pause work and quit, or sign out of Muse and quit. You can save the first two as what closing the window does. By default, closing the window leaves authorised work running. Reopening reconnects to retained progress. Drafts save locally; resolve competing copies before closing. Signing out cancels running tasks, because they need your sign-in, and retains conversations for later continuation. An uncertain command is not automatically repeated: inspect its acknowledgement and transcript before retrying. Data & backups in the workspace menu makes private local backups, exports or imports them, and restores one the next time Lascoria starts; your sign-in and billing choice are kept. It also removes archived sessions and compacts older history when storage limits approach, making a backup first and leaving task folders on disk. In-app update recovery is not available yet.',
   },
   {
     title: 'Updates and troubleshooting',

@@ -19,6 +19,8 @@ export interface SessionRow {
   managedWorkspace?: { source: string; path: string; branch: string; base: string };
   generation: number;
   lifecycle: string;
+  durability?: string;
+  continuedFrom?: string;
   recoveryError?: string;
   interruptions: Json[];
   state: {
@@ -70,6 +72,8 @@ export interface Prefs {
   theme?: 'dark' | 'light';
   search?: string;
   showRuntimeReminders?: boolean;
+  /** Saved choice from the Log out dialog, applied when the window closes or the app quits. */
+  closeBehavior?: 'keepRunning' | 'pause';
   collapsed?: string[];
   acknowledgedInterruptions?: string[];
   acknowledgedTaskFacts?: string[];

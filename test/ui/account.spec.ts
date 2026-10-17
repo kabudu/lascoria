@@ -91,7 +91,18 @@ test('account onboarding through native Rust bridge: key, subscription priority,
     await page.getByLabel('Meta API key', { exact: true }).fill('ui-fixture-replacement');
     await page.getByRole('button', { name: 'Save inactive API key', exact: true }).click();
     await expect(page.getByText('Subscription active', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Sign out of Lascoria…', exact: true }).click();
+    // The workspace menu shows Muse's display label and offers sign-out only when signed in.
+    await page.getByRole('button', { name: 'Close dialog' }).click();
+    await page.getByLabel('Workspace menu').click();
+    await expect(page.locator('.menu-identity')).toContainText('Fixture subscription');
+    await expect(page.locator('.menu-identity')).toContainText('Muse subscription');
+    await page.getByRole('button', { name: 'Log out…', exact: true }).click();
+    const exit = page.getByRole('group', { name: 'What should happen?' });
+    await expect(exit.getByRole('radio')).toHaveCount(3);
+    await expect(exit.getByRole('radio', { name: /Sign out of Muse and quit/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Stay in Lascoria', exact: true }).click();
+    await page.locator('.account-status').click();
+    await page.getByRole('button', { name: 'Sign out of Muse…', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Confirm sign out' })).toBeVisible();
     await page.getByRole('button', { name: 'Sign out and stop Muse', exact: true }).click();
     await expect(page.getByText('Connect to Muse', { exact: true })).toBeVisible();
