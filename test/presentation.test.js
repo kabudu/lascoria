@@ -11,6 +11,8 @@ import {
   freeCanvasFrame,
   zoomAtPoint,
   normalizedWheel,
+  composeNotice,
+  noticeKey,
 } from '../ui/model.ts';
 test('presentation preserves native workflow failure and never infers dependency or verification', () => {
   const row = {
@@ -350,4 +352,67 @@ test('canvas activity distinguishes work, tool use, attention and stale observat
     busy: false,
   });
   assert.equal(nodeActivity({ ...task, status: 'completed' }, row).label, 'completed');
+});
+
+test('desktop notices follow preferences, mute sessions and never include task or prompt text', () => {
+  const secret = 'Rotate the production database password';
+  const row = (id, state) => ({
+    id,
+    workspace: `/repo/${id}`,
+    lifecycle: 'connected',
+    state: { current: true, ...state },
+  });
+  const status = {
+    pid: 1,
+    commands: [],
+    sessions: [
+      row('a', {
+        turns: [{ turnId: 't1', terminal: 'completed' }],
+        items: [{ itemId: 'u1', kind: 'userMessage', turnId: 't1', text: secret }],
+        userInputs: [{ userInputId: 'q1', turnId: 't1' }],
+      }),
+      row('b', {
+        turns: [{ turnId: 't2', terminal: 'failed' }],
+        approvals: [{ requested: { approvalId: 'p1', turnId: 't2' } }],
+        // A failed Muse runtime reminder: listed in Attention, never a desktop alert.
+        items: [{ itemId: 'r1', kind: 'reminderChild', status: 'failed', turnId: 't2' }],
+      }),
+      { ...row('c', {}), state: { current: false } },
+    ],
+  };
+  const queue = attention(status, {});
+  assert.ok(queue.some((item) => item.kind === 'failure' && item.id === 'b:r1'));
+  const name = (id) => `Session ${id.toUpperCase()}`;
+  // Off until the user enables it.
+  assert.equal(composeNotice(queue, {}, name), null);
+  const all = composeNotice(queue, { notifications: { enabled: true } }, name);
+  // A session that is merely unavailable (reconnecting) is not announced.
+  assert.equal(all.keys.length, 4);
+  assert.ok(!all.keys.some((key) => key.endsWith(':offline')));
+  assert.match(all.title, /^4 updates, 2 need you$/);
+  assert.ok(!JSON.stringify(all).includes(secret));
+  assert.ok(!JSON.stringify(all).includes('Rotate'));
+  const onlyInput = composeNotice(
+    queue,
+    { notifications: { enabled: true, problems: false, finished: false, mutedSessions: ['b'] } },
+    name,
+  );
+  assert.deepEqual(onlyInput, {
+    keys: [noticeKey(queue.find((item) => item.kind === 'question'))],
+    title: 'Muse has a question',
+    body: 'Session: Session A',
+  });
+  const many = composeNotice(
+    Array.from({ length: 30 }, (_, n) => ({
+      id: `q${n}`,
+      sessionId: 'a',
+      target: 'x',
+      kind: 'question',
+      label: 'Answer required',
+    })),
+    { notifications: { enabled: true } },
+    name,
+  );
+  assert.equal(many.keys.length, 20);
+  assert.match(many.body, /and 27 more$/);
 });

@@ -131,6 +131,8 @@ export function attention(status: Status, prefs: Prefs) {
           target: t.id,
           kind: 'failure',
           label: t.label,
+          // Muse's own runtime reminders: shown in Attention, but not worth a desktop alert.
+          background: t.item?.kind === 'reminderChild',
         })),
       ...nodes
         .filter(
@@ -346,5 +348,63 @@ export function nodeActivity(task: Task, session: SessionRow, connected = true) 
     label: typeof detail === 'string' && detail.trim() ? detail.slice(0, 96) : 'Working',
     kind: 'working',
     busy: true,
+  };
+}
+
+export type AttentionItem = ReturnType<typeof attention>[number];
+export type NotificationGroup = 'needsInput' | 'problems' | 'finished';
+export type Notice = { keys: string[]; title: string; body: string };
+
+// Recorded runtime interruptions notify; a session that is merely reconnecting does not,
+// because supervisor restarts and recovery make that state briefly true for every session.
+// Failed Muse runtime reminders stay in Attention but do not raise a desktop alert.
+export function notificationGroup(item: AttentionItem): NotificationGroup | null {
+  if (item.kind === 'approval' || item.kind === 'question') return 'needsInput';
+  if (item.kind === 'failure') return 'background' in item && item.background ? null : 'problems';
+  if (item.kind === 'interruption' && 'historical' in item && item.historical) return 'problems';
+  if (item.kind === 'review') return 'finished';
+  return null;
+}
+export const noticeKey = (item: AttentionItem) => `${item.kind}:${item.id}`;
+function noticeTitle(item: AttentionItem) {
+  if (item.kind === 'question') return 'Muse has a question';
+  if (item.kind === 'approval') return 'Muse needs your permission';
+  if (item.kind === 'failure') return 'A task did not finish';
+  if (item.kind === 'interruption') return 'A session stopped unexpectedly';
+  return item.label.startsWith('Inspect saved stop') ? 'A task stopped' : 'A task finished';
+}
+/**
+ * One desktop notification for attention items that appeared since the last status, or
+ * null. Text names the kind of update and the session, never task or prompt text, because
+ * notifications can appear on a lock screen or in shared screen recordings.
+ */
+export function composeNotice(
+  fresh: AttentionItem[],
+  prefs: Prefs,
+  name: (sessionId: string) => string,
+): Notice | null {
+  const settings = prefs.notifications;
+  if (!settings?.enabled) return null;
+  const wanted = fresh.filter((item) => {
+    const group = notificationGroup(item);
+    return (
+      group !== null &&
+      settings[group] !== false &&
+      !settings.mutedSessions?.includes(item.sessionId)
+    );
+  });
+  if (!wanted.length) return null;
+  const keys = wanted.slice(0, 20).map(noticeKey);
+  if (wanted.length === 1) {
+    const [item] = wanted;
+    return { keys, title: noticeTitle(item), body: `Session: ${name(item.sessionId)}` };
+  }
+  const urgent = wanted.filter((item) => notificationGroup(item) === 'needsInput').length;
+  const lines = wanted.slice(0, 3).map((item) => `${noticeTitle(item)} (${name(item.sessionId)})`);
+  if (wanted.length > 3) lines.push(`and ${wanted.length - 3} more`);
+  return {
+    keys,
+    title: urgent ? `${wanted.length} updates, ${urgent} need you` : `${wanted.length} updates`,
+    body: lines.join('; '),
   };
 }
