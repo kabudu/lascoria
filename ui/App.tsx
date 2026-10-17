@@ -5,6 +5,7 @@ import { DataLifecycle } from './DataLifecycle';
 import { ExitDialog, type ExitChoice } from './ExitDialog';
 import { HistorySearch } from './HistorySearch';
 import { ProjectUpdate } from './ProjectUpdate';
+import { ComposerImages } from './ComposerImages';
 import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
@@ -186,6 +187,22 @@ export function App() {
   const [startKind, setStartKind] = useState<'session' | 'project'>('session');
   // Saved Project revision the user chose to apply with the next task, per session.
   const [projectChoice, setProjectChoice] = useState<Record<string, number | undefined>>({});
+  // Images staged for each session's next task, and a remount key after they are sent.
+  const [images, setImages] = useState<Record<string, { ready: string[]; preparing: boolean }>>({});
+  const [imageEpoch, setImageEpoch] = useState<Record<string, number>>({});
+  const [imageDrop, setImageDrop] = useState<{ files: File[]; at: number }>();
+  useEffect(() => {
+    // Files dropped outside the composer must not navigate the app window to the file.
+    const block = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+    };
+    window.addEventListener('dragover', block);
+    window.addEventListener('drop', block);
+    return () => {
+      window.removeEventListener('dragover', block);
+      window.removeEventListener('drop', block);
+    };
+  }, []);
   const [startFolder, setStartFolder] = useState('');
   const [folderPicking, setFolderPicking] = useState(false);
   const [modal, setModal] = useState<
@@ -2046,6 +2063,13 @@ export function App() {
                                   ? (item.statusLine ?? 'Tool execution')
                                   : text(item))}
                             </pre>
+                            {item.kind === 'userMessage' && (item.attachments?.length ?? 0) > 0 && (
+                              <small className="transcript-attachments">
+                                {item.attachments?.length === 1
+                                  ? '1 image attached'
+                                  : `${item.attachments?.length} images attached`}
+                              </small>
+                            )}
                             <details>
                               <summary>Message details</summary>
                               <small>
@@ -2438,6 +2462,20 @@ export function App() {
                       )}
                     </details>
                     <form
+                      onDragOver={(event) => {
+                        if (
+                          status.features?.includes('attachments') &&
+                          event.dataTransfer.types.includes('Files')
+                        )
+                          event.preventDefault();
+                      }}
+                      onDrop={(event) => {
+                        if (!status.features?.includes('attachments')) return;
+                        const files = [...event.dataTransfer.files];
+                        if (!files.length) return;
+                        event.preventDefault();
+                        setImageDrop({ files, at: Date.now() });
+                      }}
                       onSubmit={async (e) => {
                         e.preventDefault();
                         const data = new FormData(e.currentTarget);
@@ -2450,6 +2488,9 @@ export function App() {
                         const projectRevision = session.state.activeTurnId
                           ? undefined
                           : projectChoice[session.id];
+                        const attachments = session.state.activeTurnId
+                          ? []
+                          : (images[session.id]?.ready ?? []);
                         const result = await mutate(session.state.activeTurnId ? 'steer' : 'turn', {
                           sessionId: session.id,
                           text: message,
@@ -2457,6 +2498,7 @@ export function App() {
                             ? { turnId: session.state.activeTurnId }
                             : {}),
                           ...(projectRevision !== undefined ? { projectRevision } : {}),
+                          ...(attachments.length ? { attachments } : {}),
                         });
                         if (result && ['applied', 'accepted'].includes(result.status)) {
                           setDrafts((previous) => ({ ...previous, [session.id]: '' }));
@@ -2464,6 +2506,11 @@ export function App() {
                             setProjectChoice((previous) => ({
                               ...previous,
                               [session.id]: undefined,
+                            }));
+                          if (attachments.length)
+                            setImageEpoch((previous) => ({
+                              ...previous,
+                              [session.id]: (previous[session.id] ?? 0) + 1,
                             }));
                         }
                       }}
@@ -2513,7 +2560,31 @@ export function App() {
                         maxLength={16000}
                         placeholder="Describe the next step…"
                         disabled={!available || busy || task?.provenance === 'native'}
+                        onPaste={(event) => {
+                          if (!status.features?.includes('attachments')) return;
+                          const files = [...event.clipboardData.files].filter((f) =>
+                            f.type.startsWith('image/'),
+                          );
+                          if (!files.length) return;
+                          event.preventDefault();
+                          setImageDrop({ files, at: Date.now() });
+                        }}
                       />
+                      {status.features?.includes('attachments') && (
+                        <ComposerImages
+                          key={`images:${session.id}:${imageEpoch[session.id] ?? 0}`}
+                          sessionId={session.id}
+                          disabled={!available || busy}
+                          steering={Boolean(session.state.activeTurnId)}
+                          addRequest={imageDrop}
+                          onChange={(ready, preparing) =>
+                            setImages((previous) => ({
+                              ...previous,
+                              [session.id]: { ready, preparing },
+                            }))
+                          }
+                        />
+                      )}
                       {draftConflicts[session.id] && (
                         <DraftConflict
                           key={`draft-conflict:${session.id}`}
@@ -2538,7 +2609,8 @@ export function App() {
                             !available ||
                             busy ||
                             task?.provenance === 'native' ||
-                            Boolean(draftConflicts[session.id])
+                            Boolean(draftConflicts[session.id]) ||
+                            Boolean(images[session.id]?.preparing)
                           }
                         >
                           {session.state.activeTurnId ? 'Send steering' : 'Start turn'}

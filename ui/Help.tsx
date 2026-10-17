@@ -44,7 +44,7 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Files and attachments',
-    text: 'Repository text can be inserted as task context. General image, video and file attachments, including drag-and-drop and clipboard images, are not available yet. Typing a filename is not the same as attaching its bytes. Check the task text before sharing private material.',
+    text: 'Add image beside the composer attaches PNG, JPEG, GIF or WebP images, up to 5 MB each and 4 per task. Pasting or dropping an image onto the composer does the same. Images wait, privately, for that session until you start a task; they are not sent with steering, and Remove deletes a waiting image. Repository text can be inserted as task context. Video, PDF and other file attachments are not available yet. Typing a filename is not the same as attaching its bytes. Check images and task text before sharing private material.',
   },
   {
     title: 'Messages between local sessions',

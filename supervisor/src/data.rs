@@ -604,6 +604,7 @@ pub fn remove_archived(
             transaction.execute("DELETE FROM presentation WHERE id=?1", [key])?;
         }
         transaction.execute("DELETE FROM sessions WHERE id=?1", [id])?;
+        crate::attachments::remove_session(root, id);
     }
     let receipt = json!({"requestId":request_id,"sessions":sessions,"backupId":backup["id"],"tombstoned":tombstoned,"retainedWorktrees":retained,"atMillis":now_ms() as u64});
     transaction.execute(
