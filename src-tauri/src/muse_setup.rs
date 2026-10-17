@@ -191,7 +191,11 @@ pub async fn runtime_status(
         );
     }
     let mut failure = None;
+    let mut seen = std::collections::HashSet::new();
     for candidate in candidates {
+        if !seen.insert(candidate.clone()) {
+            continue;
+        }
         if let Some(path) = native(candidate) {
             match probe(&app, &path).await {
                 Ok(()) => {
@@ -201,15 +205,16 @@ pub async fn runtime_status(
                         json!({"state":"ready","ready":true,"path":path,"managed":managed,"version":lascoria_runtime::MUSE_VERSION}),
                     );
                 }
+                // A previously selected or older runtime (for example after a Lascoria upgrade)
+                // must not hide a compatible one further down the list.
                 Err(error) => {
-                    failure = Some(error);
-                    break;
+                    failure.get_or_insert(error);
                 }
             }
         }
     }
     Ok(
-        json!({"state":if failure.is_some(){"incompatible"}else{"missing"},"ready":false,"message":failure.unwrap_or("Muse Code is required to run your agents".into()),"lastInstall":current}),
+        json!({"state":if failure.is_some(){"incompatible"}else{"missing"},"ready":false,"required":lascoria_runtime::MUSE_VERSION,"message":failure.unwrap_or("Muse Code is required to run your agents".into()),"lastInstall":current}),
     )
 }
 #[tauri::command]

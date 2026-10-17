@@ -1,7 +1,7 @@
 //! Installed runtime paths, independent of the source checkout and shell startup files.
 use std::{env, path::PathBuf};
-pub const MUSE_VERSION: &str = "1.4.9";
-pub const MUSE_BUILD: &str = "1.4.9-R6297.1";
+pub const MUSE_VERSION: &str = "1.4.10";
+pub const MUSE_BUILD: &str = "1.4.10-R6427.1";
 pub fn state_dir() -> PathBuf {
     env::var_os("SCH_STATE_DIR")
         .map(PathBuf::from)

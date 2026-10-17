@@ -6,7 +6,7 @@ This first Stage C increment adds repeatable measurements and explicit model sel
 
 ## Run the benchmarks
 
-Use Node 24+, Rust 1.97+, and Muse Code 1.4.9. The official SDK is pinned to 1.4.9; an incompatible schema or binary is refused. Historical Stage A evidence was recorded on 1.4.6. Compatibility checks now include the full lifecycle, native saturation and desktop integration tests on the current pinned version. Historical measurements below were recorded on 1.4.8.
+Use Node 24+, Rust 1.97+, and Muse Code 1.4.10. The official SDK is pinned to 1.4.10; an incompatible schema or binary is refused. Historical Stage A evidence was recorded on 1.4.6. Compatibility checks now include the full lifecycle, native saturation and desktop integration tests on the current pinned version. Historical measurements below were recorded on 1.4.8.
 
 - `npm run benchmark:runtime`: builds the Rust supervisor, creates ten isolated real Muse echo sessions, sends 300 snapshot reads paced at 100/sec with at most four in flight, then samples the process tree for five minutes. JSON defaults to `.dev/benchmarks/stage-c/runtime.json`. It uses temporary repositories and isolated XDG roots, does not send prompts to a paid provider, and stops its supervisor and workers afterward.
 - `SCH_BENCH_IDLE_SECONDS=5 npm run benchmark:runtime`: short smoke run; its five-minute gate is explicitly false. Idle seconds must be an integer in 1..600.

@@ -1,4 +1,5 @@
 import { spawnMspConnection, readSessionDurability, Session, MspError } from '@muse-code/sdk';
+import { MUSE_VERSION } from './muse-version.js';
 
 export async function bounded(promise, ms = 10000) {
   let timer;
@@ -31,8 +32,10 @@ export async function spawnRuntime(options, onEvent, onDeath) {
     );
     if (host.fingerprintWarning)
       throw new Error(`SDK schema mismatch: ${JSON.stringify(host.fingerprintWarning)}`);
-    if (host.initializeResult.serverInfo.version !== '1.4.9')
-      throw new Error('Unsupported Muse binary version; this spike is validated against 1.4.9');
+    if (host.initializeResult.serverInfo.version !== MUSE_VERSION)
+      throw new Error(
+        `Unsupported Muse ${host.initializeResult.serverInfo.version}; this Lascoria requires Muse ${MUSE_VERSION}`,
+      );
   } catch (error) {
     await handshake.close();
     throw error;
