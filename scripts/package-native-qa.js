@@ -7,6 +7,7 @@ await cp('.dev/bundle-runtime', join(output, 'runtime'), { recursive: true });
 await copyFile('src/client.js', join(output, 'runtime/workers/client.js'));
 for (const file of [
   'windows-smoke.js',
+  'lifecycle-smoke.js',
   'uncertain-worker.js',
   'account-worker.js',
   'subscription-smoke.js',

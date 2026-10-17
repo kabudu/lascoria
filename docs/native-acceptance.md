@@ -1,0 +1,61 @@
+# Native acceptance checklist
+
+Status: prepared 17 October 2026 for the increments marked "native pending" in [implementation progress](implementation-progress.md): R5 Data & backups, R17 Log out, D3 history search, continuation and transcript export, R14 images, R15 next-task folder changes, D4 notifications, R12 F1 peer binding, and the Muse 1.4.9 to 1.4.10 upgrade. Each check here is acceptance evidence for one operating system only. Passing it does not close a release gate on its own; the parent gates in [release readiness](release-readiness.md) still need every listed platform and case.
+
+## Ground rules
+
+- Use only the validation builds and disposable state below. Never point them at your normal Lascoria data, and never stop or restart a supervisor you did not start for this run.
+- `echo` mode uses Muse's local echo provider: no model provider, credential or network use. Only checks marked **sign-in** need your Muse subscription; they make no paid API calls unless you choose an API key.
+- Keep screenshots, logs and exported files in the ignored `.dev/` folders. Record outcomes (pass, fail or not run, with OS version and build revision) in implementation progress, not raw captures.
+- A failure is a finding. Note the exact step, what you saw and whether it repeats; do not work around it during the run.
+
+## Builds
+
+| OS | Build | Launch |
+| --- | --- | --- |
+| macOS (arm64) | `node scripts/package-macos-qa.js` makes `.dev/macos-qa/Lascoria QA.app` (ad hoc signed, unsigned for distribution) and `provenance.json` with the revision and binary checksums. | `node testing/qa-launch.mjs echo ~/.local/bin/muse-bin-1.4.10-R6427.1`, or `bound` (see F1/U1). `reopen` relaunches only the app with the same state. `stop` ends what `echo` started; in `bound` mode the app owns its supervisor, so end it with **Log out…**, **Pause work and quit**. |
+| Windows (x64) | `node scripts/package-windows-qa.js` on the Mac makes `.dev/windows-qa` (cross-built, unsigned). Copy the whole folder to the laptop. | In that folder: `runtime\node.exe testing\qa-launch.mjs echo <path to Muse 1.4.10 muse.exe>`. Install Muse 1.4.10 first through U1 if the laptop still has 1.4.9. |
+| Linux | No Linux desktop host is available yet. `node scripts/package-native-qa.js` plus the automated checks below cover runtime behaviour on a Linux machine; desktop checks stay **not run** until a Linux desktop is provided. | |
+
+## A. Automated checks (each OS)
+
+Run from the repository (macOS, Linux) or the copied package (Windows), with Muse 1.4.10:
+
+| ID | Command | Expected |
+| --- | --- | --- |
+| A1 | `node testing/lifecycle-smoke.js <app folder> <muse 1.4.10> [app binary]` | One JSON line with `"result":"PASS"`. It covers a real echo task, image staging and sending, transcript export (private file), case-insensitive search, continuation without a model turn, backup/export/import, archived-session removal, staged restore applied on restart with a safety backup, and peer binding in both directions. On macOS the app folder is `.dev/native-qa` (after `package-native-qa.js`) and the app binary is `.dev/macos-qa/Lascoria QA.app/Contents/MacOS/spatial-constellation-desktop`; on Windows use `.` and `Lascoria.exe`. Anything in `notExercised` is recorded as not run. |
+| A2 | Windows only: `runtime\node.exe testing\windows-smoke.js . <muse.exe>` | `"result":"PASS"`, including job-object process-tree cleanup and Credential Manager. |
+| A3 | `node --test testing/relay-agent.test.js` with `LASCORIA_RELAY_APP` set to the package | All tests pass (local session messages, restart, drafts). |
+
+## B. Desktop checks (macOS and Windows, `echo` mode unless stated)
+
+Start two sessions in disposable folders first (**New session**, any small Git repository; give them different names).
+
+| ID | Steps | Expected |
+| --- | --- | --- |
+| N1 Notifications | Workspace menu, **Notifications**. Turn on **Show desktop notifications**. **Send a test notification**. | The status line says the test was sent and a system notification appears. If it does not, the OS notification settings for Lascoria QA are the first thing to check; record which. |
+| N2 | Start a task in session 1, then switch to another app before it finishes (window behind another window). Repeat with the window minimised. | One notification, "A task finished", naming session 1 and not the task text. Note any delay compared with the task's finish time. |
+| N3 | Start a task while the Lascoria window is in front. | No notification. |
+| N4 | In **Notifications**, untick session 2. Start a task in session 2 and switch away. | No notification for session 2. Session 1 still notifies. |
+| N5 | Start a task and at once choose **Log out…**, **Close Lascoria and keep work running**. Wait until it would have finished, then `qa-launch.mjs reopen`. | The finished task is listed in Attention but is not announced on reopening. |
+| D1 Data & backups | Workspace menu, **Data & backups**. **Back up now**, export it through the save dialog to a folder outside the app's data, import that file. | Backup listed; exported file only readable by you (macOS: `ls -l`, Windows: file Properties, Security); import listed as Imported. |
+| D2 | Archive session 2, then **Remove sessions** for it. | A cleanup backup appears first; the session disappears; its task folder stays on disk. |
+| D3 | **Prepare restore** from the first backup, quit with **Pause work and quit**, relaunch with the same mode. | Session 2 is back. A "before restore" backup exists. Account choice unchanged. |
+| L1 Log out | Workspace menu, **Log out…**. Check each choice's wording, cancel with **Stay in Lascoria**, then use **Close Lascoria and keep work running** with **Do this whenever I close the window**. Close the window with the title-bar button next time. | No work stops on cancel or keep-running; the remembered choice applies to the window close button. |
+| H1 History | Workspace menu, **Search history**, search a word from session 1's first task in different case. | The result opens session 1 at the transcript. |
+| H2 | Archive session 1, open it, **Continue in a new session**. | A new linked session starts in the retained folder, with no Muse task until you start one. |
+| T1 Transcript | **Export transcript…** beside the session heading; save as `.md`. | The file contains the retained messages and no internal notes; only you can read it. |
+| I1 Images | **Add image**, paste an image, drop an image on the composer; reload with Ctrl/Cmd+R; remove one; send a task with the rest. | Images survive the reload; the removed one is gone; the task shows the images; a PDF or 10 MB image is refused with a clear message. |
+| P1 Project folders | Save a Project with two folders and start a Project session. Edit the Project to add a third folder. In the session, tick **Use the updated folders for this task** and start a task. | The change applies only with that task; the default folder cannot change; the session shows the three folders afterwards. |
+
+## C. Bound mode and upgrade (macOS and Windows, sign-in)
+
+| ID | Steps | Expected |
+| --- | --- | --- |
+| F1 Peer binding | `qa-launch.mjs bound`. Let the app start its supervisor and reach the account screen. Then, from a terminal with the same `SCH_STATE_DIR` as the launch printed, run `node src/cli.js status` (Windows, in the package: `runtime\node.exe runtime\workers\cli.js status`). | The app works normally. The terminal request is refused with "Only the Lascoria app can control its background service". |
+| U1 Upgrade from 1.4.9 | `qa-launch.mjs stop`, delete `state-bound`, then `qa-launch.mjs bound <Muse 1.4.9 binary>` (macOS: `.dev/installed-qa/state/runtime/1.4.9-R6297.1/muse`). Open **Muse account**. | Setup reports Muse 1.4.10 ready (it finds the 1.4.10 binary next to the launcher) or, where none is installed, offers **Install Muse** for 1.4.10. On Windows, install it and confirm the checksum step and progress. |
+| S1 | Sign in with your subscription in bound mode and start one short task. | The task completes; Usage shows an observation. Sign out afterwards with **Sign out of Muse…** in Muse account if you do not want the QA state signed in. |
+
+## Recording
+
+For each OS record: OS version, hardware, build revision from `provenance.json`, Muse build, and for each ID pass/fail/not run with a one-line note. Summarise in [implementation progress](implementation-progress.md); keep raw evidence in `.dev/`. Then stop everything with `qa-launch.mjs stop` and delete the `state-*` folders.

@@ -27,7 +27,7 @@ Desktop builds package the supervisor, Node runtime, official Muse SDK and worke
 
 macOS packaged onboarding has passed native install/cancel/retry/reopen checks. The Windows port includes local-only named pipes with a user/SYSTEM DACL, Credential Manager storage and test process-tree cleanup. Windows native launch and 11 runtime checks passed on a Windows 10 laptop, including a real Muse echo turn, Credential Manager, draft restart and descendant cleanup after timeout and supervisor crash. The user restored the official Muse binary after antivirus quarantine. A real browser-subscription Muse Wonder task also read a disposable repository, asked a question, survived UI replacement, and completed after the answer. Linux native validation and signed installers/updaters remain release blockers. See the [running checklist](docs/implementation-progress.md) for current evidence, rather than treating compilation as platform acceptance.
 
-For a native development build, run `npm run desktop:build`. Cross-built Windows validation packages use `scripts/package-windows-qa.js`, which explicitly enables the embedded frontend. No unsigned QA archive is a public release.
+For a native development build, run `npm run desktop:build`. Native acceptance runs follow [the native acceptance checklist](docs/native-acceptance.md). Cross-built Windows validation packages use `scripts/package-windows-qa.js`, which explicitly enables the embedded frontend. No unsigned QA archive is a public release.
 
 ## Run the diagnostic client
 
