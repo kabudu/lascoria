@@ -660,6 +660,30 @@ export function App() {
     setOffset(0);
     setTotal(session?.state.totalItems ?? 0);
   }, [task?.id]);
+  // D3: save the messages Lascoria keeps for a session as Markdown, through the native chooser.
+  async function exportTranscript(row: SessionRow) {
+    const slug =
+      sessionName(row)
+        .replace(/[^A-Za-z0-9 _-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .slice(0, 80) || 'session';
+    try {
+      const path = await invoke<string | null>('pick_transcript_destination', {
+        suggested: `${slug}-transcript.md`,
+      });
+      if (!path) return;
+      const result = await request<{ messages: number }>('data/transcript', {
+        sessionId: row.id,
+        path,
+      });
+      setNotice(
+        `Transcript saved · ${result.messages} messages. It contains your conversation, so store it privately.`,
+      );
+    } catch (e) {
+      setError(`Transcript not saved: ${String(e).replace(/^Error: /, '')}`);
+    }
+  }
   async function mutate(operation: string, params: Json) {
     if (mutationPending.current) return;
     mutationPending.current = true;
@@ -1186,6 +1210,14 @@ export function App() {
                 {status.features?.includes('sessionNames') && (
                   <button className="session-settings-trigger" onClick={() => setModal('rename')}>
                     Rename session
+                  </button>
+                )}
+                {status.features?.includes('transcriptExport') && (
+                  <button
+                    className="session-settings-trigger"
+                    onClick={() => void exportTranscript(session)}
+                  >
+                    Export transcript…
                   </button>
                 )}
                 {session.projectContext && (

@@ -230,9 +230,8 @@ fn verified(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
 }
 
 /// Destinations come from the native save dialog. They must be absolute, outside the
-/// private state directory and not an existing link; the copy is written atomically.
-pub fn export(root: &Path, id: &str, destination: &str) -> Result<Value> {
-    let (source, manifest) = verified(root, id)?;
+/// private state directory and not an existing link.
+fn destination(root: &Path, destination: &str) -> Result<(PathBuf, PathBuf)> {
     let destination = PathBuf::from(destination);
     ensure!(
         destination.is_absolute()
@@ -258,28 +257,172 @@ pub fn export(root: &Path, id: &str, destination: &str) -> Result<Value> {
             "Choose a regular destination file"
         );
     }
-    ensure_space(&parent, manifest["bytes"].as_u64().unwrap_or(0))?;
+    Ok((parent, destination))
+}
+
+/// Write a private (0600) file next to the destination, verify it, then rename it into place.
+fn publish(
+    parent: &Path,
+    destination: &Path,
+    write: impl FnOnce(&mut fs::File) -> Result<()>,
+    check: impl FnOnce(&Path) -> Result<()>,
+) -> Result<()> {
     let temporary = parent.join(format!(
         ".lascoria-export-{}.partial",
         uuid::Uuid::new_v4().simple()
     ));
     let result = (|| {
         let mut output = lascoria_runtime::platform::private_file(&temporary, true)?;
-        std::io::copy(&mut fs::File::open(&source)?, &mut output)?;
+        write(&mut output)?;
         output.sync_all()?;
         drop(output);
-        ensure!(
-            sha256_file(&temporary)? == manifest["sha256"].as_str().unwrap_or_default(),
-            "Export copy did not match the backup"
-        );
-        fs::rename(&temporary, &destination)?;
+        check(&temporary)?;
+        fs::rename(&temporary, destination)?;
         Ok(())
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
     }
-    result?;
+    result
+}
+
+pub fn export(root: &Path, id: &str, destination: &str) -> Result<Value> {
+    let (source, manifest) = verified(root, id)?;
+    let (parent, destination) = self::destination(root, destination)?;
+    ensure_space(&parent, manifest["bytes"].as_u64().unwrap_or(0))?;
+    publish(
+        &parent,
+        &destination,
+        |output| {
+            std::io::copy(&mut fs::File::open(&source)?, output)?;
+            Ok(())
+        },
+        |written| {
+            ensure!(
+                sha256_file(written)? == manifest["sha256"].as_str().unwrap_or_default(),
+                "Export copy did not match the backup"
+            );
+            Ok(())
+        },
+    )?;
     Ok(json!({"exported":id,"path":destination,"sha256":manifest["sha256"]}))
+}
+
+/// `YYYY-MM-DDTHH:MM:SSZ` from Unix milliseconds (civil-from-days, proleptic Gregorian).
+fn iso_utc(ms: u128) -> String {
+    let secs = (ms / 1000) as i64;
+    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
+}
+
+/// Largest transcript export; the retained window is bounded, but message text is not.
+const TRANSCRIPT_LIMIT: usize = 16 * 1024 * 1024;
+
+/// Markdown of the messages Lascoria retains for one session (D3). What the user typed is shown
+/// (`displayText`), images are noted rather than embedded, and the header says which window
+/// the file covers. Nothing is fetched from Muse.
+pub fn transcript_markdown(row: &Value, name: &str) -> String {
+    let mut out = format!("# {name}\n\n");
+    let items = row["state"]["items"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let total = row["state"]["totalItems"]
+        .as_u64()
+        .unwrap_or(items.len() as u64);
+    out.push_str(&format!(
+        "- Session: `{}`\n- Folder: `{}`\n- Exported: {}\n- Contains the {} most recent of {} messages Lascoria keeps for this session. Muse keeps the full history.\n\n",
+        row["id"].as_str().unwrap_or_default(),
+        row["workspace"].as_str().unwrap_or_default(),
+        iso_utc(crate::db::now_ms()),
+        items.len(),
+        total
+    ));
+    for item in items {
+        let text = item["displayText"]
+            .as_str()
+            .or(item["text"].as_str())
+            .unwrap_or_default()
+            .trim_end();
+        let when = item["recordedAt"].as_str().unwrap_or("time not reported");
+        let section = match item["kind"].as_str().unwrap_or_default() {
+            "userMessage" => {
+                let images = item["attachments"].as_array().map_or(0, Vec::len);
+                let note = match images {
+                    0 => String::new(),
+                    1 => "\n\n_1 image attached_".into(),
+                    n => format!("\n\n_{n} images attached_"),
+                };
+                format!("## You · {when}\n\n{text}{note}")
+            }
+            "agentMessage" => format!("## Muse · {when}\n\n{text}"),
+            "toolCall" => format!(
+                "### Tool · {} · {when}\n\n{}",
+                item["name"].as_str().unwrap_or("tool"),
+                item["statusLine"]
+                    .as_str()
+                    .unwrap_or(item["status"].as_str().unwrap_or(""))
+            ),
+            other if !text.is_empty() => format!("### {other} · {when}\n\n{text}"),
+            _ => continue,
+        };
+        out.push_str(&section);
+        out.push_str("\n\n");
+    }
+    out
+}
+
+pub fn export_transcript(db: &Db, root: &Path, params: &Value) -> Result<Value> {
+    let session = params["sessionId"].as_str().context("Session required")?;
+    let row = db.get("sessions", session)?.context("Unknown session")?;
+    let path = params["path"].as_str().context("Destination required")?;
+    ensure!(
+        Path::new(path)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("md")),
+        "Save the transcript as a .md file"
+    );
+    let name = crate::session_names::list(db)?
+        .into_iter()
+        .find(|s| s["id"] == session)
+        .and_then(|s| s["displayName"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| "Lascoria session".into());
+    let markdown = transcript_markdown(&row, &name);
+    ensure!(
+        markdown.len() <= TRANSCRIPT_LIMIT,
+        "This transcript is larger than 16 MB"
+    );
+    let (parent, destination) = destination(root, path)?;
+    ensure_space(&parent, markdown.len() as u64)?;
+    publish(
+        &parent,
+        &destination,
+        |output| Ok(output.write_all(markdown.as_bytes())?),
+        |written| {
+            ensure!(
+                fs::metadata(written)?.len() == markdown.len() as u64,
+                "Transcript was not written completely"
+            );
+            Ok(())
+        },
+    )?;
+    Ok(
+        json!({"path":destination,"bytes":markdown.len(),"messages":row["state"]["items"].as_array().map_or(0, Vec::len)}),
+    )
 }
 
 /// Copy a file chosen by the user into the private backup set after validation.
@@ -700,6 +843,7 @@ pub fn handle(
             remove_archived(db, root, request_id, &sessions)
         }
         "data/compact" => compact(db, root, request_id),
+        "data/transcript" => export_transcript(db, root, params),
         _ => bail!("Unsupported data operation"),
     }
 }
@@ -866,6 +1010,66 @@ mod tests {
         drop(current);
         // The next start is ordinary.
         assert!(apply_pending_restore(&root.0, &database)?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn transcript_export_shows_typed_text_notes_images_and_stays_outside_private_state()
+    -> Result<()> {
+        assert_eq!(iso_utc(0), "1970-01-01T00:00:00Z");
+        assert_eq!(iso_utc(1_792_260_000_000), "2026-10-17T18:00:00Z");
+        assert_eq!(iso_utc(951_782_400_000), "2000-02-29T00:00:00Z");
+        let root = Root::new();
+        let db = seeded(&root.0)?;
+        db.put("sessions", "t", &json!({"id":"t","workspace":"/w","lifecycle":"connected","state":{"totalItems":250,"items":[
+            {"kind":"userMessage","text":"Lascoria note: model only. Fix it","displayText":"Fix it","attachments":[{"type":"image"}],"recordedAt":"2026-10-17T18:00:00Z"},
+            {"kind":"toolCall","name":"bash","statusLine":"ran tests"},
+            {"kind":"agentMessage","text":"Done."},
+            {"kind":"reasoning"}
+        ]}}))?;
+        let outside = root.0.join("outside");
+        fs::create_dir_all(&outside)?;
+        let inside = root.0.join("state-copy");
+        // The private root is `root.0`, so a destination under it is refused.
+        let private = Root::new();
+        let file = outside.join("t.md");
+        let result = export_transcript(&db, &private.0, &json!({"sessionId":"t","path":file}))?;
+        let text = fs::read_to_string(&file)?;
+        assert!(text.contains("## You · 2026-10-17T18:00:00Z\n\nFix it\n\n_1 image attached_"));
+        assert!(!text.contains("Lascoria note"));
+        assert!(text.contains("### Tool · bash"));
+        assert!(text.contains("## Muse"));
+        assert!(text.contains("4 most recent of 250"));
+        assert_eq!(result["messages"], 4);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&file)?.permissions().mode() & 0o777, 0o600);
+        }
+        assert!(
+            export_transcript(
+                &db,
+                &root.0,
+                &json!({"sessionId":"t","path":inside.join("t.md")})
+            )
+            .is_err()
+        );
+        assert!(
+            export_transcript(
+                &db,
+                &private.0,
+                &json!({"sessionId":"t","path":outside.join("t.txt")})
+            )
+            .is_err()
+        );
+        assert!(
+            export_transcript(
+                &db,
+                &private.0,
+                &json!({"sessionId":"missing","path":outside.join("m.md")})
+            )
+            .is_err()
+        );
         Ok(())
     }
 
