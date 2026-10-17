@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Export a session's retained transcript as a Markdown file from **Export transcript…** beside the session heading.
+
 - Add images to a task: choose, paste or drop PNG, JPEG, GIF or WebP images onto the composer. They wait privately for that session, survive reloads and are sent only with the next task you start.
 
 - Apply an edited Project's folders to an existing session with its next task: the composer shows what changed and applies it only when you tick the box; running tasks and the default folder never change underneath you.
