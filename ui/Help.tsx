@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-type Destination = 'account' | 'start' | 'usage' | 'relay';
+type Destination = 'account' | 'start' | 'usage' | 'relay' | 'notifications';
 const guides: { title: string; text: string; destination?: Destination; action?: string }[] = [
   {
     title: 'Install Muse and connect your account',
@@ -54,7 +54,9 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Questions, approvals and completed work',
-    text: 'Attention lists questions, tool permission requests and work needing inspection. Answer or approve only after reviewing the request. A completed task does not prove its changes are correct. Inspect the diff, tests and evidence for the exact revision. Mark completion inspected acknowledges your review; it does not run tests or accept evidence automatically.',
+    text: 'Attention lists questions, tool permission requests and work needing inspection. Answer or approve only after reviewing the request. A completed task does not prove its changes are correct. Inspect the diff, tests and evidence for the exact revision. Mark completion inspected acknowledges your review; it does not run tests or accept evidence automatically. Notifications in the workspace menu can also tell you about questions, permission requests, problems and finished tasks while Lascoria is in the background; they name the session, never your task text, and stop when you close Lascoria.',
+    destination: 'notifications',
+    action: 'Notification settings',
   },
   {
     title: 'Background work, drafts and recovery',

@@ -66,6 +66,14 @@ export interface Task {
   nativeChild?: Json;
   error?: { kind: string; message: string; retryable?: boolean };
 }
+/** Groups default to on once notifications are enabled. */
+export interface NotificationPrefs {
+  enabled: boolean;
+  needsInput?: boolean;
+  problems?: boolean;
+  finished?: boolean;
+  mutedSessions?: string[];
+}
 export interface Prefs {
   canvasControlsCollapsed?: boolean;
   zoom?: number;
@@ -81,6 +89,8 @@ export interface Prefs {
   showRuntimeReminders?: boolean;
   /** Saved choice from the Log out dialog, applied when the window closes or the app quits. */
   closeBehavior?: 'keepRunning' | 'pause';
+  /** Desktop notifications (D4). Off until the user turns them on. */
+  notifications?: NotificationPrefs;
   collapsed?: string[];
   acknowledgedInterruptions?: string[];
   acknowledgedTaskFacts?: string[];

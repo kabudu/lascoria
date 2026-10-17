@@ -4,6 +4,7 @@ import { Help } from './Help';
 import { DataLifecycle } from './DataLifecycle';
 import { ExitDialog, type ExitChoice } from './ExitDialog';
 import { HistorySearch } from './HistorySearch';
+import { NotificationSettings } from './NotificationSettings';
 import { ProjectUpdate } from './ProjectUpdate';
 import { ComposerImages } from './ComposerImages';
 import { DraftConflict } from './DraftConflict';
@@ -31,6 +32,8 @@ import {
   tasks,
   nodeActivity,
   attention,
+  composeNotice,
+  noticeKey,
   questionAnswers,
   taskAttentionKey,
   constellationLayout,
@@ -219,6 +222,7 @@ export function App() {
       | 'help'
       | 'data'
       | 'search'
+      | 'notifications'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
@@ -269,6 +273,33 @@ export function App() {
     { ...status, sessions: status.sessions.filter((s) => s.lifecycle !== 'archived') },
     prefs,
   );
+  // Desktop notifications (D4): announce attention that appears after the first real status,
+  // so reopening Lascoria never replays what was already waiting. The native side shows at
+  // most one notification per key and only while no Lascoria window has focus.
+  const noticed = useRef<Set<string> | null>(null);
+  const [notificationError, setNotificationError] = useState('');
+  const latestQueue = useRef(queue);
+  latestQueue.current = queue;
+  useEffect(() => {
+    if (!connected || !status.pid) return;
+    const items = latestQueue.current;
+    const keys = new Set(items.map(noticeKey));
+    const seen = noticed.current;
+    noticed.current = keys;
+    if (!seen) return;
+    const notice = composeNotice(
+      items.filter((item) => !seen.has(noticeKey(item))),
+      latestPrefs.current,
+      (id) => {
+        const row = status.sessions.find((s) => s.id === id);
+        return row ? sessionName(row) : 'Lascoria';
+      },
+    );
+    if (notice)
+      void invoke('notify_attention', { notice })
+        .then(() => setNotificationError(''))
+        .catch((e) => setNotificationError(String(e)));
+  }, [status, connected]);
   const candidate =
     review.artifacts.find((a) => a.id === artifactId) ??
     review.artifacts.filter((a) => a.taskId === task?.turnId).at(-1);
@@ -1080,6 +1111,7 @@ export function App() {
               {status.features?.includes('dataLifecycle') && (
                 <button onClick={() => setModal('data')}>Data &amp; backups</button>
               )}
+              <button onClick={() => setModal('notifications')}>Notifications</button>
               <button onClick={() => setModal('help')}>Help</button>
               <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
               <button
@@ -2741,21 +2773,23 @@ export function App() {
                     ? 'Data and backups'
                     : modal === 'search'
                       ? 'Search history'
-                      : modal === 'relay'
-                        ? 'Local session messages'
-                        : modal === 'usage'
-                          ? 'Muse usage'
-                          : modal === 'account'
-                            ? 'Your Muse connection'
-                            : modal === 'start'
-                              ? 'Start a Muse session'
-                              : modal === 'stop'
-                                ? 'Log out of Lascoria'
-                                : modal === 'diagnostics'
-                                  ? 'Performance diagnostics'
-                                  : modal === 'settings'
-                                    ? 'Session model and effort'
-                                    : 'Command palette'}
+                      : modal === 'notifications'
+                        ? 'Desktop notifications'
+                        : modal === 'relay'
+                          ? 'Local session messages'
+                          : modal === 'usage'
+                            ? 'Muse usage'
+                            : modal === 'account'
+                              ? 'Your Muse connection'
+                              : modal === 'start'
+                                ? 'Start a Muse session'
+                                : modal === 'stop'
+                                  ? 'Log out of Lascoria'
+                                  : modal === 'diagnostics'
+                                    ? 'Performance diagnostics'
+                                    : modal === 'settings'
+                                      ? 'Session model and effort'
+                                      : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
@@ -2778,6 +2812,7 @@ export function App() {
               start: connected,
               usage: Boolean(session && status.features?.includes('usage')),
               relay: Boolean(session && status.features?.includes('localRelay')),
+              notifications: true,
             }}
           />
         )}
@@ -2792,6 +2827,16 @@ export function App() {
               setTab('transcript');
               setModal(null);
             }}
+          />
+        )}
+        {modal === 'notifications' && (
+          <NotificationSettings
+            settings={prefs.notifications}
+            sessions={status.sessions}
+            name={sessionName}
+            update={(notifications) => updatePrefs({ notifications })}
+            test={() => invoke('notify_test')}
+            lastError={notificationError}
           />
         )}
         {modal === 'data' && (

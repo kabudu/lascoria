@@ -2764,3 +2764,39 @@ select {
   font-size: 0.8rem;
   color: var(--muted);
 }
+.notification-settings {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 34rem;
+}
+.notification-settings p {
+  margin: 0;
+}
+.notification-settings fieldset {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  max-height: 30vh;
+  overflow: auto;
+}
+.notification-settings fieldset:disabled {
+  opacity: 0.6;
+}
+.notification-settings label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  overflow-wrap: anywhere;
+}
+.notification-check {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.notification-settings .error {
+  color: var(--error);
+}

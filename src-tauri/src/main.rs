@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod folder_picker;
 mod muse_setup;
+mod notifications;
 use serde_json::{Value, json};
 use std::{path::PathBuf, process::Stdio};
 use tauri::{Emitter, Manager};
@@ -284,6 +285,9 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // No capability grants its IPC commands; only notifications.rs can show one.
+        .plugin(tauri_plugin_notification::init())
+        .manage(notifications::Notifier::default())
         .manage(folder_picker::FolderPicker::default())
         .manage(muse_setup::Setup::default())
         .invoke_handler(tauri::generate_handler![
@@ -294,6 +298,8 @@ fn main() {
             folder_picker::pick_backup_file,
             folder_picker::pick_transcript_destination,
             open_account_browser,
+            notifications::notify_attention,
+            notifications::notify_test,
             finish_quit,
             muse_setup::runtime_status,
             muse_setup::runtime_select,
