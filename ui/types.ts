@@ -4,7 +4,14 @@ export type Item = import('@muse-code/sdk/dist/src/msp.js').Item & {
   [key: string]: Json;
 };
 export interface SessionRow {
-  projectContextReceipt?: { requestId: string; status: string; commandId?: string };
+  projectContextReceipt?: {
+    requestId: string;
+    status: string;
+    commandId?: string;
+    appliedWith?: 'turn';
+  };
+  /** A next-task folder change awaiting its native receipt, or whose outcome is unknown. */
+  projectContextPending?: { revision: number; requestId: string; status: string };
   projectContext?: {
     id: string;
     name: string;

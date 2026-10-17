@@ -131,6 +131,100 @@ pub fn selected(db: &Db, params: &Value) -> Result<Option<Value>> {
     Ok(Some(snapshot))
 }
 
+/// Next-task folder replacement for an existing Project session (`turn.projectRevision`).
+/// Returns the saved snapshot to apply, or `None` for an ordinary turn. The replacement must
+/// come from the session's own Project, be newer than what is applied and keep the default
+/// folder, because the default folder is the session's working directory and file scope.
+pub fn replacement(db: &Db, row: &Value, params: &Value) -> Result<Option<Value>> {
+    let Some(revision) = params.get("projectRevision") else {
+        return Ok(None);
+    };
+    let applied = row
+        .get("projectContext")
+        .context("Only Project sessions can take Project folder changes")?;
+    let wanted = revision.as_u64().context("Invalid Project revision")?;
+    ensure!(
+        wanted > applied["revision"].as_u64().unwrap_or(0),
+        "This Project revision is already applied"
+    );
+    let snapshot = selected(
+        db,
+        &json!({"projectId":applied["id"],"projectRevision":wanted}),
+    )?
+    .context("Project not found")?;
+    ensure!(
+        snapshot["folders"][0]["path"] == applied["folders"][0]["path"],
+        "Changing the default folder needs a new session; keep the default folder first to update this one"
+    );
+    Ok(Some(snapshot))
+}
+
+/// Settle a recorded folder change from its journalled turn: a confirmed receipt makes it the
+/// applied context, a refusal drops it, and an uncertain outcome keeps the prior context
+/// visible while the change stays offered. Safe to call repeatedly.
+pub fn settle_pending(db: &Db, session: &str) -> Result<()> {
+    let Some(mut row) = db.get("sessions", session)? else {
+        return Ok(());
+    };
+    let Some(pending) = row.get("projectContextPending").cloned() else {
+        return Ok(());
+    };
+    let request = pending["requestId"].as_str().unwrap_or_default();
+    let command = db.get("commands", request)?;
+    match command.as_ref().and_then(|c| c["status"].as_str()) {
+        Some("applied" | "accepted") => {
+            row["projectContext"] = pending["project"].clone();
+            row["projectContextReceipt"] = json!({"requestId":request,"status":"applied","commandId":command.unwrap()["commandId"],"appliedWith":"turn"});
+            row.as_object_mut().unwrap().remove("projectContextPending");
+        }
+        // Refused, or never journalled because admission failed before dispatch.
+        Some("rejected") | None => {
+            row.as_object_mut().unwrap().remove("projectContextPending");
+        }
+        Some("sending") => return Ok(()),
+        Some(_) if pending["status"] == "outcomeUnknown" => return Ok(()),
+        Some(_) => row["projectContextPending"]["status"] = json!("outcomeUnknown"),
+    }
+    db.put("sessions", session, &row)
+}
+
+/// Model-visible summary sent with a folder change. Muse 1.4.10 keeps describing the
+/// session-start folders to the model after `turn/start.workspaceRoots`, so without this the
+/// model would not know what was added. It complements, never replaces, the native roots.
+pub fn change_note(project: &Value) -> String {
+    let folders = project["folders"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let mut note = String::from(
+        "Lascoria note: the user updated this session's Project folders for this task. Folders now available, default first:",
+    );
+    for (index, folder) in folders.iter().enumerate() {
+        note.push_str(&format!(
+            "\n- {}{}: {}",
+            folder["name"].as_str().unwrap_or("Folder"),
+            if index == 0 { " (default)" } else { "" },
+            folder["path"].as_str().unwrap_or_default()
+        ));
+    }
+    // Muse joins input parts without a separator.
+    note.push_str("\nUse absolute paths for folders other than the default. Earlier folder lists in this conversation are out of date.\n\n");
+    note
+}
+
+/// Native roots for a Project snapshot, in order, default folder first.
+pub fn root_paths(project: &Value) -> Value {
+    json!(
+        project["folders"]
+            .as_array()
+            .map(|folders| folders
+                .iter()
+                .map(|f| f["path"].clone())
+                .collect::<Vec<_>>())
+            .unwrap_or_default()
+    )
+}
+
 // Filesystem probes never hold the shared DB mutex or a Tokio executor thread.
 // A stalled/offline mount retains one of two permits until its blocking probe exits.
 static PATH_PROBES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
@@ -192,6 +286,118 @@ fn save(db: &Db, params: &Value, id: &str) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn next_task_replacement_is_scoped_newer_keeps_default_and_settles_from_the_journal() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        for dir in ["app", "api", "docs"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        let db = Db::open(&root.join("state.sqlite")).unwrap();
+        let folder = |name: &str| json!({"id":uuid::Uuid::new_v4().to_string(),"name":name,"path":dunce::canonicalize(root.join(name.to_lowercase())).unwrap()});
+        let (app, api, docs) = (folder("App"), folder("API"), folder("Docs"));
+        let mut input = json!({"id":uuid::Uuid::new_v4().to_string(),"name":"P","expectedRevision":0,"folders":[app,api]});
+        save(&db, &input, "p1").unwrap();
+        let applied = selected(&db, &json!({"projectId":input["id"],"projectRevision":1}))
+            .unwrap()
+            .unwrap();
+        let row = json!({"id":"s","projectContext":applied});
+        let turn = |revision: Option<u64>| match revision {
+            Some(r) => json!({"sessionId":"s","text":"x","projectRevision":r}),
+            None => json!({"sessionId":"s","text":"x"}),
+        };
+        assert!(replacement(&db, &row, &turn(None)).unwrap().is_none());
+        assert!(
+            replacement(&db, &row, &turn(Some(1))).is_err(),
+            "already applied"
+        );
+        assert!(
+            replacement(&db, &json!({"id":"plain"}), &turn(Some(2))).is_err(),
+            "standalone sessions have no Project"
+        );
+        input["expectedRevision"] = json!(1);
+        input["folders"] = json!([app, api, docs]);
+        save(&db, &input, "p2").unwrap();
+        let next = replacement(&db, &row, &turn(Some(2))).unwrap().unwrap();
+        assert_eq!(next["revision"], 2);
+        assert_eq!(root_paths(&next).as_array().unwrap().len(), 3);
+        let note = change_note(&next);
+        assert!(
+            note.contains("App (default): ")
+                && note.contains(next["folders"][2]["path"].as_str().unwrap())
+        );
+        assert!(
+            replacement(&db, &row, &turn(Some(3))).is_err(),
+            "unsaved revision"
+        );
+        input["expectedRevision"] = json!(2);
+        input["folders"] = json!([api, app]);
+        save(&db, &input, "p3").unwrap();
+        assert!(
+            replacement(&db, &row, &turn(Some(2))).is_err(),
+            "a superseded revision is refused"
+        );
+        assert!(
+            replacement(&db, &row, &turn(Some(3)))
+                .unwrap_err()
+                .to_string()
+                .contains("default folder")
+        );
+
+        // Settlement follows the journalled command, never the reply.
+        let pending = |status: &str| {
+            let mut row = row.clone();
+            row["projectContextPending"] =
+                json!({"revision":2,"requestId":"t1","status":status,"project":next});
+            db.put("sessions", "s", &row).unwrap();
+        };
+        pending("requested");
+        settle_pending(&db, "s").unwrap();
+        assert!(
+            db.get("sessions", "s").unwrap().unwrap()["projectContextPending"].is_null(),
+            "nothing journalled: dropped"
+        );
+        pending("requested");
+        db.put(
+            "commands",
+            "t1",
+            &json!({"id":"t1","status":"outcomeUnknown","commandId":"c1"}),
+        )
+        .unwrap();
+        settle_pending(&db, "s").unwrap();
+        let unknown = db.get("sessions", "s").unwrap().unwrap();
+        assert_eq!(unknown["projectContextPending"]["status"], "outcomeUnknown");
+        assert_eq!(
+            unknown["projectContext"]["revision"], 1,
+            "prior context stays"
+        );
+        db.put(
+            "commands",
+            "t1",
+            &json!({"id":"t1","status":"applied","commandId":"c1"}),
+        )
+        .unwrap();
+        settle_pending(&db, "s").unwrap();
+        let settled = db.get("sessions", "s").unwrap().unwrap();
+        assert_eq!(settled["projectContext"]["revision"], 2);
+        assert_eq!(settled["projectContextReceipt"]["requestId"], "t1");
+        assert_eq!(settled["projectContextReceipt"]["commandId"], "c1");
+        assert!(settled["projectContextPending"].is_null());
+        settle_pending(&db, "s").unwrap();
+        assert_eq!(
+            db.get("sessions", "s").unwrap().unwrap(),
+            settled,
+            "idempotent"
+        );
+        pending("requested");
+        db.put("commands", "t1", &json!({"id":"t1","status":"rejected"}))
+            .unwrap();
+        settle_pending(&db, "s").unwrap();
+        let refused = db.get("sessions", "s").unwrap().unwrap();
+        assert!(refused["projectContextPending"].is_null());
+        assert_eq!(refused["projectContext"]["revision"], 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[tokio::test]
     async fn path_probe_admission_is_bounded_without_locking_storage() {
         let db = std::sync::Arc::new(std::sync::Mutex::new(

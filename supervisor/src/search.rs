@@ -1,4 +1,5 @@
-//! Read-only search over locally retained transcript text. Muse keeps full native history;
+//! Read-only search over locally retained transcript text, as the user saw it (`displayText`
+//! when Muse recorded one). Muse keeps full native history;
 //! Lascoria retains the most recent 100 items of each session, so results say which window
 //! they cover. Never reads command payloads, credentials or files, and never contacts Muse.
 use crate::db::Db;
@@ -46,11 +47,11 @@ pub fn run(db: &Db, params: &Value) -> Result<Value> {
     let mut statement = db.0.prepare(
         "SELECT s.id, json_extract(s.value,'$.lifecycle'), json_extract(i.value,'$.itemId'),
                 json_extract(i.value,'$.kind'), json_extract(i.value,'$.turnId'),
-                json_extract(i.value,'$.text'), json_extract(i.value,'$.recordedAt')
+                coalesce(json_extract(i.value,'$.displayText'), json_extract(i.value,'$.text')), json_extract(i.value,'$.recordedAt')
            FROM sessions s, json_each(s.value,'$.state.items') i
           WHERE (?2 IS NULL OR s.id = ?2)
             AND json_type(i.value,'$.text') = 'text'
-            AND (?3 = 0 OR instr(lower(json_extract(i.value,'$.text')), ?1) > 0)
+            AND (?3 = 0 OR instr(lower(coalesce(json_extract(i.value,'$.displayText'), json_extract(i.value,'$.text'))), ?1) > 0)
           ORDER BY s.rowid DESC, i.key DESC",
     )?;
     let ascii = lowered.is_ascii();
@@ -102,7 +103,8 @@ mod tests {
             "a",
             &json!({"id":"a","lifecycle":"archived","state":{"items":[
                 {"itemId":"1","kind":"userMessage","text":"Fix the Flaky retry loop"},
-                {"itemId":"2","kind":"toolCall","name":"bash"}
+                {"itemId":"2","kind":"toolCall","name":"bash"},
+                {"itemId":"5","kind":"userMessage","displayText":"Add the docs folder","text":"Lascoria note: hidden context. Add the docs folder"}
             ]}}),
         )?;
         db.put(
@@ -124,6 +126,18 @@ mod tests {
         assert_eq!(unicode["results"].as_array().unwrap().len(), 0);
         let unicode = run(&db, &json!({"query":"ÜNÏCODE"}))?;
         assert_eq!(unicode["results"][0]["itemId"], "4");
+        // What the user typed is searched and shown; a model-only note is not.
+        assert_eq!(
+            run(&db, &json!({"query":"docs folder"}))?["results"][0]["itemId"],
+            "5"
+        );
+        assert_eq!(
+            run(&db, &json!({"query":"Lascoria note"}))?["results"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
         assert!(run(&db, &json!({"query":"  "})).is_err());
         assert!(run(&db, &json!({"query":"x".repeat(201)})).is_err());
         Ok(())

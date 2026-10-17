@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Apply an edited Project's folders to an existing session with its next task: the composer shows what changed and applies it only when you tick the box; running tasks and the default folder never change underneath you.
+
 - Require Muse 1.4.10 and the official SDK 1.4.10 (same protocol schema as 1.4.9). Setup now finds a compatible Muse even when an older one was selected before, and one repository check keeps the pinned version consistent across the SDK, workers and installer.
 
 - Bind supervisor control to the desktop app that started it, so repository scripts and tools that can read the control token cannot approve permissions or drive sessions; the session message helper is limited to its three tools and the diagnostic bridge exists only in debug builds.

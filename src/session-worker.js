@@ -449,6 +449,34 @@ export async function createSession(send, onDeath) {
         input = [{ type: 'skill', selector: shortcut[1], arguments: shortcut[2] ?? '' }];
       }
       wire = { sessionId, input };
+      if (params.workspaceRoots !== undefined) {
+        // Sticky native replacement, bound at this turn's launch (turn/start.workspaceRoots).
+        // The supervisor validated the saved Project; refuse anything that is not an idle new task.
+        if (
+          operation !== 'turn' ||
+          !Array.isArray(params.workspaceRoots) ||
+          params.workspaceRoots.length < 1 ||
+          params.workspaceRoots.length > 8 ||
+          !params.workspaceRoots.every((root) => typeof root === 'string' && root.length <= 4096)
+        )
+          throw new ValidationError('Invalid workspace roots');
+        if (runtime.session.fold.activeTurnId)
+          throw new ValidationError(
+            'Finish or stop the current task before applying Project folder changes',
+          );
+        wire.workspaceRoots = params.workspaceRoots;
+        // Muse 1.4.10 applies the replacement but keeps describing the session-start folders to
+        // the model, so a short model-visible note names the new set; the transcript keeps the
+        // user's own words through displayText.
+        if (typeof params.projectNote === 'string' && params.projectNote.length <= 8192) {
+          if (input[0].type !== 'text')
+            throw new ValidationError(
+              'Apply Project folder changes with a plain task, then use the shortcut',
+            );
+          wire.input = [{ type: 'text', text: params.projectNote }, ...input];
+          wire.displayText = params.text;
+        }
+      }
       if (operation === 'steer') {
         if (!params.turnId || runtime.session.fold.activeTurnId !== params.turnId)
           throw new ValidationError('Stale steering target');

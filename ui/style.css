@@ -2674,3 +2674,23 @@ select {
   gap: 0.75rem;
   flex-wrap: wrap;
 }
+
+/* Next-task Project folder offer in the composer: quiet until the saved Project differs. */
+.project-update {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.project-update p {
+  margin: 0 0 4px;
+}
+.project-update label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
