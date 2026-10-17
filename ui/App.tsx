@@ -4,6 +4,7 @@ import { Help } from './Help';
 import { DataLifecycle } from './DataLifecycle';
 import { ExitDialog, type ExitChoice } from './ExitDialog';
 import { HistorySearch } from './HistorySearch';
+import { ProjectUpdate } from './ProjectUpdate';
 import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
@@ -183,6 +184,8 @@ export function App() {
     await relayDrafts.flushDrafts();
   };
   const [startKind, setStartKind] = useState<'session' | 'project'>('session');
+  // Saved Project revision the user chose to apply with the next task, per session.
+  const [projectChoice, setProjectChoice] = useState<Record<string, number | undefined>>({});
   const [startFolder, setStartFolder] = useState('');
   const [folderPicking, setFolderPicking] = useState(false);
   const [modal, setModal] = useState<
@@ -1180,9 +1183,11 @@ export function App() {
                     >
                       <strong>{session.projectContext.name}</strong>
                       <p>
-                        {session.projectContextReceipt?.status === 'applied'
-                          ? 'Applied at session start'
-                          : 'Requested folders; native start not confirmed'}{' '}
+                        {session.projectContextReceipt?.status !== 'applied'
+                          ? 'Requested folders; native start not confirmed'
+                          : session.projectContextReceipt.appliedWith === 'turn'
+                            ? 'Applied with a later task'
+                            : 'Applied at session start'}{' '}
                         · revision {session.projectContext.revision}
                       </p>
                       <ol>
@@ -2032,6 +2037,7 @@ export function App() {
                                 (item.kind === 'skillRead'
                                   ? `${item.selector ?? 'Skill'} · ${item.status === 'completed' ? 'loaded' : item.status === 'inProgress' ? 'loading' : (itemStatusLabels[item.status] ?? item.status)}`
                                   : undefined) ??
+                                item.displayText ??
                                 item.text ??
                                 item.objective ??
                                 item.fallbackText ??
@@ -2441,15 +2447,25 @@ export function App() {
                           return;
                         }
                         if (draftConflicts[session.id]) return;
+                        const projectRevision = session.state.activeTurnId
+                          ? undefined
+                          : projectChoice[session.id];
                         const result = await mutate(session.state.activeTurnId ? 'steer' : 'turn', {
                           sessionId: session.id,
                           text: message,
                           ...(session.state.activeTurnId
                             ? { turnId: session.state.activeTurnId }
                             : {}),
+                          ...(projectRevision !== undefined ? { projectRevision } : {}),
                         });
-                        if (result && ['applied', 'accepted'].includes(result.status))
+                        if (result && ['applied', 'accepted'].includes(result.status)) {
                           setDrafts((previous) => ({ ...previous, [session.id]: '' }));
+                          if (projectRevision !== undefined)
+                            setProjectChoice((previous) => ({
+                              ...previous,
+                              [session.id]: undefined,
+                            }));
+                        }
                       }}
                     >
                       {status.features?.includes('skills') && (
@@ -2463,6 +2479,21 @@ export function App() {
                           openUsage={() => setModal('usage')}
                         />
                       )}
+                      {session.projectContext &&
+                        status.features?.includes('projectContextUpdates') && (
+                          <ProjectUpdate
+                            key={`project-update:${session.id}`}
+                            session={session}
+                            busy={busy}
+                            chosen={projectChoice[session.id]}
+                            choose={(revision) =>
+                              setProjectChoice((previous) => ({
+                                ...previous,
+                                [session.id]: revision,
+                              }))
+                            }
+                          />
+                        )}
                       <label htmlFor="message">
                         {session.state.activeTurnId
                           ? 'Steer current turn'

@@ -255,7 +255,7 @@ impl Actor {
             let commands = db.all("commands")?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -493,8 +493,14 @@ impl Actor {
                     .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
             "Invalid request ID"
         );
-        if let Some(previous) = self.db.lock().unwrap().get("commands", id)? {
+        // Bind first: a guard in an `if let` scrutinee would stay locked for the whole block.
+        let previous = self.db.lock().unwrap().get("commands", id)?;
+        if let Some(previous) = previous {
             db::same_request(&previous, operation, &params)?;
+            if let Some(session) = previous["sessionId"].as_str() {
+                // A reply lost after the receipt: reconcile the folder change it carried.
+                projects::settle_pending(&self.db.lock().unwrap(), session)?;
+            }
             return Ok(previous); // No automatic replay of uncertain side effects.
         }
         self.db.lock().unwrap().journal_admits()?;
@@ -648,9 +654,23 @@ impl Actor {
             row["lifecycle"] != "archived",
             "Archived sessions are read-only"
         );
+        let mut replacement = None;
         if operation == "turn" {
-            projects::check_session(&row).await?;
+            projects::settle_pending(&self.db.lock().unwrap(), session)?;
+            row = self.row(session)?;
+            replacement = projects::replacement(&self.db.lock().unwrap(), &row, &params)?;
+            match &replacement {
+                Some(project) => {
+                    projects::check_session(&json!({"projectContext":project})).await?
+                }
+                None => projects::check_session(&row).await?,
+            }
             workspace::idle(&self.db, &row)?;
+        } else {
+            ensure!(
+                params.get("projectRevision").is_none(),
+                "Project folder changes apply only with a new task"
+            );
         }
         if operation == "resume" {
             ensure!(
@@ -676,8 +696,24 @@ impl Actor {
             row["lifecycle"] == "connected" && row["state"]["current"] == true,
             "Session state is not current; recover before issuing commands"
         );
-        self.dispatch(id, operation, params.clone(), session, None)
-            .await
+        let Some(project) = replacement else {
+            return self
+                .dispatch(id, operation, params.clone(), session, None)
+                .await;
+        };
+        // Durable intent before dispatch: the confirmed context stays authoritative until the
+        // native turn receipt confirms the replacement.
+        row["projectContextPending"] = json!({"revision":project["revision"],"requestId":id,"status":"requested","project":project});
+        self.save(&row)?;
+        let mut wire = params.clone();
+        wire.as_object_mut().unwrap().remove("projectRevision");
+        wire["workspaceRoots"] = projects::root_paths(&project);
+        wire["projectNote"] = json!(projects::change_note(&project));
+        let result = self
+            .dispatch(id, operation, params.clone(), session, Some(wire))
+            .await;
+        projects::settle_pending(&self.db.lock().unwrap(), session)?;
+        result
     }
     async fn stop(&mut self) {
         for (_, mut worker) in self.workers.drain() {
@@ -736,7 +772,7 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
         }
         // Data lifecycle work is file I/O under the journal lock; keep it off async workers.
         if request["operation"].as_str().is_some_and(|op| op.starts_with("data/")) {

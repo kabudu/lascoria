@@ -1,6 +1,6 @@
 # Sessions and multi-folder projects
 
-Status: R15 is partially implemented. The initial reusable Project flow saves up to eight named folder references, supports keyboard reordering/default selection and starts native multi-folder Muse sessions. Native Browse selection is implemented alongside editable paths. Spatial folder cards, drag/drop, optional goals/notes, explicit next-task context replacement and full platform acceptance remain open.
+Status: R15 is partially implemented. The initial reusable Project flow saves up to eight named folder references, supports keyboard reordering/default selection and starts native multi-folder Muse sessions. Native Browse selection is implemented alongside editable paths. An edited Project can be applied to an existing session with its next task. Spatial folder cards, drag/drop, optional goals/notes and full platform acceptance remain open.
 
 ## Two clear starting points
 
@@ -23,6 +23,18 @@ Keep one authoritative, revisioned project configuration with stable project/fol
 Editing a project changes the reusable setup for future sessions. Show a short change summary and let the user deliberately apply it to the selected existing session at the next task boundary. An active task keeps its current folder context. A pending change is clearly labelled and can be cancelled; never replace roots through an in-flight steer or silently change the selected billing/model route.
 
 Show configured versus applied folder context only when different. A failed, stale or unknown application keeps the prior confirmed context visible and retains the request identity for safe reconciliation. Reopen/resume must recover project identity, aliases and applied revision without rebinding to a different directory. Missing, moved, nested, duplicate, symlinked or offline roots need explicit recovery with no silent folder substitution.
+
+### Next-task folder changes (implemented 17 October)
+
+When the saved Project is newer than the folders a session uses, the composer shows a short summary (added, removed, moved, renamed, new order) and **Use the updated folders for this task**. Nothing changes until the user starts a task with that box ticked. Plain tasks keep the current folders, a running task is never changed, and steering cannot carry folders. Changing the default folder is refused for an existing session, because the default folder is its working directory and the scope of the file browser and Git guards; the offer says it needs a new session.
+
+Protocol: the optional `projectContextUpdates` capability adds `turn.projectRevision`. The supervisor accepts it only for the session's own Project, for a saved revision newer than the applied one and with an unchanged default folder, and only when the session is idle. It revalidates every folder, records `projectContextPending` (revision, request ID, snapshot) durably before dispatch and sends the ordered folders as the official `turn/start.workspaceRoots` sticky replacement. The applied `projectContext` changes only after the journalled turn is confirmed (`projectContextReceipt.appliedWith: "turn"`). A refused turn drops the pending change; an unknown outcome keeps the last confirmed folders visible and the change offered, because re-applying the same folders is idempotent. A lost reply is reconciled from the journal on retry or before the next task, without a second task.
+
+Muse 1.4.10 accepts the replacement (`disposition: "started"`), but in controlled tests it keeps describing the session-start folders to the model: its workspace-identity reminder still lists only the original folders (observed, not documented). So the applying task also carries a short model-visible note naming the new folder set (folder names and absolute paths, default first), sent as a separate input part with `displayText` set to the user's own words. The transcript and task names show what the user typed. A plain task or a shortcut skill cannot carry the note; a folder change with a shortcut is refused and asks for a plain task first.
+
+Evidence (`test/project-context.test.js`, real pinned Muse 1.4.10 with a controlled loopback model): saves never change a running session; already applied, superseded and steering changes are refused; a busy session refuses the change; the applying task reaches the model with the new folders named; the transcript keeps the user's words; a lost reply returns the same command; the applied revision survives a supervisor restart and recovery; and a removed new folder blocks the next task. Rust tests cover scope, staleness, default-folder refusal, the note and journal settlement. The Rust-backed UI test (`test/ui/project-update.spec.ts`) covers the offer, a plain task that keeps the old folders, applying, the default-folder refusal, narrow layout and accessibility.
+
+Not established: what the native replacement changes inside Muse. With the test permission profile, Muse's file tools read and wrote outside the configured folders without approval, so neither read nor write behaviour distinguishes the old and new folder sets, and Muse exposes no read-back of a session's current roots. Native permission behaviour for added folders, with a real permission profile, remains an R15 acceptance item.
 
 ## Git, permissions and scale
 

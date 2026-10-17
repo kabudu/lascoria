@@ -11,7 +11,8 @@ export function tasks(session: SessionRow, prefs: Prefs): Task[] {
       turnId: turn.turnId,
       label:
         prefs.labels?.[id] ??
-        prompt?.text?.trim().split('\n')[0]?.slice(0, 100) ??
+        // displayText is what the user typed when Lascoria added a model-visible note.
+        (prompt?.displayText ?? prompt?.text)?.trim().split('\n')[0]?.slice(0, 100) ??
         `Turn ${turn.turnId.slice(-8)}`,
       status: turn.terminal ?? 'running',
       error: turn.error,
