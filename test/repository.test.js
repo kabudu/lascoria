@@ -57,7 +57,9 @@ test('repository gate catches a synthetic secret retained in the index after the
   const root = mkdtempSync(join(tmpdir(), 'lascoria-staged-check-'));
   try {
     execFileSync('git', ['init', '-q', root]);
-    writeFileSync(join(root, 'sample.txt'), `api_key = "${randomBytes(24).toString('hex')}"\n`);
+    // A GitHub token shape is matched by a fixed gitleaks rule, unlike entropy-scored
+    // generic keys, so the check cannot pass by chance.
+    writeFileSync(join(root, 'sample.txt'), `token = "ghp_${randomBytes(18).toString('hex')}"\n`);
     execFileSync('git', ['-C', root, 'add', 'sample.txt']);
     writeFileSync(join(root, 'sample.txt'), 'The working copy has no credential.\n');
     assert.throws(() => checkRepository(root), /Staged-content secret scan failed/);

@@ -194,40 +194,27 @@ test(
       'text',
     );
     await notes.finished;
-    const mp4 = Buffer.concat([
-      Buffer.from([0, 0, 0, 24]),
-      Buffer.from('ftypisom'),
-      Buffer.from([0, 0, 2, 0]),
-      Buffer.from('isommp41'),
-      Buffer.alloc(70000, 1),
-    ]);
-    const clip = await stage(sessionId, mp4, 'clip.mp4', 'video');
-    assert.equal((await clip.finished).mediaType, 'video/mp4');
-    await assert.rejects(
-      stage(sessionId, Buffer.from('not a video'), 'fake.mp4', 'video').then((s) => s.finished),
-      /MP4 or QuickTime/,
-    );
     const before = model.requests.length;
     const mixed = await request(
       directory,
       'turn',
-      { sessionId, text: 'Use the notes', attachments: [notes.attachmentId, clip.attachmentId] },
+      { sessionId, text: 'Use the notes', attachments: [notes.attachmentId] },
       'files-task',
     );
     assert.ok(['applied', 'accepted'].includes(mixed.status), JSON.stringify(mixed));
-    await until(
-      status,
-      (s) =>
-        s.sessions.find((r) => r.id === sessionId).state.turns?.at(-1)?.terminal === 'completed',
+    const finished = await until(status, (s) =>
+      s.sessions
+        .find((r) => r.id === sessionId)
+        .state.turns?.some((t) => t.turnId === mixed.result.turnId && t.terminal),
     );
+    const mixedTurn = finished.sessions
+      .find((r) => r.id === sessionId)
+      .state.turns.find((t) => t.turnId === mixed.result.turnId);
+    assert.equal(mixedTurn.terminal, 'completed', JSON.stringify(mixedTurn));
     const bodies = model.requests.slice(before);
     assert.ok(
       bodies.some((body) => body.includes('LASCORIA_TEXT_FILE_MARKER')),
       'The text file reaches the model request',
-    );
-    console.log(
-      'video in model request:',
-      bodies.some((body) => body.includes(mp4.subarray(0, 4096).toString('base64').slice(0, 64))),
     );
     const afterFiles = await status();
     assert.ok(!JSON.stringify(afterFiles.commands).includes('LASCORIA_TEXT_FILE_MARKER'));
@@ -236,12 +223,52 @@ test(
       .state.items.find(
         (item) => item.kind === 'userMessage' && item.turnId === mixed.result.turnId,
       );
-    assert.match(JSON.stringify(filesMessage), /Attached: notes\.md/);
-    assert.ok(!JSON.stringify(filesMessage).includes('LASCORIA_TEXT_FILE_MARKER'));
+    // What the user sees (and search, export and triage read) is their own words and the
+    // file name; Muse's model-facing text holds the contents.
+    assert.equal(filesMessage.displayText, 'Use the notes\n\nAttached: notes.md');
+    assert.match(filesMessage.text, /<attached_file name="notes\.md" bytes="26">/);
     assert.equal(
       (await request(directory, 'attachment/list', { sessionId })).attachments.length,
       0,
     );
+
+    // A video goes to Muse's session store with media/upload on Send; Muse then uploads it
+    // to the model provider's file storage (the OpenAI-style Files API, 30-day expiry).
+    // Its own session, because the loopback model cannot finish a video task.
+    const videoSession = await start('start-c');
+    const mp4 = Buffer.concat([
+      Buffer.from([0, 0, 0, 24]),
+      Buffer.from('ftypisom'),
+      Buffer.from([0, 0, 2, 0]),
+      Buffer.from('isommp41'),
+      Buffer.alloc(70000, 1),
+    ]);
+    const clip = await stage(videoSession, mp4, 'clip.mp4', 'video');
+    assert.equal((await clip.finished).mediaType, 'video/mp4');
+    await assert.rejects(
+      stage(videoSession, Buffer.from('not a video'), 'fake.mp4', 'video').then((s) => s.finished),
+      /MP4 or QuickTime/,
+    );
+    const videoTask = await request(
+      directory,
+      'turn',
+      { sessionId: videoSession, text: 'Describe the clip', attachments: [clip.attachmentId] },
+      'video-task',
+    );
+    assert.ok(['applied', 'accepted'].includes(videoTask.status), JSON.stringify(videoTask));
+    const uploaded = await until(
+      async () => model.uploads,
+      (uploads) => uploads.some((body) => body.includes('video/mp4') && body.includes('ftypisom')),
+    );
+    assert.match(
+      uploaded.find((body) => body.includes('ftypisom')),
+      /expires_after\[seconds\]/,
+    );
+    assert.equal(
+      (await request(directory, 'attachment/list', { sessionId: videoSession })).attachments.length,
+      0,
+    );
+    assert.ok(!JSON.stringify((await status()).commands).includes('ftypisom'));
 
     // Archiving a session removes images still waiting in its composer.
     const waiting = await stage(other, PNG);
