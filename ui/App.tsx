@@ -13,6 +13,7 @@ import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
 import { SupportReport } from './SupportReport';
 import { TokenUse } from './TokenUse';
+import { UpdateSettings, type UpdateStatus } from './Updates';
 import {
   EditorSettings,
   GeneralSettings,
@@ -139,6 +140,59 @@ export function App() {
       clearInterval(timer);
     };
   }, [prefs.usageIndicator, usageLatest, account?.mode]);
+  // R3: this app's version, whether updates are configured, and any update found.
+  const [appUpdate, setAppUpdate] = useState<UpdateStatus | null>(null);
+  const [serviceRestart, setServiceRestart] = useState<'whenIdle' | 'restarting' | null>(null);
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) return;
+    void invoke<UpdateStatus>('update_status').then(setAppUpdate, () => {});
+  }, []);
+  const workRunning = status.sessions.some(
+    (s) =>
+      Boolean(s.state.activeTurnId) ||
+      (s.state.approvals?.length ?? 0) > 0 ||
+      (s.state.userInputs?.length ?? 0) > 0,
+  );
+  const serviceOutdated = Boolean(
+    connected &&
+    status.appVersion &&
+    appUpdate?.currentVersion &&
+    status.appVersion !== appUpdate.currentVersion,
+  );
+  useEffect(() => {
+    if (serviceRestart === 'whenIdle' && serviceOutdated && !workRunning) void restartService();
+  }, [serviceRestart, serviceOutdated, workRunning]);
+  // Automatic update checks: once a day when on (the default), backing off for six hours after
+  // a failure. Finding an update only shows a small toolbar notice; nothing downloads.
+  const updatePrefsRef = useRef(prefs.updates);
+  updatePrefsRef.current = prefs.updates;
+  useEffect(() => {
+    if (!appUpdate?.configured || prefs.updates?.automatic === false) return;
+    let cancelled = false;
+    let failedAt = 0;
+    const tick = async () => {
+      const settings = updatePrefsRef.current ?? {};
+      const due = Date.now() - (settings.lastCheckedAtMs ?? 0) > 24 * 3_600_000;
+      if (cancelled || !due || Date.now() - failedAt < 6 * 3_600_000) return;
+      try {
+        const result = await invoke<UpdateStatus>('update_check', {
+          channel: settings.channel ?? 'stable',
+        });
+        if (cancelled) return;
+        setAppUpdate((previous) => (previous ? { ...previous, ...result } : previous));
+        updatePrefs({ updates: { ...settings, lastCheckedAtMs: Date.now() } });
+      } catch {
+        failedAt = Date.now();
+      }
+    };
+    const first = setTimeout(() => void tick(), 20_000);
+    const timer = setInterval(() => void tick(), 3_600_000);
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [appUpdate?.configured, prefs.updates?.automatic]);
   // Usage belongs to one account: forget the menu figure when the account changes.
   useEffect(() => setMenuUsage(null), [account?.mode, account?.subscription?.state]);
   const accountOnboarded = useRef(false);
@@ -278,6 +332,7 @@ export function App() {
       | 'support'
       | 'general'
       | 'editor'
+      | 'updates'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
@@ -575,6 +630,32 @@ export function App() {
   async function pauseAll() {
     const fresh = await request<Status>('status');
     await request('stop', { sessions: fresh.sessions.map((s) => s.id) });
+  }
+  // R3: pause work and wait until the background service has exited.
+  async function pauseAndStopService() {
+    await flushDraftsRef.current();
+    await pauseAll();
+    for (let i = 0; i < 100; i++) {
+      try {
+        await request('status');
+      } catch {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    throw new Error('The background service did not stop; try again in a moment');
+  }
+  // R3 handoff: move the background service to this app's version, then reconnect.
+  async function restartService() {
+    setServiceRestart('restarting');
+    try {
+      await pauseAndStopService();
+      await boot();
+      setServiceRestart(null);
+    } catch (e) {
+      setServiceRestart(null);
+      setError(`Background service restart failed: ${String(e)}`);
+    }
   }
   async function pauseIfPreferred() {
     if (latestPrefs.current.closeBehavior === 'pause') await pauseAll();
@@ -1044,6 +1125,11 @@ export function App() {
               {Object.keys(draftConflicts).length + Object.keys(relayDrafts.conflicts).length})
             </button>
           )}
+          {appUpdate?.available && (
+            <button className="update-indicator" onClick={() => setModal('updates')}>
+              Update available
+            </button>
+          )}
           {prefs.usageIndicator && account?.mode !== 'apiKey' && (
             <button
               className="usage-indicator"
@@ -1325,15 +1411,6 @@ export function App() {
                     Rename session
                   </button>
                 )}
-                {!session.workspaceDiscarded && (
-                  <button
-                    className="session-settings-trigger"
-                    onClick={() => void openInEditor(session)}
-                    title="Choose the editor in Settings"
-                  >
-                    Open in editor
-                  </button>
-                )}
                 {status.features?.includes('transcriptExport') && (
                   <button
                     className="session-settings-trigger"
@@ -1375,6 +1452,15 @@ export function App() {
                     </div>
                   </details>
                 )}
+                {!session.workspaceDiscarded && (
+                  <button
+                    className="session-settings-trigger"
+                    onClick={() => void openInEditor(session)}
+                    title="Choose the editor in Settings"
+                  >
+                    Open in editor
+                  </button>
+                )}
               </div>
               <p className="muted">Tasks, decisions and the evidence behind a change.</p>
             </div>
@@ -1388,6 +1474,36 @@ export function App() {
             <div className="banner error" role="alert">
               {error}
               <button onClick={() => void boot()}>Reconnect</button>
+            </div>
+          )}
+          {serviceOutdated && (
+            <div className="banner" role="status" aria-label="Finish updating">
+              {serviceRestart === 'restarting'
+                ? 'Restarting the background service…'
+                : serviceRestart === 'whenIdle'
+                  ? `Lascoria ${appUpdate?.currentVersion} is installed. The background service will restart when running work finishes.`
+                  : `Lascoria ${appUpdate?.currentVersion} is installed, but the background service is still ${status.appVersion}.`}
+              {serviceRestart === null && (
+                <>
+                  {workRunning ? (
+                    <>
+                      <button onClick={() => setServiceRestart('whenIdle')}>
+                        Restart when work finishes
+                      </button>
+                      <button onClick={() => void restartService()}>
+                        Pause work and restart now
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => void restartService()}>
+                      Restart background service
+                    </button>
+                  )}
+                </>
+              )}
+              {serviceRestart === 'whenIdle' && (
+                <button onClick={() => setServiceRestart(null)}>Cancel</button>
+              )}
             </div>
           )}
           {notice && (
@@ -2994,6 +3110,14 @@ export function App() {
             </h3>
             {modal === 'general' && <GeneralSettings prefs={prefs} update={updatePrefs} />}
             {modal === 'editor' && <EditorSettings prefs={prefs} update={updatePrefs} />}
+            {modal === 'updates' && (
+              <UpdateSettings
+                prefs={prefs}
+                update={updatePrefs}
+                workRunning={workRunning}
+                pauseWork={pauseAndStopService}
+              />
+            )}
             {modal === 'notifications' && (
               <NotificationSettings
                 settings={prefs.notifications}

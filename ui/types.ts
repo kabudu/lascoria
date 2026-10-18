@@ -48,6 +48,8 @@ export interface Status {
   relayConnections?: { sessions: string[]; allowAgentMessages: boolean }[];
   relayUnread?: { sessionId: string; peerId: string; count: number }[];
   version?: string;
+  /** The background service's release version (R3 handoff). */
+  appVersion?: string;
   features?: string[];
   pid: number;
   sessions: SessionRow[];
@@ -95,6 +97,8 @@ export interface Prefs {
   usageIndicator?: boolean;
   /** D2: editor for Open in editor: 'system', a preset id or 'custom'. */
   editor?: string;
+  /** R3: update preferences. Automatic checks are on unless turned off. */
+  updates?: { automatic?: boolean; channel?: 'stable' | 'beta'; lastCheckedAtMs?: number };
   collapsed?: string[];
   acknowledgedInterruptions?: string[];
   acknowledgedTaskFacts?: string[];

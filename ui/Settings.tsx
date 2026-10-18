@@ -13,6 +13,7 @@ export const SETTINGS_GROUPS = [
       ['general', 'General', 'theme appearance dark light close window quit background'],
       ['editor', 'Editor', 'open editor code cursor zed sublime folder file'],
       ['notifications', 'Notifications', 'desktop alerts questions approvals finished sessions'],
+      ['updates', 'Updates', 'version upgrade release beta channel install download'],
     ],
   },
   {
