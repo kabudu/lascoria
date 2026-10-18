@@ -128,9 +128,19 @@ test(
       request(directory, 'start', { projectId: project.id, projectRevision: 1 }, 'stale-project'),
       /Project changed/,
     );
+    // A Project snapshot names one of the session's folders; a path cannot be supplied.
     await assert.rejects(
       request(directory, 'artifact/capture', { sessionId }, 'wrong-diff'),
-      /repository selection/,
+      /Choose which Project folder/,
+    );
+    await assert.rejects(
+      request(
+        directory,
+        'artifact/capture',
+        { sessionId, folderId: 'not-a-folder', path: app },
+        'wrong-folder',
+      ),
+      /no longer part/,
     );
     const stopped = new Promise((r) => daemon.once('exit', r));
     daemon.kill('SIGTERM');
