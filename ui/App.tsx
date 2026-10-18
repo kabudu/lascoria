@@ -76,6 +76,19 @@ function workflowSummary(value: string) {
     return value;
   }
 }
+/** "1 image attached", "2 videos attached" or "3 files attached" for a user message. */
+function attachedLabel(attachments: { mediaType?: string }[]) {
+  const n = attachments.length;
+  const kinds = new Set(attachments.map((a) => a.mediaType?.split('/')[0]));
+  const noun =
+    kinds.size === 1 && kinds.has('image')
+      ? 'image'
+      : kinds.size === 1 && kinds.has('video')
+        ? 'video'
+        : 'file';
+  return `${n} ${noun}${n === 1 ? '' : 's'} attached`;
+}
+
 export function App() {
   const [status, setStatus] = useState<Status>(empty),
     [prefs, setPrefs] = useState<Prefs>({
@@ -2374,9 +2387,7 @@ export function App() {
                             </pre>
                             {item.kind === 'userMessage' && (item.attachments?.length ?? 0) > 0 && (
                               <small className="transcript-attachments">
-                                {item.attachments?.length === 1
-                                  ? '1 image attached'
-                                  : `${item.attachments?.length} images attached`}
+                                {attachedLabel(item.attachments ?? [])}
                               </small>
                             )}
                             <details>
@@ -2955,9 +2966,7 @@ export function App() {
                         disabled={!available || busy || task?.provenance === 'native'}
                         onPaste={(event) => {
                           if (!status.features?.includes('attachments')) return;
-                          const files = [...event.clipboardData.files].filter((f) =>
-                            f.type.startsWith('image/'),
-                          );
+                          const files = [...event.clipboardData.files];
                           if (!files.length) return;
                           event.preventDefault();
                           setImageDrop({ files, at: Date.now() });

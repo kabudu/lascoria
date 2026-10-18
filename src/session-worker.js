@@ -1,7 +1,7 @@
 // Private SDK bridge. Only the Rust supervisor owns the public control API.
 import { Session } from '@muse-code/sdk';
 import { isDeepStrictEqual } from 'node:util';
-import { readFile } from 'node:fs/promises';
+import { open, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { bounded, spawnRuntime } from './runtime.js';
 
@@ -482,6 +482,7 @@ export async function createSession(send, onDeath) {
     }
     if (stale || !runtime.session?.fold.current || sessionId !== params.sessionId)
       throw new ValidationError('Session state is not current');
+    if (operation === 'mediaUpload') return uploadChunk(params);
     let method;
     let wire;
     if (operation === 'turn' || operation === 'steer') {
@@ -520,6 +521,34 @@ export async function createSession(send, onDeath) {
           });
         }
       }
+      if (params.videos !== undefined) {
+        // Already in Muse's session store through media/upload; the part names the receipt.
+        if (operation !== 'turn' || !Array.isArray(params.videos) || params.videos.length > 1)
+          throw new ValidationError('A video can be added to a new task only');
+        if (input[0].type !== 'text')
+          throw new ValidationError('Add a video to a plain task, not a shortcut');
+        for (const video of params.videos) input.push({ type: 'video', uploadId: video.uploadId });
+      }
+      if (params.files !== undefined) {
+        // Text files become clearly delimited text after the task; the transcript keeps the
+        // user's own words and names the files.
+        if (operation !== 'turn' || !Array.isArray(params.files) || params.files.length > 4)
+          throw new ValidationError('Files can be added to a new task only');
+        if (input[0].type !== 'text')
+          throw new ValidationError('Add files to a plain task, not a shortcut');
+        for (const file of params.files) {
+          const bytes = await readFile(file.path);
+          if (createHash('sha256').update(bytes).digest('hex') !== file.sha256)
+            throw new ValidationError('An attached file changed after it was checked');
+          const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+          const name = String(file.name).replace(/[\r\n"]/g, ' ');
+          input.push({
+            type: 'text',
+            text: `\n\n<attached_file name="${name}" bytes="${bytes.length}">\n${text}\n</attached_file>`,
+          });
+        }
+        wire.displayText = `${params.text}\n\nAttached: ${params.files.map((f) => f.name).join(', ')}`;
+      }
       if (params.workspaceRoots !== undefined) {
         // Sticky native replacement, bound at this turn's launch (turn/start.workspaceRoots).
         // The supervisor validated the saved Project; refuse anything that is not an idle new task.
@@ -547,7 +576,7 @@ export async function createSession(send, onDeath) {
             'Apply Project folder changes with a plain task, then use the shortcut',
           );
         wire.input = [{ type: 'text', text: params.projectNote }, ...input];
-        wire.displayText = params.text;
+        wire.displayText ??= params.text;
       }
       if (operation === 'steer') {
         if (!params.turnId || runtime.session.fold.activeTurnId !== params.turnId)
@@ -609,6 +638,65 @@ export async function createSession(send, onDeath) {
       wire = { sessionId, userInputId: params.userInputId, answers: params.answers };
     } else throw new ValidationError('Unsupported operation');
     return runtime.command(method, wire, commandId);
+  }
+
+  /**
+   * One `media/upload` chunk of a staged video, read from the verified private file. The
+   * command identity is derived from the upload receipt and chunk position, so a resent task
+   * replays chunks Muse already recorded instead of storing them twice.
+   */
+  async function uploadChunk(params) {
+    const { path, uploadId, chunkIndex, chunkCount, chunkBytes, bytes, mediaType } = params;
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(uploadId) ||
+      !['video/mp4', 'video/quicktime'].includes(mediaType) ||
+      !Number.isInteger(chunkIndex) ||
+      !Number.isInteger(chunkCount) ||
+      chunkIndex < 0 ||
+      chunkIndex >= chunkCount ||
+      chunkCount > 64 ||
+      !Number.isInteger(chunkBytes) ||
+      chunkBytes > 4 * 1024 * 1024 ||
+      !Number.isInteger(bytes) ||
+      Math.ceil(bytes / chunkBytes) !== chunkCount
+    )
+      throw new ValidationError('Invalid video upload');
+    const file = await open(path, 'r');
+    let chunk;
+    try {
+      if (chunkIndex === 0) {
+        // Check the whole file once, streaming, before Muse stores any of it.
+        const hash = createHash('sha256');
+        let total = 0;
+        for await (const piece of file.createReadStream({ autoClose: false, start: 0 })) {
+          hash.update(piece);
+          total += piece.length;
+        }
+        if (total !== bytes || hash.digest('hex') !== params.sha256)
+          throw new ValidationError('The attached video changed after it was checked');
+      }
+      const length = Math.min(chunkBytes, bytes - chunkIndex * chunkBytes);
+      chunk = Buffer.alloc(length);
+      const { bytesRead } = await file.read(chunk, 0, length, chunkIndex * chunkBytes);
+      if (bytesRead !== length) throw new ValidationError('The attached video is incomplete');
+    } finally {
+      await file.close();
+    }
+    const digest = createHash('sha256').update(`${uploadId}:${chunkIndex}`).digest('hex');
+    const commandId = `${uploadId.slice(0, 19)}${((parseInt(digest[0], 16) & 3) | 8).toString(16)}${digest.slice(1, 4)}-${digest.slice(4, 16)}`;
+    return runtime.command(
+      'media/upload',
+      {
+        sessionId,
+        uploadId,
+        chunkIndex,
+        chunkCount,
+        totalBytes: bytes,
+        mediaType,
+        chunkBase64: chunk.toString('base64'),
+      },
+      commandId,
+    );
   }
 
   let busy = false;

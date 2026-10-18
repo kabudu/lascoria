@@ -72,18 +72,20 @@ test('composer images: choose, paste, refuse, survive reload, remove and send wi
     const page = await context.newPage();
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Pictures', exact: true })).toBeVisible();
-    const strip = page.getByRole('list', { name: 'Images for the next task' });
+    const strip = page.getByRole('list', { name: 'Attachments for the next task' });
     await expect(strip).toHaveCount(0);
 
-    // Choosing stages the image; nothing is sent.
-    await page.getByLabel('Choose images to attach').setInputFiles([
+    // Choosing stages the image and the text file; nothing is sent. A PDF is refused.
+    await page.getByLabel('Choose files to attach').setInputFiles([
       { name: 'diagram.png', mimeType: 'image/png', buffer: PNG },
-      { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not an image') },
+      { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('LASCORIA_FILE_MARKER') },
+      { name: 'report.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7') },
     ]);
     await expect(strip.getByText('diagram.png')).toBeVisible();
+    await expect(strip.getByText('notes.txt')).toBeVisible();
     await expect(strip).toContainText('1×1');
     await expect(
-      page.getByRole('status').filter({ hasText: 'notes.txt is not a PNG' }),
+      page.getByRole('status').filter({ hasText: "report.pdf can't be attached" }),
     ).toBeVisible();
     expect((await status()).commands.filter((c: any) => c.operation === 'turn')).toHaveLength(0);
 
@@ -97,7 +99,7 @@ test('composer images: choose, paste, refuse, survive reload, remove and send wi
     await expect(strip.getByText('pasted.png')).toBeVisible();
     await expect(strip.getByText('Preparing', { exact: false })).toHaveCount(0);
     expect((await request(directory, 'attachment/list', { sessionId })).attachments).toHaveLength(
-      2,
+      3,
     );
     expect((await new AxeBuilder({ page }).include('form').analyze()).violations).toEqual([]);
 
@@ -111,7 +113,7 @@ test('composer images: choose, paste, refuse, survive reload, remove and send wi
       .poll(
         async () => (await request(directory, 'attachment/list', { sessionId })).attachments.length,
       )
-      .toBe(1);
+      .toBe(2);
 
     await page
       .getByRole('textbox', { name: 'New task for this session' })
@@ -127,18 +129,21 @@ test('composer images: choose, paste, refuse, survive reload, remove and send wi
       })
       .toBe(true);
     const turn = (await status()).commands.find((c: any) => c.operation === 'turn');
-    expect(turn.params.attachments).toHaveLength(1);
+    expect(turn.params.attachments).toHaveLength(2);
     expect(JSON.stringify(turn)).not.toContain(PNG.toString('base64'));
+    expect(JSON.stringify(turn)).not.toContain('LASCORIA_FILE_MARKER');
     await expect(strip).toHaveCount(0);
     expect((await request(directory, 'attachment/list', { sessionId })).attachments).toHaveLength(
       0,
     );
     await expect(page.getByText('1 image attached')).toBeVisible();
+    // The transcript keeps the user's words and names the file, not its contents.
+    await expect(page.getByText('Attached: notes.txt')).toBeVisible();
     await page.setViewportSize({ width: 800, height: 700 });
     expect(
       await page
         .locator('form')
-        .filter({ hasText: 'Add image' })
+        .filter({ hasText: 'Attach file' })
         .evaluate((e) => e.scrollWidth <= e.clientWidth + 1),
     ).toBe(true);
   } finally {

@@ -1,8 +1,9 @@
-//! Session-owned image staging for the composer (R14). Bytes arrive in bounded chunks over the
-//! normal 64 KiB control channel, are written only inside Lascoria's private state, and are
-//! validated by content (signature, size, header dimensions, SHA-256) before they can be sent.
-//! The command journal records attachment IDs only; the session worker reads the verified file
-//! on explicit send. Nothing here contacts Muse or a model.
+//! Session-owned attachment staging for the composer (R14): images, MP4/QuickTime videos and
+//! UTF-8 text files. Bytes arrive in bounded chunks over the normal 64 KiB control channel,
+//! are written only inside Lascoria's private state, and are validated by content (signature
+//! or encoding, size, header dimensions, SHA-256) before they can be sent. The command journal
+//! records attachment IDs only; the session worker reads the verified file on explicit send.
+//! Nothing here contacts Muse or a model.
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -16,9 +17,19 @@ use std::{
 pub const MAX_IMAGE_BYTES: u64 = 5 * 1024 * 1024;
 pub const MAX_TURN_BYTES: u64 = 6 * 1024 * 1024;
 pub const MAX_PER_TURN: usize = 4;
+/// Muse keeps an uploaded video in the session's own store for the life of the session, so
+/// the cap also bounds the copy it retains.
+pub const MAX_VIDEO_BYTES: u64 = 100 * 1024 * 1024;
+pub const MAX_VIDEOS_PER_TURN: usize = 1;
+/// Bytes per `media/upload` call, well inside the SDK's 10 MiB frame once base64-encoded.
+pub const VIDEO_CHUNK_BYTES: u64 = 4 * 1024 * 1024;
+/// Text files travel as part of the task text, so they are bounded like prompt text.
+pub const MAX_TEXT_BYTES: u64 = 256 * 1024;
+pub const MAX_TEXT_TURN_BYTES: u64 = 512 * 1024;
+pub const MAX_TEXTS_PER_TURN: usize = 4;
 /// Staged items, finished or not, per session and across all sessions.
 pub const MAX_PER_SESSION: usize = 8;
-pub const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+pub const MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 /// Largest side and pixel count accepted from image headers.
 pub const MAX_SIDE: u32 = 8192;
 pub const MAX_PIXELS: u64 = 40_000_000;
@@ -29,6 +40,43 @@ const MAX_NAME: usize = 200;
 const PARTIAL_TTL_MS: u128 = 10 * 60 * 1000;
 
 const MEDIA_TYPES: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+const VIDEO_TYPES: [&str; 2] = ["video/mp4", "video/quicktime"];
+
+/// What an attachment is, declared at begin (so the right size limit applies before any byte
+/// arrives) and confirmed by content at finish.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Kind {
+    Image,
+    Video,
+    Text,
+}
+impl Kind {
+    fn parse(value: &Value) -> Result<Self> {
+        Ok(match value.as_str().unwrap_or("image") {
+            "image" => Self::Image,
+            "video" => Self::Video,
+            "text" => Self::Text,
+            _ => bail!("Only images, MP4 or QuickTime videos and text files can be attached"),
+        })
+    }
+    fn of(manifest: &Value) -> Self {
+        Self::parse(&manifest["kind"]).unwrap_or(Self::Image)
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Video => "video",
+            Self::Text => "text",
+        }
+    }
+    fn limit(self) -> (u64, &'static str) {
+        match self {
+            Self::Image => (MAX_IMAGE_BYTES, "Images can be at most 5 MB"),
+            Self::Video => (MAX_VIDEO_BYTES, "Videos can be at most 100 MB"),
+            Self::Text => (MAX_TEXT_BYTES, "Text files can be at most 256 KB"),
+        }
+    }
+}
 
 fn uuid(value: &Value, what: &str) -> Result<String> {
     let id = value.as_str().with_context(|| format!("{what} required"))?;
@@ -245,7 +293,7 @@ pub fn sniff(head: &[u8]) -> Result<(&'static str, u32, u32)> {
 
 fn public(manifest: &Value) -> Value {
     json!({
-        "id": manifest["id"], "name": manifest["name"], "mediaType": manifest["mediaType"],
+        "id": manifest["id"], "kind": Kind::of(manifest).name(), "name": manifest["name"], "mediaType": manifest["mediaType"],
         "bytes": manifest["bytes"], "width": manifest["width"], "height": manifest["height"],
         "status": manifest["status"], "received": manifest["received"],
     })
@@ -254,14 +302,14 @@ fn public(manifest: &Value) -> Value {
 pub fn begin(root: &Path, params: &Value) -> Result<Value> {
     let session = uuid(&params["sessionId"], "session")?;
     let id = uuid(&params["attachmentId"], "attachment ID")?;
-    let size = params["bytes"].as_u64().context("Image size required")?;
-    ensure!(size > 0, "The image is empty");
-    ensure!(
-        size <= MAX_IMAGE_BYTES,
-        "Images can be at most {} MB",
-        MAX_IMAGE_BYTES / 1024 / 1024
-    );
-    let name = params["name"].as_str().unwrap_or("Image").trim();
+    let kind = Kind::parse(&params["kind"])?;
+    let size = params["bytes"]
+        .as_u64()
+        .context("Attachment size required")?;
+    ensure!(size > 0, "The file is empty");
+    let (limit, message) = kind.limit();
+    ensure!(size <= limit, "{message}");
+    let name = params["name"].as_str().unwrap_or("Attachment").trim();
     let name: String = name
         .chars()
         .filter(|c| !c.is_control())
@@ -274,8 +322,10 @@ pub fn begin(root: &Path, params: &Value) -> Result<Value> {
     if let Some(existing) = read_manifest(&dir, &id)? {
         // A retried begin with the same identity is the same upload; resume from `received`.
         ensure!(
-            existing["bytes"] == size && existing["sessionId"] == session,
-            "Attachment ID reused for a different image"
+            existing["bytes"] == size
+                && existing["sessionId"] == session
+                && Kind::of(&existing) == kind,
+            "Attachment ID reused for a different file"
         );
         return Ok(public(&existing));
     }
@@ -285,18 +335,22 @@ pub fn begin(root: &Path, params: &Value) -> Result<Value> {
     let staged = manifests(&dir)?;
     ensure!(
         staged.len() < MAX_PER_SESSION,
-        "A session can hold {MAX_PER_SESSION} images waiting to be sent; remove one first"
+        "A session can hold {MAX_PER_SESSION} attachments waiting to be sent; remove one first"
     );
     ensure!(
         reserved + size <= MAX_TOTAL_BYTES,
-        "Waiting images use the {} MB storage limit; send or remove some first",
+        "Waiting attachments use the {} MB storage limit; send or remove some first",
         MAX_TOTAL_BYTES / 1024 / 1024
     );
     drop(lascoria_runtime::platform::private_file(
         &bytes_path(&dir, &id),
         true,
     )?);
-    let manifest = json!({"id":id,"sessionId":session,"name":if name.is_empty() {"Image".into()} else {name},"bytes":size,"received":0,"status":"uploading","createdAtMillis":now as u64});
+    let mut manifest = json!({"id":id,"sessionId":session,"kind":kind.name(),"name":if name.is_empty() {"Attachment".into()} else {name},"bytes":size,"received":0,"status":"uploading","createdAtMillis":now as u64});
+    if kind == Kind::Video {
+        // Muse's receipt for the upload: minted once, so a resent task finds the same upload.
+        manifest["uploadId"] = json!(uuid::Uuid::now_v7().to_string());
+    }
     write_manifest(&dir, &id, &manifest)?;
     Ok(public(&manifest))
 }
@@ -316,14 +370,14 @@ pub fn append(root: &Path, params: &Value) -> Result<Value> {
     ensure!(manifest["sessionId"] == session, "Unknown attachment");
     ensure!(
         manifest["status"] == "uploading",
-        "This image has already been checked"
+        "This file has already been checked"
     );
     let received = manifest["received"].as_u64().unwrap_or(0);
     let size = manifest["bytes"].as_u64().unwrap_or(0);
     let end = offset
         .checked_add(chunk.len() as u64)
         .context("Chunk offset overflow")?;
-    ensure!(end <= size, "Image is larger than announced");
+    ensure!(end <= size, "The file is larger than announced");
     let mut file = lascoria_runtime::platform::private_file(&bytes_path(&dir, &id), false)?;
     if end <= received {
         // A retried chunk must match what was already written.
@@ -342,45 +396,111 @@ pub fn append(root: &Path, params: &Value) -> Result<Value> {
     Ok(public(&manifest))
 }
 
+/// A video's container type from its first box. Muse accepts any bytes labelled as video, so
+/// Lascoria checks the ISO base media `ftyp` box itself.
+pub fn sniff_video(head: &[u8]) -> Result<&'static str> {
+    ensure!(
+        head.len() >= 16
+            && &head[4..8] == b"ftyp"
+            && u32::from_be_bytes([head[0], head[1], head[2], head[3]]) >= 16
+            && head[8..12]
+                .iter()
+                .all(|b| b.is_ascii_graphic() || *b == b' '),
+        "Videos must be MP4 or QuickTime (.mp4, .m4v or .mov)"
+    );
+    Ok(if &head[8..12] == b"qt  " {
+        "video/quicktime"
+    } else {
+        "video/mp4"
+    })
+}
+
+/// Text files must be UTF-8 without NUL bytes; anything else is treated as binary and refused.
+pub fn check_text(bytes: &[u8]) -> Result<()> {
+    let text = std::str::from_utf8(bytes).map_err(|_| {
+        anyhow::anyhow!("Only UTF-8 text files can be attached; this file looks binary")
+    })?;
+    ensure!(
+        !text.contains('\0'),
+        "Only UTF-8 text files can be attached; this file looks binary"
+    );
+    Ok(())
+}
+
 pub fn finish(root: &Path, params: &Value) -> Result<Value> {
     let session = uuid(&params["sessionId"], "session")?;
     let id = uuid(&params["attachmentId"], "attachment ID")?;
     let expected = params["sha256"]
         .as_str()
-        .context("Image checksum required")?;
+        .context("Attachment checksum required")?;
     let dir = session_dir(root, &session)?;
     let mut manifest = read_manifest(&dir, &id)?.context("Unknown attachment")?;
     ensure!(manifest["sessionId"] == session, "Unknown attachment");
     if manifest["status"] == "ready" {
-        ensure!(manifest["sha256"] == expected, "Image checksum changed");
+        ensure!(
+            manifest["sha256"] == expected,
+            "Attachment checksum changed"
+        );
         return Ok(public(&manifest));
     }
+    let kind = Kind::of(&manifest);
     let checked = (|| {
         let path = bytes_path(&dir, &id);
-        let bytes = fs::read(&path)?;
+        let mut file = fs::File::open(&path)?;
+        let length = file.metadata()?.len();
         ensure!(
-            bytes.len() as u64 == manifest["bytes"].as_u64().unwrap_or(0)
+            length == manifest["bytes"].as_u64().unwrap_or(0)
                 && manifest["received"] == manifest["bytes"],
-            "The image did not arrive completely; add it again"
+            "The file did not arrive completely; add it again"
         );
-        let digest: String = Sha256::digest(&bytes)
+        // Stream the checksum: a video is never held in memory whole.
+        let mut hasher = Sha256::new();
+        let mut head = Vec::new();
+        let mut text = Vec::new();
+        let mut buffer = vec![0; 1024 * 1024];
+        loop {
+            let read = file.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..read]);
+            if head.len() < 64 * 1024 {
+                let take = read.min(64 * 1024 - head.len());
+                head.extend_from_slice(&buffer[..take]);
+            }
+            if kind == Kind::Text {
+                text.extend_from_slice(&buffer[..read]);
+            }
+        }
+        let digest: String = hasher
+            .finalize()
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
         ensure!(
             digest == expected,
-            "The image changed while it was being added; add it again"
+            "The file changed while it was being added; add it again"
         );
-        let (media, width, height) = sniff(&bytes[..bytes.len().min(64 * 1024)])?;
-        Ok::<_, anyhow::Error>((digest, media, width, height))
+        let found = match kind {
+            Kind::Image => {
+                let (media, width, height) = sniff(&head)?;
+                json!({"mediaType":media,"width":width,"height":height})
+            }
+            Kind::Video => json!({"mediaType":sniff_video(&head)?}),
+            Kind::Text => {
+                check_text(&text)?;
+                json!({"mediaType":"text/plain"})
+            }
+        };
+        Ok::<_, anyhow::Error>((digest, found))
     })();
     match checked {
-        Ok((digest, media, width, height)) => {
+        Ok((digest, found)) => {
             manifest["status"] = json!("ready");
             manifest["sha256"] = json!(digest);
-            manifest["mediaType"] = json!(media);
-            manifest["width"] = json!(width);
-            manifest["height"] = json!(height);
+            for (key, value) in found.as_object().unwrap() {
+                manifest[key] = value.clone();
+            }
             write_manifest(&dir, &id, &manifest)?;
             Ok(public(&manifest))
         }
@@ -402,36 +522,55 @@ pub fn list(root: &Path, params: &Value) -> Result<Value> {
     let session = uuid(&params["sessionId"], "session")?;
     let dir = session_dir(root, &session)?;
     Ok(
-        json!({"attachments": manifests(&dir)?.iter().filter(|m| m["status"] == "ready").map(public).collect::<Vec<_>>(),"limits":{"imageBytes":MAX_IMAGE_BYTES,"turnBytes":MAX_TURN_BYTES,"perTurn":MAX_PER_TURN,"perSession":MAX_PER_SESSION,"chunkBase64":MAX_CHUNK_BASE64,"mediaTypes":MEDIA_TYPES}}),
+        json!({"attachments": manifests(&dir)?.iter().filter(|m| m["status"] == "ready").map(public).collect::<Vec<_>>(),"limits":{"imageBytes":MAX_IMAGE_BYTES,"turnBytes":MAX_TURN_BYTES,"perTurn":MAX_PER_TURN,"videoBytes":MAX_VIDEO_BYTES,"videosPerTurn":MAX_VIDEOS_PER_TURN,"textBytes":MAX_TEXT_BYTES,"textsPerTurn":MAX_TEXTS_PER_TURN,"perSession":MAX_PER_SESSION,"chunkBase64":MAX_CHUNK_BASE64,"mediaTypes":MEDIA_TYPES,"videoTypes":VIDEO_TYPES}}),
     )
 }
 
-/// Resolve a turn's attachment IDs to verified files for the worker. Order is the user's.
+/// Resolve a turn's attachment IDs to verified files for the worker, in the user's order.
 pub fn for_turn(root: &Path, session: &str, ids: &Value) -> Result<Vec<Value>> {
     let ids = ids.as_array().context("Attachments must be a list")?;
+    let most = MAX_PER_TURN + MAX_VIDEOS_PER_TURN + MAX_TEXTS_PER_TURN;
     ensure!(
-        !ids.is_empty() && ids.len() <= MAX_PER_TURN,
-        "A task can include 1 to {MAX_PER_TURN} images"
+        !ids.is_empty() && ids.len() <= most,
+        "A task can include 1 to {most} attachments"
     );
     let dir = session_dir(root, session)?;
     let mut seen = std::collections::HashSet::new();
-    let mut total = 0;
-    let mut images = Vec::new();
+    let mut counts = std::collections::HashMap::<&str, (usize, u64)>::new();
+    let mut items = Vec::new();
     for id in ids {
         let id = uuid(id, "attachment ID")?;
-        ensure!(seen.insert(id.clone()), "The same image is attached twice");
+        ensure!(seen.insert(id.clone()), "The same file is attached twice");
         let manifest = read_manifest(&dir, &id)?
             .filter(|m| m["status"] == "ready" && m["sessionId"] == session)
-            .context("An attached image is no longer available; remove it and add it again")?;
-        total += manifest["bytes"].as_u64().unwrap_or(0);
-        images.push(json!({"path":bytes_path(&dir, &id),"sha256":manifest["sha256"],"mediaType":manifest["mediaType"],"width":manifest["width"],"height":manifest["height"],"bytes":manifest["bytes"]}));
+            .context("An attachment is no longer available; remove it and add it again")?;
+        let kind = Kind::of(&manifest);
+        let entry = counts.entry(kind.name()).or_default();
+        entry.0 += 1;
+        entry.1 += manifest["bytes"].as_u64().unwrap_or(0);
+        items.push(json!({"kind":kind.name(),"path":bytes_path(&dir, &id),"sha256":manifest["sha256"],"mediaType":manifest["mediaType"],"width":manifest["width"],"height":manifest["height"],"bytes":manifest["bytes"],"name":manifest["name"],"uploadId":manifest["uploadId"]}));
     }
+    let (images, image_bytes) = counts.get("image").copied().unwrap_or_default();
+    let (videos, _) = counts.get("video").copied().unwrap_or_default();
+    let (texts, text_bytes) = counts.get("text").copied().unwrap_or_default();
     ensure!(
-        total <= MAX_TURN_BYTES,
+        images <= MAX_PER_TURN,
+        "A task can include {MAX_PER_TURN} images"
+    );
+    ensure!(
+        image_bytes <= MAX_TURN_BYTES,
         "Images in one task can total at most {} MB",
         MAX_TURN_BYTES / 1024 / 1024
     );
-    Ok(images)
+    ensure!(
+        videos <= MAX_VIDEOS_PER_TURN,
+        "A task can include one video"
+    );
+    ensure!(
+        texts <= MAX_TEXTS_PER_TURN && text_bytes <= MAX_TEXT_TURN_BYTES,
+        "A task can include {MAX_TEXTS_PER_TURN} text files, 512 KB in total"
+    );
+    Ok(items)
 }
 
 /// After Muse has the bytes (its own durable log keeps them), the staged copies go.
@@ -445,7 +584,7 @@ pub fn sent(root: &Path, session: &str, ids: &Value) {
     }
 }
 
-/// Remove every staged image of a session, for archived-session cleanup.
+/// Remove every staged attachment of a session, for archived-session cleanup.
 pub fn remove_session(root: &Path, session: &str) {
     if uuid::Uuid::parse_str(session).is_ok() {
         let _ = fs::remove_dir_all(root.join("attachments").join(session));
@@ -684,7 +823,7 @@ mod tests {
         let begin_one = |session: &str| {
             begin(
                 &root.0,
-                &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"bytes":MAX_IMAGE_BYTES}),
+                &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"kind":"video","bytes":MAX_VIDEO_BYTES}),
             )
         };
         // Interleave begins across two sessions without sending a single chunk.
@@ -699,17 +838,17 @@ mod tests {
                 }
             }
         }
-        let fit = (MAX_TOTAL_BYTES / MAX_IMAGE_BYTES) as usize;
+        let fit = (MAX_TOTAL_BYTES / MAX_VIDEO_BYTES) as usize;
         assert_eq!(
             admitted.len(),
             fit,
-            "12 announced 5 MiB uploads fit in 64 MiB"
+            "two announced 100 MiB videos fit in 256 MiB"
         );
         assert_eq!(refused, 16 - fit);
         assert!(reserved_bytes(&root.0, crate::db::now_ms()) <= MAX_TOTAL_BYTES);
 
         // Discarding frees its reservation; the next begin fits again.
-        let (owner, id) = admitted.pop().unwrap();
+        let (owner, id) = admitted.remove(0);
         discard(
             &root.0,
             &json!({"sessionId":sessions[owner],"attachmentId":id}),
@@ -737,7 +876,7 @@ mod tests {
                     let session = if n % 2 == 0 { "00000000-0000-4000-8000-000000000001" } else { "00000000-0000-4000-8000-000000000002" };
                     begin(
                         &root.0,
-                        &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"bytes":MAX_IMAGE_BYTES}),
+                        &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"kind":"video","bytes":MAX_VIDEO_BYTES}),
                     )
                     .is_ok()
                 })
@@ -749,8 +888,114 @@ mod tests {
             .map(|t| t.join().unwrap())
             .filter(|ok| *ok)
             .count();
-        assert_eq!(admitted, (MAX_TOTAL_BYTES / MAX_IMAGE_BYTES) as usize);
+        assert_eq!(admitted, (MAX_TOTAL_BYTES / MAX_VIDEO_BYTES) as usize);
         assert!(reserved_bytes(&root.0, crate::db::now_ms()) <= MAX_TOTAL_BYTES);
+        Ok(())
+    }
+
+    fn stage(root: &Path, session: &str, kind: &str, name: &str, bytes: &[u8]) -> Result<Value> {
+        let id = uuid::Uuid::new_v4().to_string();
+        begin(
+            root,
+            &json!({"sessionId":session,"attachmentId":id,"kind":kind,"name":name,"bytes":bytes.len()}),
+        )?;
+        for (n, chunk) in bytes.chunks(30_000).enumerate() {
+            append(
+                root,
+                &json!({"sessionId":session,"attachmentId":id,"offset":n * 30_000,"data":encode(chunk)}),
+            )?;
+        }
+        finish(
+            root,
+            &json!({"sessionId":session,"attachmentId":id,"sha256":sha(bytes)}),
+        )
+    }
+
+    #[test]
+    fn videos_and_text_files_are_checked_by_content_and_bounded_per_task() -> Result<()> {
+        let root = root();
+        let session = uuid::Uuid::new_v4().to_string();
+        let mut mp4 = vec![0, 0, 0, 24];
+        mp4.extend_from_slice(b"ftypisom\0\0\x02\0isommp41");
+        mp4.extend(std::iter::repeat_n(1u8, 100_000));
+        let video = stage(&root.0, &session, "video", "clip.mp4", &mp4)?;
+        assert_eq!(
+            (video["kind"].as_str(), video["mediaType"].as_str()),
+            (Some("video"), Some("video/mp4"))
+        );
+        let mut mov = vec![0, 0, 0, 20];
+        mov.extend_from_slice(b"ftypqt  \0\0\x02\0qt  ");
+        let quicktime = stage(&root.0, &session, "video", "clip.mov", &mov)?;
+        assert_eq!(quicktime["mediaType"], "video/quicktime");
+        // Muse would accept any bytes labelled as video; Lascoria checks the container itself.
+        let refused = stage(
+            &root.0,
+            &session,
+            "video",
+            "fake.mp4",
+            b"not a video at all",
+        )
+        .unwrap_err();
+        assert!(refused.to_string().contains("MP4 or QuickTime"));
+        assert!(
+            begin(&root.0, &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"kind":"video","bytes":MAX_VIDEO_BYTES + 1}))
+                .unwrap_err()
+                .to_string()
+                .contains("100 MB")
+        );
+
+        let text = stage(
+            &root.0,
+            &session,
+            "text",
+            "notes.md",
+            "# Notes\n\u{e9}t\u{e9}\n".as_bytes(),
+        )?;
+        assert_eq!(
+            (text["kind"].as_str(), text["mediaType"].as_str()),
+            (Some("text"), Some("text/plain"))
+        );
+        for binary in [&b"%PDF-1.7\0\x01"[..], &[0xff, 0xfe, 0x00, 0x41][..]] {
+            assert!(
+                stage(&root.0, &session, "text", "x.txt", binary)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("looks binary")
+            );
+        }
+        assert!(begin(&root.0, &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"kind":"text","bytes":MAX_TEXT_BYTES + 1})).is_err());
+        assert!(begin(&root.0, &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"kind":"pdf","bytes":10})).is_err());
+        // A retried begin cannot change what the upload is.
+        let id = uuid::Uuid::new_v4().to_string();
+        begin(
+            &root.0,
+            &json!({"sessionId":session,"attachmentId":id,"kind":"text","bytes":10}),
+        )?;
+        assert!(
+            begin(
+                &root.0,
+                &json!({"sessionId":session,"attachmentId":id,"kind":"video","bytes":10})
+            )
+            .is_err()
+        );
+        discard(&root.0, &json!({"sessionId":session,"attachmentId":id}))?;
+
+        let items = for_turn(&root.0, &session, &json!([text["id"], video["id"]]))?;
+        assert_eq!(items[0]["kind"], "text");
+        assert_eq!(items[0]["name"], "notes.md");
+        assert_eq!(items[1]["kind"], "video");
+        assert!(uuid::Uuid::parse_str(items[1]["uploadId"].as_str().unwrap()).is_ok());
+        assert_eq!(
+            for_turn(&root.0, &session, &json!([video["id"]]))?[0]["uploadId"],
+            items[1]["uploadId"],
+            "the upload receipt is stable across retries"
+        );
+        assert!(
+            for_turn(&root.0, &session, &json!([video["id"], quicktime["id"]]))
+                .unwrap_err()
+                .to_string()
+                .contains("one video")
+        );
         Ok(())
     }
 }

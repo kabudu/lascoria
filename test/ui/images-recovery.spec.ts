@@ -90,8 +90,8 @@ test('composer images: bounded intake without limits and exactly-once recovery a
       };
     });
     const page = await context.newPage();
-    const strip = page.getByRole('list', { name: 'Images for the next task' });
-    const chooser = page.getByLabel('Choose images to attach');
+    const strip = page.getByRole('list', { name: 'Attachments for the next task' });
+    const chooser = page.getByLabel('Choose files to attach');
     const tooLarge = { name: 'huge.png', mimeType: 'image/png', buffer: png(6 * 1024 * 1024) };
 
     // 1. Limits not loaded yet (list held), then unavailable (list fails): the oversized image
