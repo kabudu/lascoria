@@ -209,6 +209,13 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
       }),
     ).toBe(true);
     await page.getByRole('button', { name: 'Collapse canvas controls', exact: true }).click();
+    // The collapsed choice is saved before reloading, so the reload cannot race the save.
+    await expect
+      .poll(
+        async () =>
+          ((await request(directory, 'presentation/get')) as any)?.value?.canvasControlsCollapsed,
+      )
+      .toBe(true);
     await page.reload();
     await expect(page.getByRole('heading', { name: longName, exact: true })).toBeVisible();
     const final = await request(directory, 'status');
