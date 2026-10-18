@@ -62,12 +62,46 @@ Cause: status, every task progress update, every Muse process interruption and s
 
 The 30-minute soak was repeated with this build (single run each): 911 cycles, 182 restarts, 1,825 tasks, no errors; status p50 2.4 ms and p95 5.1 ms (5.7 and 11.7 ms before); control RSS 77.7 MB in the first fifth and 84.3 MB in the last (+8.5%, against +12.6% before). Full-tree RSS is dominated by Muse hosts, whose count at a sample instant varies with the cycle phase, so it is not compared.
 
+## Resident-memory optimisation attempt (18 October)
+
+The user asked for the RSS target (not footprint) to be met without losing functionality or good UX. Method: one change at a time, two or more runs each, ten idle sessions, 60-second windows. Window experiments used the debug desktop binary loading a production frontend build from a local preview server, so a frontend variant needed no app rebuild; its absolute desktop RSS is higher than the release app's, so only differences are compared. Run-to-run spread was about ±1.5 MB.
+
+**Floors on this Mac today (RSS).** A blank page in the same Tauri shell: 160–165 MB (desktop 96–100, WebKit GPU 24, page 26, networking 13). The packaged Node with the official SDK imported: 52.5 MB (bare Node 44.8 MB). Supervisor about 10–13 MB. So about 225 MB is spent before any interface content or session. The 14 October interface, built today and measured the same way, uses 269–270 MB for the window against 281–283 MB for the current one: about 12 MB of growth comes from the features added since, and the rest of the gap to the 14 October figure (154.5 MB for the whole window, below today's blank shell) comes from the platform.
+
+**Where the window's memory goes.** Hiding the whole interface while still running its JavaScript (diagnostic only) saves 36 MB (page 19, GPU 16), so painting and compositing cost about 36 MB and JavaScript plus DOM about 40 MB above the blank page.
+
+| Window change (diagnostic) | Change in window RSS |
+| --- | ---: |
+| No dot-grid canvas background | 0 (footprint −20 MB) |
+| No box shadows | 0 |
+| No canvas zoom transform | 0 |
+| Panels without rounded clipping | 0 |
+| Panels not fixed-position | −2 MB |
+| Panel contents not scrollable | −4 MB |
+| `content-visibility: auto` on long lists | −3 MB |
+| Dialogs loaded on first use | −3 MB |
+| Floating panels hidden | −10 MB |
+
+| SDK broker V8 option | Broker RSS (66.2 MB) | Broker CPU in the native saturation test |
+| --- | ---: | ---: |
+| `--max-semi-space-size=1` | −1.3 MB | not measured |
+| `--optimize-for-size` | −2.0 MB | not measured |
+| `--no-opt` | −3.0 MB | not measured |
+| `--no-opt --no-maglev` | −6.4 MB | +35–50% (3.0–3.1 s to 4.0–4.5 s) |
+| `--jitless` | −8.0 MB | not measured |
+| `--lite-mode` | −10.9 MB | +65–85% (2.7–3.1 s to 5.0–5.1 s) |
+| `--v8-pool-size=1`, `--single-threaded`, `--max-lazy`, `--max-old-space-size=64` | 0 | |
+
+None of these was adopted. The interface changes that save anything either change what people see or how panels behave (hidden or non-scrolling panels), or save 3 MB or less with a cost: loading dialogs on first use broke offline Help in the existing test and added a failure path, and `content-visibility` makes scrollbars estimate unrendered rows. The V8 options trade a few MB at idle for markedly more CPU while tasks stream, which works against the CPU and energy half of this same requirement. Even taking every option above would leave the window plus control processes near 309 MB.
+
+**Final measurement** of the build with this round's changes (release app, ten sessions, three five-minute runs): control + GUI RSS 336.3, 326.8 and 327.7 MB (the first under a load average of 6.2), so the RSS target is still **not met**; physical footprint 245.6–247.6 MB for all Lascoria processes including relay helpers. Control + GUI idle CPU 0.20% in all three runs (control 0.14%, GUI 0.06%), lower than the 0.68–0.71% recorded before the command-journal fix; the drop in GUI CPU was observed, not isolated to a cause.
+
 ## Against the targets
 
 The provisional target is under 300 MB combined UI/control memory and under 1% of one core at idle with ten sessions.
 
 - CPU: met after the fix (0.68–0.71%; 1.10–1.20% before).
-- Memory measured as RSS, as the target was originally set: **not met**, 327–329 MB.
+- Memory measured as RSS, as the target was originally set: **not met**, 327–329 MB (326.8–336.3 MB in the 18 October final runs; see the optimisation attempt above).
 - Memory measured as physical footprint for the same processes (control plus GUI): 226 MB, within the target. Choosing the metric is a product decision; until it is made the RSS result stands as an open finding.
 - The 14 October figures (207.7 MB RSS, 0.68%) used Muse 1.4.8, a debug supervisor and fewer features, so they are context, not a like-for-like regression baseline. The whole application with ten idle sessions is about 800 MB footprint (2.3 GB RSS) and 6–7% of one core, dominated by Muse.
 
@@ -76,8 +110,9 @@ The provisional target is under 300 MB combined UI/control memory and under 1% o
 | ID | Finding | State |
 | --- | --- | --- |
 | R11-1 | Idle window re-rendered on every account poll. | Fixed and measured above. |
-| R11-2 | Control + GUI RSS 327–329 MB exceeds the 300 MB target; footprint is 226 MB. | Open: metric decision, then reduce the WebKit page process, which is most of the GUI footprint at ten sessions (page 146 MB, desktop 30 MB, GPU 16 MB, networking 6 MB; the page's footprint exceeds its 84 MB RSS because footprint includes compressed memory). The SDK broker is 23 MB of the 28 MB control footprint. |
+| R11-2 | Control + GUI RSS 327–329 MB exceeds the 300 MB target; footprint is 226 MB. | Open, needs a product decision: on today's macOS about 225 MB is fixed platform cost, and every remaining reduction found costs UX or streaming CPU (optimisation attempt above). Options: re-baseline the RSS target against the platform floor, accept one of the measured trade-offs, or reduce features. Attribution: the WebKit page process, which is most of the GUI footprint at ten sessions (page 146 MB, desktop 30 MB, GPU 16 MB, networking 6 MB; the page's footprint exceeds its 84 MB RSS because footprint includes compressed memory). The SDK broker is 23 MB of the 28 MB control footprint. |
 | R11-3 | Status, task progress, interruptions and startup parsed the whole command journal (up to 20,000 rows); status p95 rose to about 12 ms over the soak and control RSS grew 12.6%. | Fixed: status cost is flat from 100 to 20,000 records (0.25 ms) and supervisor RSS at 20,000 records fell from 32 MB to 12 MB; soak status p95 5.1 ms, control RSS growth +8.5%. The remaining growth is small and bounded by the journal limit; recheck in the Windows and Linux soaks. |
 | R11-4 | Idle CPU is mostly Muse (about 0.67% of one core per idle session). | Recorded; outside Lascoria's control. |
+| R11-5 | The benchmark runs without account management, so it omits the account host that a signed-in subscription keeps running (one more Node process and one more Muse process). | Open: measure signed in during native acceptance (S1); merging the account connection into the SDK broker would remove one Node process (about 45–50 MB RSS) at the cost of sharing its fault boundary. |
 
 Not yet measured: Windows and Linux, hidden, minimised and closed window, active streaming and tool runs, waiting questions and approvals, long transcripts and diffs, sleep/wake and network recovery, energy impact, p99 interaction latency, and live providers. Raw reports stay in `.dev/benchmarks/r11/` (ignored).

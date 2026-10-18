@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Safer image staging: the composer refuses images over 5 MB before reading them even when the limits have not loaded, the 64 MB staging total now counts every upload from the moment it starts (across sessions and concurrent uploads), and Retry after a lost reply resumes the same upload instead of leaving a duplicate.
+
 - Keep Lascoria responsive with long histories: status, task progress and recovery no longer read the whole command history, so their cost stays flat as history grows (status 40 times faster with 20,000 records) and the background service uses less memory.
 
 - Lower idle CPU: the window no longer re-renders the whole workspace every two seconds while checking your account; with ten idle sessions Lascoria's own processes use about 0.7% of one core instead of 1.2%.

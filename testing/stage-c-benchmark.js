@@ -32,7 +32,12 @@ const env = {
   XDG_CACHE_HOME: join(root, 'cache'),
 };
 delete env.META_API_KEY;
-if (packaged) Object.assign(env, { SCH_RESOURCES: packaged, SCH_NODE: join(packaged, 'node') });
+// SCH_BENCH_NODE substitutes the Node used for workers (for example a wrapper adding V8 flags).
+if (packaged)
+  Object.assign(env, {
+    SCH_RESOURCES: packaged,
+    SCH_NODE: process.env.SCH_BENCH_NODE ?? join(packaged, 'node'),
+  });
 const supervisorBinary = packaged
   ? join(packaged, 'constellation-supervisor')
   : resolve('supervisor/target/debug/constellation-supervisor');
