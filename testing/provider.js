@@ -23,11 +23,35 @@ export async function provider(root, options = {}) {
   });
   const timers = new Set();
   const requests = [];
+  const uploads = [];
   const server = http.createServer(async (request, response) => {
     request.on('error', () => {});
     response.on('error', () => {});
     let body = '';
     for await (const chunk of request) body += chunk;
+    // Provider file storage, which Muse uses for videos: record the upload, answer like the
+    // OpenAI Files API, and let the model request refer to the returned id.
+    if (/\/files(\/|$|\?)/.test(request.url ?? '')) {
+      const fileId =
+        request.method === 'POST'
+          ? `file-fixture-${uploads.length}`
+          : request.url.split('/files/')[1]?.split(/[/?]/)[0];
+      if (request.method === 'POST') uploads.push(body);
+      response.setHeader('content-type', 'application/json');
+      response.end(
+        JSON.stringify({
+          id: fileId,
+          object: 'file',
+          bytes: body.length,
+          created_at: 1760000000,
+          expires_at: 1762592000,
+          filename: 'upload',
+          purpose: 'user_data',
+          status: 'processed',
+        }),
+      );
+      return;
+    }
     if (request.method === 'GET') {
       response.setHeader('content-type', 'application/json');
       response.end(
@@ -278,6 +302,7 @@ export async function provider(root, options = {}) {
   return {
     env: { META_API_KEY: 'stage-a-loopback-only' },
     requests,
+    uploads,
     beginBurst: releaseBurst,
     burstFinished,
     batchFinished,

@@ -329,6 +329,12 @@ export function ComposerImages({
           {notice || tooMany || 'Attachments are sent with the next task, not with steering.'}
         </p>
       )}
+      {items.some((item) => item.kind === 'video') && (
+        <p className="composer-images-note">
+          When you send a video, Muse uploads it to your model provider&apos;s file storage, where
+          it can be kept for up to 30 days, and keeps a copy in this session.
+        </p>
+      )}
     </div>
   );
 }
