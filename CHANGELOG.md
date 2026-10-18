@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Collapsed Attention panels avoid rendering hidden request rows while keeping their counts and notifications current.
+
+- Expanded canvas tools flow below session controls on narrower windows, keeping New session reachable. Decision assistance reserves daily spending atomically, retains allowance counts after cleanup and refuses stale update or tool advice.
+
 - Project sessions can save Diff snapshots again, one folder at a time: choose the folder beside Save snapshot. The snapshot names its folder and is checked against that repository only.
 
 - Attach file in the composer now also takes one MP4 or QuickTime video per task (up to 100 MB) and UTF-8 text files such as code, notes or logs (up to 256 KB each). Each is checked by its content and sent only with the next task; PDFs, audio, archives and office documents are refused with the reason.

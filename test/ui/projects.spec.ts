@@ -208,6 +208,41 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
           ?.closest('.surface-toolbar');
       }),
     ).toBe(true);
+    // Expanded controls must never cover the session heading or its actions.
+    for (const width of [1440, 1100, 1000, 800, 620, 480]) {
+      await page.setViewportSize({ width, height: 800 });
+      expect(
+        await page.locator('.workspace-title').evaluate((heading) => {
+          const b = document.querySelector('.surface-toolbar')!.getBoundingClientRect();
+          return [...heading.children].every((child) => {
+            const a = child.getBoundingClientRect();
+            return a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+          });
+        }),
+      ).toBe(true);
+      for (const control of [
+        page.getByRole('button', { name: 'New session', exact: true }),
+        page.getByLabel('Search tasks', { exact: true }),
+      ]) {
+        expect(
+          await control.evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            return (
+              r.left >= 0 &&
+              r.right <= innerWidth &&
+              !!document
+                .elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+                ?.closest(el.tagName.toLowerCase())
+                ?.isSameNode(el)
+            );
+          }),
+        ).toBe(true);
+      }
+    }
+    await page.setViewportSize({ width: 800, height: 700 });
+    await page.getByRole('button', { name: 'New session', exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click();
     await page.getByRole('button', { name: 'Collapse canvas controls', exact: true }).click();
     // The collapsed choice is saved before reloading, so the reload cannot race the save.
     await expect

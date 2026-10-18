@@ -716,6 +716,16 @@ async fn triage_sends_only_chosen_parts_once_per_update_and_only_with_consent() 
     assert_eq!(triaged["source"]["turnId"], "t1");
     // A new wait for the user is a new update.
     finished_task(&f.db, true);
+    let old = service
+        .handle(
+            f.db.clone(),
+            "decision/status",
+            &json!({"sessionId":"session-a"}),
+            "status-stale",
+        )
+        .await
+        .unwrap();
+    assert_eq!(old["recent"][0]["status"], "stale");
     assert_eq!(service.triage_pass(f.db.clone()).await.unwrap(), 1);
     assert_eq!(server.calls.load(Ordering::SeqCst), 2);
     // Text shares the user's words, not hidden notes, and not the reply when it is not chosen.
@@ -950,4 +960,106 @@ async fn snapshots_of_another_project_folder_are_not_sent_under_this_workspace_c
         refused.to_string().contains("main folder only"),
         "{refused}"
     );
+}
+
+#[tokio::test]
+async fn concurrent_tool_requests_cannot_exceed_the_last_daily_slot() {
+    let f = fixture().await;
+    let mut service = Service::new().unwrap();
+    enable(&service, f.db.clone(), "subq").await;
+    let server = server(response("subq"), 50, None, 200).await;
+    service.endpoint = Some(server.url.clone());
+    mode(&service, f.db.clone(), json!({"mode":"tool","provider":"subq","dailyLimit":1,"sessionId":"session-a","workspaceEnabled":true})).await;
+    let ask =
+        json!({"sessionId":"session-a","question":"Are tests passing?","context":"Tests pass."});
+    let (a, b) = tokio::join!(
+        service.handle(f.db.clone(), "decision/tool", &ask, "concurrent-a"),
+        service.handle(f.db.clone(), "decision/tool", &ask, "concurrent-b")
+    );
+    assert_eq!(
+        [a.is_ok(), b.is_ok()].into_iter().filter(|ok| *ok).count(),
+        1
+    );
+    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(runs(&f.db.lock().unwrap()).unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn triage_response_for_a_changed_update_is_stale() {
+    let f = fixture().await;
+    let mut service = Service::new().unwrap();
+    enable(&service, f.db.clone(), "jev").await;
+    let server = server(response("jev"), 100, None, 200).await;
+    service.endpoint = Some(server.url.clone());
+    finished_task(&f.db, false);
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"triage","provider":"jev","sessionId":"session-a","workspaceEnabled":true}),
+    )
+    .await;
+    let change = async {
+        for _ in 0..200 {
+            if server.calls.load(Ordering::SeqCst) > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+        finished_task(&f.db, true);
+    };
+    let (result, ()) = tokio::join!(service.triage_pass(f.db.clone()), change);
+    assert_eq!(result.unwrap(), 1);
+    assert_eq!(runs(&f.db.lock().unwrap()).unwrap()[0]["status"], "stale");
+}
+
+#[tokio::test]
+async fn cleanup_keeps_mode_allowance_and_stale_tool_answers_are_not_returned() {
+    let f = fixture().await;
+    let mut service = Service::new().unwrap();
+    enable(&service, f.db.clone(), "jev").await;
+    let server = server(response("jev"), 100, None, 200).await;
+    service.endpoint = Some(server.url.clone());
+    mode(&service,f.db.clone(),json!({"mode":"tool","provider":"jev","sessionId":"session-a","workspaceEnabled":true,"dailyLimit":1})).await;
+    let ask =
+        json!({"sessionId":"session-a","question":"Are tests passing?","context":"Tests pass."});
+    let revoke = async {
+        for _ in 0..200 {
+            if server.calls.load(Ordering::SeqCst) > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+        mode(
+            &service,
+            f.db.clone(),
+            json!({"mode":"tool","provider":null}),
+        )
+        .await;
+    };
+    let (result, ()) = tokio::join!(
+        service.handle(f.db.clone(), "decision/tool", &ask, "stale-tool"),
+        revoke
+    );
+    assert!(result.is_err());
+    let database = f.db.lock().unwrap();
+    assert_eq!(runs(&database).unwrap()[0]["status"], "stale");
+    let mut session = database.get("sessions", "session-a").unwrap().unwrap();
+    session["lifecycle"] = json!("archived");
+    database.put("sessions", "session-a", &session).unwrap();
+    crate::data::remove_archived(&database, &f.root, "cleanup-modes", &["session-a".into()])
+        .unwrap();
+    assert_eq!(modes::spent_today(&database, "museTool").unwrap(), 1);
+    let retained = runs(&database).unwrap();
+    assert_eq!(retained[0]["status"], "retained");
+    assert!(retained[0]["source"].is_null() && retained[0]["question"].is_null());
+}
+
+#[test]
+fn triage_shares_only_native_question_text_without_request_metadata() {
+    let row = json!({"state":{"items":[],"userInputs":[{"questions":[{"id":"q1","question":"Which branch?"}],"privateMetadata":"not selected for sharing"},{"privateMetadata":"not selected for sharing either"}],"approvals":[]}});
+    let text = modes::triage_input(&row, "t", &["question".into()]).unwrap();
+    assert!(text.contains("Which branch?"));
+    assert!(!text.contains("privateMetadata") && !text.contains("not selected for sharing"));
 }

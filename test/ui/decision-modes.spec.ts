@@ -58,7 +58,7 @@ test('triage and Muse tool settings, metrics, overrides and the triage note', as
         provider: null,
         workspaces: [],
         share: ['request', 'reply', 'question'],
-        dailyLimit: 50,
+        dailyLimit: 2,
       },
       tool: { provider: null, workspaces: [], dailyLimit: 50 },
     },
@@ -147,6 +147,7 @@ test('triage and Muse tool settings, metrics, overrides and the triage note', as
   await expect(triage).toContainText('This sends data without asking each time');
   await triage.getByLabel('Provider').selectOption('jev');
   await expect.poll(() => settings.modes.triage.provider).toBe('jev');
+  await expect(triage.getByRole('combobox', { name: /At most/ })).toHaveValue('2');
   await triage.getByRole('checkbox', { name: /this session's workspace/ }).click();
   await expect.poll(() => settings.modes.triage.workspaces).toEqual(['scope-a']);
   await triage.getByRole('checkbox', { name: "Muse's latest reply and the task outcome" }).click();
