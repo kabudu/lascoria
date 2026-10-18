@@ -12,6 +12,16 @@ impl Default for FolderPicker {
     }
 }
 
+impl FolderPicker {
+    /// One native chooser at a time across the app.
+    pub fn acquire(&self) -> Result<tokio::sync::OwnedSemaphorePermit, String> {
+        self.0
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| "A file chooser is already open".into())
+    }
+}
+
 fn selected_path(path: PathBuf) -> Result<String, String> {
     let path = dunce::simplified(&path);
     let text = path.to_str().ok_or("Choose a folder with a UTF-8 path")?;

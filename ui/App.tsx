@@ -13,6 +13,13 @@ import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
 import { SupportReport } from './SupportReport';
 import { TokenUse } from './TokenUse';
+import {
+  EditorSettings,
+  GeneralSettings,
+  SETTINGS_SECTIONS,
+  SettingsShell,
+  isSettingsSection,
+} from './Settings';
 import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
@@ -269,6 +276,8 @@ export function App() {
       | 'search'
       | 'notifications'
       | 'support'
+      | 'general'
+      | 'editor'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
@@ -761,6 +770,18 @@ export function App() {
       setError(`Transcript not saved: ${String(e).replace(/^Error: /, '')}`);
     }
   }
+  // D2: hand a folder or file to the user's editor; the native side checks containment.
+  async function openInEditor(row: SessionRow, path = '') {
+    try {
+      await invoke('open_in_editor', {
+        sessionId: row.id,
+        path,
+        editor: prefs.editor ?? 'system',
+      });
+    } catch (e) {
+      setError(`Could not open in your editor: ${String(e).replace(/^Error: /, '')}`);
+    }
+  }
   async function mutate(operation: string, params: Json) {
     if (mutationPending.current) return;
     mutationPending.current = true;
@@ -1171,14 +1192,8 @@ export function App() {
               {status.features?.includes('search') && (
                 <button onClick={() => setModal('search')}>Search history</button>
               )}
-              {status.features?.includes('dataLifecycle') && (
-                <button onClick={() => setModal('data')}>Data &amp; backups</button>
-              )}
-              <button onClick={() => setModal('notifications')}>Notifications</button>
+              <button onClick={() => setModal('general')}>Settings…</button>
               <button onClick={() => setModal('help')}>Help</button>
-              {status.features?.includes('supportReport') && (
-                <button onClick={() => setModal('support')}>Support report</button>
-              )}
               <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
               <button
                 disabled={!status.features?.includes('diagnostics')}
@@ -1308,6 +1323,15 @@ export function App() {
                 {status.features?.includes('sessionNames') && (
                   <button className="session-settings-trigger" onClick={() => setModal('rename')}>
                     Rename session
+                  </button>
+                )}
+                {!session.workspaceDiscarded && (
+                  <button
+                    className="session-settings-trigger"
+                    onClick={() => void openInEditor(session)}
+                    title="Choose the editor in Settings"
+                  >
+                    Open in editor
                   </button>
                 )}
                 {status.features?.includes('transcriptExport') && (
@@ -2095,6 +2119,7 @@ export function App() {
                         commands={status.commands}
                         busy={busy}
                         mutate={mutate}
+                        openInEditor={(path) => void openInEditor(session, path)}
                         attach={(value) => {
                           if ((drafts[session.id] ?? '').length + value.length > 16000) {
                             setError(
@@ -2828,38 +2853,37 @@ export function App() {
           />
         </FloatingPanel>
       )}
-      <dialog ref={modalRef} onCancel={() => setModal(null)} aria-labelledby="dialog-heading">
+      <dialog
+        ref={modalRef}
+        onCancel={() => setModal(null)}
+        aria-labelledby="dialog-heading"
+        className={isSettingsSection(modal) ? 'settings-dialog' : undefined}
+      >
         <div className="dialog-heading">
           <h2 id="dialog-heading">
-            {modal === 'rename'
-              ? 'Rename session'
-              : modal === 'inbox'
-                ? 'New local messages'
-                : modal === 'help'
-                  ? 'Lascoria help'
-                  : modal === 'data'
-                    ? 'Data and backups'
+            {isSettingsSection(modal)
+              ? 'Settings'
+              : modal === 'rename'
+                ? 'Rename session'
+                : modal === 'inbox'
+                  ? 'New local messages'
+                  : modal === 'help'
+                    ? 'Lascoria help'
                     : modal === 'search'
                       ? 'Search history'
-                      : modal === 'notifications'
-                        ? 'Desktop notifications'
-                        : modal === 'support'
-                          ? 'Support report'
-                          : modal === 'relay'
-                            ? 'Local session messages'
-                            : modal === 'usage'
-                              ? 'Account & usage'
-                              : modal === 'account'
-                                ? 'Your Muse connection'
-                                : modal === 'start'
-                                  ? 'Start a Muse session'
-                                  : modal === 'stop'
-                                    ? 'Log out of Lascoria'
-                                    : modal === 'diagnostics'
-                                      ? 'Performance diagnostics'
-                                      : modal === 'settings'
-                                        ? 'Session model and effort'
-                                        : 'Command palette'}
+                      : modal === 'relay'
+                        ? 'Local session messages'
+                        : modal === 'account'
+                          ? 'Your Muse connection'
+                          : modal === 'start'
+                            ? 'Start a Muse session'
+                            : modal === 'stop'
+                              ? 'Log out of Lascoria'
+                              : modal === 'diagnostics'
+                                ? 'Performance diagnostics'
+                                : modal === 'settings'
+                                  ? 'Session model and effort'
+                                  : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
@@ -2901,19 +2925,6 @@ export function App() {
               setModal(null);
             }}
           />
-        )}
-        {modal === 'notifications' && (
-          <NotificationSettings
-            settings={prefs.notifications}
-            sessions={status.sessions}
-            name={sessionName}
-            update={(notifications) => updatePrefs({ notifications })}
-            test={() => invoke('notify_test')}
-            lastError={notificationError}
-          />
-        )}
-        {modal === 'data' && (
-          <DataLifecycle refreshStatus={refresh} quit={() => setModal('stop')} />
         )}
         {modal === 'inbox' && (
           <section className="message-discovery-list" aria-label="Conversations with new messages">
@@ -2962,22 +2973,58 @@ export function App() {
             initialPeer={relayTarget?.source === session.id ? relayTarget.peer : undefined}
           />
         )}
-        {modal === 'usage' && (
-          <Usage
-            key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}
-            sessionId={session?.state.current ? session.id : undefined}
-            latestEnabled={Boolean(status.features?.includes('usageLatest'))}
-            mode={account?.managed ? account.mode : undefined}
-            signedIn={account?.managed ? account.authenticated : undefined}
-            indicator={Boolean(prefs.usageIndicator)}
-            setIndicator={
-              status.features?.includes('usageLatest')
-                ? (on) => updatePrefs({ usageIndicator: on })
-                : undefined
+        {isSettingsSection(modal) && (
+          <SettingsShell
+            section={modal}
+            open={setModal}
+            available={(id) =>
+              id === 'data'
+                ? Boolean(status.features?.includes('dataLifecycle'))
+                : id === 'support'
+                  ? Boolean(status.features?.includes('supportReport'))
+                  : id === 'usage'
+                    ? Boolean(status.features?.includes('usage'))
+                    : true
             }
-          />
+          >
+            <h3 className="settings-heading">
+              {modal === 'notifications'
+                ? 'Desktop notifications'
+                : SETTINGS_SECTIONS.find(([id]) => id === modal)?.[1]}
+            </h3>
+            {modal === 'general' && <GeneralSettings prefs={prefs} update={updatePrefs} />}
+            {modal === 'editor' && <EditorSettings prefs={prefs} update={updatePrefs} />}
+            {modal === 'notifications' && (
+              <NotificationSettings
+                settings={prefs.notifications}
+                sessions={status.sessions}
+                name={sessionName}
+                update={(notifications) => updatePrefs({ notifications })}
+                test={() => invoke('notify_test')}
+                lastError={notificationError}
+              />
+            )}
+            {modal === 'usage' && (
+              <Usage
+                key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}
+                sessionId={session?.state.current ? session.id : undefined}
+                latestEnabled={Boolean(status.features?.includes('usageLatest'))}
+                mode={account?.managed ? account.mode : undefined}
+                signedIn={account?.managed ? account.authenticated : undefined}
+                indicator={Boolean(prefs.usageIndicator)}
+                setIndicator={
+                  status.features?.includes('usageLatest')
+                    ? (on) => updatePrefs({ usageIndicator: on })
+                    : undefined
+                }
+              />
+            )}
+            {modal === 'data' && (
+              <DataLifecycle refreshStatus={refresh} quit={() => setModal('stop')} />
+            )}
+            {modal === 'support' && <SupportReport />}
+          </SettingsShell>
         )}
-        {modal === 'support' && <SupportReport />}
         {modal === 'account' && (
           <Account account={account} refresh={refreshAccount} onRuntimeReady={setRuntimeReady} />
         )}

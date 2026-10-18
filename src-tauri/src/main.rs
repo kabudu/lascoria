@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod editor;
 mod folder_picker;
 mod muse_setup;
 mod notifications;
@@ -252,6 +253,50 @@ async fn open_account_browser(url: String) -> Result<(), String> {
     }
     Ok(())
 }
+/// Opens a local folder or file with the operating system's default handler, without a shell.
+pub(crate) async fn open_with_system(target: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let path: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+        let verb: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
+        let result = unsafe {
+            windows_sys::Win32::UI::Shell::ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                path.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+            )
+        } as isize;
+        if result <= 32 {
+            return Err("Could not open it with the system default app".into());
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let status = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            tokio::process::Command::new(if cfg!(target_os = "macos") {
+                "/usr/bin/open"
+            } else {
+                "xdg-open"
+            })
+            .arg(target)
+            .kill_on_drop(true)
+            .status(),
+        )
+        .await
+        .map_err(|_| "Opening it timed out")?
+        .map_err(|_| "Could not open it with the system default app")?;
+        if !status.success() {
+            return Err("Could not open it with the system default app".into());
+        }
+        Ok(())
+    }
+}
 #[cfg(unix)]
 unsafe extern "C" {
     #[link_name = "setsid"]
@@ -301,6 +346,9 @@ fn main() {
             folder_picker::pick_backup_file,
             folder_picker::pick_transcript_destination,
             folder_picker::pick_support_report_destination,
+            editor::list_editors,
+            editor::pick_editor_application,
+            editor::open_in_editor,
             open_account_browser,
             notifications::notify_attention,
             notifications::notify_test,

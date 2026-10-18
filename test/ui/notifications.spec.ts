@@ -110,7 +110,11 @@ test('desktop notifications follow saved preferences, skip what was already wait
       attention.getByRole('button', { name: /Inspect completion: Earlier work/ }),
     ).toBeVisible();
     await page.getByLabel('Workspace menu').click();
-    await page.getByRole('button', { name: 'Notifications', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings…', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('button', { name: 'Notifications', exact: true })
+      .click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: 'Desktop notifications' })).toBeVisible();
     const enabled = dialog.getByRole('checkbox', { name: 'Show desktop notifications' });
@@ -148,7 +152,11 @@ test('desktop notifications follow saved preferences, skip what was already wait
       attention.getByRole('button', { name: /Inspect completion: Third task/ }),
     ).toBeVisible();
     await page.getByLabel('Workspace menu').click();
-    await page.getByRole('button', { name: 'Notifications', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings…', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('button', { name: 'Notifications', exact: true })
+      .click();
     await expect(dialog).toContainText(
       'The last notification could not be shown: Error: No notification service is running',
     );
@@ -175,7 +183,11 @@ test('desktop notifications follow saved preferences, skip what was already wait
       attention.getByRole('button', { name: /Inspect completion: Fourth task/ }),
     ).toBeVisible();
     await page.getByLabel('Workspace menu').click();
-    await page.getByRole('button', { name: 'Notifications', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings…', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('button', { name: 'Notifications', exact: true })
+      .click();
     await expect(enabled).toBeChecked();
     await expect(sessionToggle).not.toBeChecked();
     await sessionToggle.check();

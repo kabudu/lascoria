@@ -8,12 +8,15 @@ export function Workspace({
   busy,
   mutate,
   attach,
+  openInEditor,
 }: {
   session: SessionRow;
   commands: Json[];
   busy: boolean;
   mutate: (operation: string, params: Json) => Promise<Json>;
   attach: (text: string) => void;
+  /** D2: open a repository-relative path in the user's editor. */
+  openInEditor?: (path: string) => void;
 }) {
   const [preview, setPreview] = useState<Json>(null);
   const [error, setError] = useState('');
@@ -105,6 +108,9 @@ export function Workspace({
                 <details key={f.path}>
                   <summary>{f.path}</summary>
                   <pre>{f.text ?? 'Binary content'}</pre>
+                  {openInEditor && !removed && (
+                    <button onClick={() => openInEditor(f.path)}>Open in editor</button>
+                  )}
                 </details>
               ))}
             </details>
@@ -160,6 +166,9 @@ export function Workspace({
               >
                 Add file to task draft
               </button>
+              {openInEditor && (
+                <button onClick={() => openInEditor(file.path)}>Open in editor</button>
+              )}
             </details>
           )}
         </section>

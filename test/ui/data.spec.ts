@@ -95,7 +95,11 @@ test('data lifecycle: backup with lost reply, export/import, cleanup and restore
     const page = await context.newPage();
     await page.goto('/');
     await page.getByLabel('Workspace menu').click();
-    await page.getByRole('button', { name: 'Data & backups', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings…', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('button', { name: 'Data & backups', exact: true })
+      .click();
     const dialog = page.getByRole('dialog');
     const panel = dialog.getByRole('region', { name: 'Data and backups' });
     await expect(panel).toContainText('2 of 100');
@@ -158,7 +162,11 @@ test('data lifecycle: backup with lost reply, export/import, cleanup and restore
     expect(summary.backups.some((b: any) => b.reason === 'beforeRestore')).toBe(true);
     await page.reload();
     await page.getByLabel('Workspace menu').click();
-    await page.getByRole('button', { name: 'Data & backups', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings…', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('button', { name: 'Data & backups', exact: true })
+      .click();
     await expect(panel).toContainText('Last restore completed');
     expect(await dialog.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
   } finally {

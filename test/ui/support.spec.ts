@@ -30,7 +30,11 @@ test('support report previews exact text and saves only after the chooser', asyn
   });
   await page.goto('/');
   await page.getByLabel('Workspace menu', { exact: true }).click();
-  await page.getByRole('button', { name: 'Support report' }).click();
+  await page.getByRole('button', { name: 'Settings…', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Settings sections' })
+    .getByRole('button', { name: 'Support report', exact: true })
+    .click();
   const panel = page.getByRole('region', { name: 'Support report' });
   await expect(panel.getByRole('button', { name: 'Save report…' })).toBeDisabled();
   await panel.getByRole('button', { name: 'Prepare report' }).click();

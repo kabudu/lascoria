@@ -93,6 +93,8 @@ export interface Prefs {
   notifications?: NotificationPrefs;
   /** R8: optional compact weekly-allowance figure in the toolbar. Off by default. */
   usageIndicator?: boolean;
+  /** D2: editor for Open in editor: 'system', a preset id or 'custom'. */
+  editor?: string;
   collapsed?: string[];
   acknowledgedInterruptions?: string[];
   acknowledgedTaskFacts?: string[];

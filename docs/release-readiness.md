@@ -99,7 +99,9 @@ References: [native skill discovery](https://meta-models.github.io/muse-code-sdk
 
 ### R10 - Optional BYOK decision providers, with a quiet UI
 
-User requirement added 15 October: support Jev (TypeSafe), Subquadratic/SubQ and OpenAI decision APIs with user-supplied keys. Research/design first; do not interpret this item as permission to transmit repository material or activate paid calls by default. A clean, uncluttered workspace is a fundamental product constraint.
+User requirement added 15 October: support Jev (TypeSafe), Subquadratic/SubQ and OpenAI decision APIs with user-supplied keys. A clean, uncluttered workspace is a fundamental product constraint.
+
+Scope decided by the user on 18 October: all three interaction models ship in the first release (a: user-requested evaluation of selected evidence, b: opt-in bounded background triage, c: an explicit tool Muse can call), and the paid, data-disclosing integrations are included. Nothing is sent until the user adds a key for a provider and turns a model on; Settings management must have a great UX.
 
 Verified first-party contracts (15 October 2026; recheck before implementation):
 
@@ -110,7 +112,7 @@ Verified first-party contracts (15 October 2026; recheck before implementation):
 | OpenAI         | Dedicated `POST /v1/decisions`, not Responses; public beta currently documents `gpt-6-luna`, shared `input` and named `predicate`/`choice`/`score` questions, with an answers array. | [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions) |
 
 - [ ] Design **Settings → Integrations → Decision assistance** for BYOK provider/model configuration, native-vault storage, explicit connection testing and per-workspace enablement. Keep Muse subscription and its API key separate from these independently billed services. Keys never enter React state after submission, command journals, argv, exported diagnostics or Muse prompts. Honour provider retention/data-use settings and expose the actual destination before enabling any integration.
-- [ ] Agree the initial interaction model before enabling automatic policy: (a) user-requested evaluation of selected evidence, (b) opt-in bounded background triage with scoped data, (c) an explicit tool usable by Muse, or a staged combination. Start with advisory results; model routing, autonomous gates and scheduler actions require separately defined policy/permission semantics. Do not silently replace Muse's execution model or masquerade as its native permission reviewer.
+- [ ] Interaction models (all three approved 18 October; each off until the user turns it on): (a) user-requested evaluation of selected evidence, (b) opt-in bounded background triage with scoped data, (c) an explicit tool usable by Muse, or a staged combination. Start with advisory results; model routing, autonomous gates and scheduler actions require separately defined policy/permission semantics. Do not silently replace Muse's execution model or masquerade as its native permission reviewer.
 - [ ] Use a Rust-owned bounded decision service and provider-specific adapters, not an assumed universal chat or OpenAI-compatible schema. Preserve native answer types, probabilities, resolved model and request identity. Version rubrics and input/evidence fingerprints; reject stale answers after revisions change. Provider confidence is not guaranteed correctness or directly comparable calibration between providers.
 - [ ] Keep the default canvas unchanged. No always-visible provider cards, extra floating panels or per-call toasts. Offer details through the existing inspector/usage/settings surfaces; expose a small task indicator only when relevant/actionable or explicitly enabled. The user can inspect the outcome, source/provider/model, input scope, timestamp, rubric version, uncertainty and whether a recommendation was applied. No fabricated chain-of-thought or explanation when the API did not return one.
 - [ ] Provide optional metrics: calls, provider-reported token counts, cost amounts with their estimation/source details, latency distributions, errors/rate limits, cache reuse, policy outcomes and human overrides, per provider/task/workspace. Aggregate summaries live in Usage; detailed traces stay opt-in and privacy-safe. Do not imply external BYOK charges are covered by a Muse subscription or claim savings without a task-quality benchmark.
@@ -213,19 +215,19 @@ Requested 15 October from the supplied menu screenshots. Keep the menu compact a
 - [ ] Provide one **Log out** menu entry, replacing the competing Quit & stop entry, per the user’s clarification. Design one contextual exit dialog: pause running work with verified resumable checkpoints or explicitly keep authorised local work running, when supported. Explain credential revocation versus background execution accurately; never promise continued authenticated work after revoking the credential it requires. Window close/update behaviour follows an explicit saved background-work preference. Validate the complete flow under R13; do not retain both top-level actions or merely rename process termination to logout.
 - [ ] Validate reported/missing identity, opaque tiers, subscription/API-key precedence, stale usage, logout with pending work and Help accessibility in native apps across all three operating systems. No account details are sent to a knowledgebase service.
 
-## Developer-workflow priorities to scope before calling it a daily-driver release
+## Developer-workflow scope for the first release
 
-These are known gaps from [daily coding workflow](daily-coding-workflow.md), not promises that every feature must ship in the first public preview. Decide an explicit preview scope and label unsupported actions rather than hide them.
+Scope decided by the user on 18 October; later work is in the [roadmap](../ROADMAP.md).
 
-- [ ] **D1 - Git delivery:** selected-file/hunk staging, branch visibility, push, PR creation, merge/conflict handling and applicable repository hooks/signing. Current guarded commit stages all Git-visible changes and does not push; the UI must make those limits clear.
-- [ ] **D2 - Editing and terminal:** open in the user's editor, file/diff navigation and a defined interactive-terminal story. An embedded editor/PTY is an option; the present runner is bounded and non-interactive.
+- [ ] **D1 - Git delivery: guarded commit only.** The first release ships the existing guarded commit, which stages all Git-visible changes in the session's folder and does not push. The UI and Help must say so plainly. Selected-file/hunk staging, branches, push, pull requests, merge/conflict help and hooks/signing are on the roadmap.
+- [ ] **D2 - Editing: hand off to the user's editor.** Open a session's folder or a changed file in the user's own editor from the inspector, with validated paths and no shell. An embedded editor and an interactive terminal are on the roadmap; the present runner stays bounded and non-interactive.
 - [ ] **D3 - Find and retain work:** global/session transcript search, export, archive browsing and a continuation path for archived work without accidental duplication or deletion.
 - [ ] **D4 - Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
-- [ ] **D5 - Muse capabilities:** skill discovery/invocation/attribution is a release requirement under R9. Separately define the exposed activation-management, plugin/MCP/settings workflow and supported scope.
+- [x] **D5 - Muse capabilities management: roadmap.** Skill discovery, invocation and attribution remain a release requirement under R9. Activation management and the plugin/MCP/settings workflow are on the roadmap, not the first release.
 
-## Token-efficiency follow-up
+## Token efficiency, required for the first release
 
-Requested for consideration in the preceding discussion; these policies are not implemented merely because Muse exposes usage events.
+The user decided on 18 October that T1–T5 ship in the first release. They remain opt-in policies where they change behaviour, and none may silently drop instructions, history or permissions.
 
 - [ ] **T1 - Measure first** (visibility implemented 18 October; validation open): per-task/session/model usage, cache/reasoning counters where reported, context pressure and correctly deduplicated child-agent totals. Keep token counts, estimated API cost and subscription usage windows distinct; missing data stays unknown.
 - [ ] **T2 - Reuse evidence:** reuse repository analysis, test results and reviews only while content/configuration fingerprints remain valid. Preserve provenance and invalidate on relevant changes.
