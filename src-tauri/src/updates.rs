@@ -245,6 +245,8 @@ pub fn update_cancel(updates: tauri::State<'_, Updates>, clear_available: Option
     state.invalidate_download();
     if clear_available == Some(true) {
         state.available = None;
+        state.last_checked_ms = None;
+        state.last_error = None;
     }
 }
 
