@@ -62,8 +62,47 @@ export async function createSession(send, onDeath) {
   const diagnostics = { snapshots: 0, snapshotTotalMs: 0, snapshotMaxMs: 0 };
   const gaps = [];
   const itemProvenance = new Map();
+  // T1: per-task and per-model token use from Muse's session/tokenUsage events, seen live or
+  // in recovered history. Each completion is counted once (by view cursor). Muse's own
+  // cumulative session total stays authoritative; these breakdowns cover what this host saw.
+  const tokenCursors = new Set();
+  const tokensByTurn = new Map();
+  const tokensByModel = new Map();
+  function addTokens(map, key, usage, limit) {
+    const entry = map.get(key) ?? {
+      calls: 0,
+      promptTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      reasoningTokens: 0,
+      cacheReadTokens: 0,
+    };
+    entry.calls++;
+    entry.promptTokens += usage.promptTokens;
+    entry.outputTokens += usage.usage?.outputTokens ?? 0;
+    entry.totalTokens += usage.totalTokens;
+    entry.reasoningTokens += usage.usage?.reasoningTokens ?? 0;
+    entry.cacheReadTokens += usage.usage?.cacheReadTokens ?? 0;
+    map.delete(key);
+    map.set(key, entry);
+    if (map.size > limit) map.delete(map.keys().next().value);
+  }
+  function countTokens(params) {
+    if (
+      !params?.viewCursor ||
+      tokenCursors.has(params.viewCursor) ||
+      !Number.isFinite(params.promptTokens) ||
+      !Number.isFinite(params.totalTokens)
+    )
+      return;
+    tokenCursors.add(params.viewCursor);
+    if (tokenCursors.size > 20000) tokenCursors.delete(tokenCursors.values().next().value);
+    if (typeof params.turnId === 'string') addTokens(tokensByTurn, params.turnId, params, 100);
+    addTokens(tokensByModel, String(params.modelId ?? 'unknown'), params, 20);
+  }
   function rememberSource(event) {
     if (event.params?.sessionId !== sessionId) return;
+    if (event.method === 'session/tokenUsage') countTokens(event.params);
     const item = event.params?.item;
     if (item && event.params.viewCursor && event.params.sourceRange) {
       const previous = itemProvenance.get(item.itemId);
@@ -118,6 +157,10 @@ export async function createSession(send, onDeath) {
       reasoningEffort: runtime?.session?.fold.sessionState.get('session/reasoningEffortChanged')
         ?.reasoningEffort,
       skillsRevision,
+      tokens: {
+        byTurn: Object.fromEntries(tokensByTurn),
+        byModel: Object.fromEntries(tokensByModel),
+      },
       diagnostics: {
         ...diagnostics,
         rssBytes: process.memoryUsage.rss(),

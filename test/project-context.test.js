@@ -102,6 +102,15 @@ test(
     assert.equal(occurrences(model.requests.at(-1)), 1, model.requests.at(-1));
     assert.ok(model.requests.at(-1).includes('Note: Web client'));
     assert.ok((await status()).sessions[0].state.items.some((i) => i.displayText === 'First task'));
+    // T1: per-task token use is counted from Muse's session/tokenUsage, and Muse's cumulative
+    // session total covers it.
+    const tokenState = (await status()).sessions[0].state;
+    const firstTurn = tokenState.turns[0].turnId;
+    const perTask = tokenState.tokens.byTurn[firstTurn];
+    assert.ok(perTask?.calls >= 1 && perTask.totalTokens > 0, JSON.stringify(tokenState.tokens));
+    assert.ok(
+      tokenState.sessionState['session/tokenUsage'].cumulative.totalTokens >= perTask.totalTokens,
+    );
 
     // Ordinary saves never touch the running session.
     await save(1, [apiFolder, appFolder], 'save-2');
