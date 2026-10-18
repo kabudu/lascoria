@@ -2956,3 +2956,24 @@ dialog.settings-dialog {
   border-radius: 8px;
   padding: 0.6rem 0.8rem;
 }
+.efficiency-alerts {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.4rem 0;
+}
+.efficiency-alert {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-left: 3px solid var(--attention);
+  background: var(--panel);
+  font-size: 0.8rem;
+}
+.efficiency-alert button {
+  margin-left: 0.5rem;
+}
+.reuse-offer {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin: 0.6rem 0;
+}

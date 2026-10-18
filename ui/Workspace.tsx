@@ -2,6 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import type { Json, SessionRow } from './types';
 
+/**
+ * A test result as task context, with its provenance, so Muse can use it instead of running
+ * the tests again. Output is cut to its last 4,000 characters per stream.
+ */
+export function resultText(run: Json, reused: boolean) {
+  const tail = (text?: string) => (text ? text.slice(-4000) : '');
+  const when = new Date(run.completedAtMillis).toLocaleString();
+  return [
+    '',
+    `Test result: \`${run.command}\` ${run.outcome} (exit ${run.exitCode ?? 'unknown'}), run by the user at ${when}${reused ? '; the files in this folder have not changed since, so it was not run again' : ''}.`,
+    tail(run.stdout) && `Output:\n${tail(run.stdout)}`,
+    tail(run.stderr) && `Errors:\n${tail(run.stderr)}`,
+    '',
+  ]
+    .filter((line) => line !== '')
+    .join('\n')
+    .replace(/^/, '\n')
+    .concat('\n');
+}
+
 export function Workspace({
   session,
   commands,
@@ -19,6 +39,7 @@ export function Workspace({
   openInEditor?: (path: string) => void;
 }) {
   const [preview, setPreview] = useState<Json>(null);
+  const [reuse, setReuse] = useState<Json>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
@@ -176,13 +197,23 @@ export function Workspace({
       <section>
         <h3>Run tests</h3>
         <p className="muted">
-          Runs directly as your macOS user in this checkout, outside Muse's sandbox. No interactive
-          stdin. Deadline: 120 seconds; output: 64 KiB per stream.
+          Runs directly as you in this checkout, outside Muse's sandbox. No interactive stdin.
+          Deadline: 120 seconds; output: 64 KiB per stream.
         </p>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
             const command = String(new FormData(e.currentTarget).get('command'));
+            setReuse(null);
+            // T2: offer the last result of this command when the folder has not changed since.
+            const found = await request<{ run: Json | null }>('workspace/reusable', {
+              sessionId: session.id,
+              command,
+            }).catch(() => ({ run: null }));
+            if (found.run) {
+              setReuse(found.run);
+              return;
+            }
             await mutate('workspace/run', { sessionId: session.id, command });
             setPreview(null);
           }}
@@ -197,6 +228,40 @@ export function Workspace({
         </form>
         {!ready && !archived && (
           <small>Wait for a current, idle Muse session and any running test command.</small>
+        )}
+        {reuse && (
+          <div className="reuse-offer" role="group" aria-label="Reuse an earlier result">
+            <p>
+              <code>{reuse.command}</code> {reuse.outcome} at{' '}
+              {new Date(reuse.completedAtMillis).toLocaleTimeString()} and the files in this folder
+              have not changed since. Things outside the folder, such as installed tools or
+              services, may have.
+            </p>
+            <div className="row">
+              <button
+                disabled={busy || archived}
+                onClick={() => {
+                  attach(resultText(reuse, true));
+                  setReuse(null);
+                }}
+              >
+                Add that result to the task draft
+              </button>
+              <button
+                className="primary"
+                disabled={!ready}
+                onClick={async () => {
+                  const command = reuse.command;
+                  setReuse(null);
+                  await mutate('workspace/run', { sessionId: session.id, command });
+                  setPreview(null);
+                }}
+              >
+                Run again
+              </button>
+              <button onClick={() => setReuse(null)}>Cancel</button>
+            </div>
+          </div>
         )}
         {runs.map((run) => (
           <details key={run.id} open={run.status === 'running'}>
@@ -221,6 +286,28 @@ export function Workspace({
             <pre>{run.result?.stderr}</pre>
             {(run.error || run.result?.error) && (
               <pre>{JSON.stringify(run.error ?? run.result.error)}</pre>
+            )}
+            {['passed', 'failed'].includes(run.result?.outcome) && (
+              <button
+                disabled={busy || archived}
+                onClick={() =>
+                  attach(
+                    resultText(
+                      {
+                        command: run.params.command,
+                        outcome: run.result.outcome,
+                        exitCode: run.result.exitCode,
+                        completedAtMillis: run.result.completedAtMillis,
+                        stdout: run.result.stdout,
+                        stderr: run.result.stderr,
+                      },
+                      false,
+                    ),
+                  )
+                }
+              >
+                Add result to task draft
+              </button>
             )}
           </details>
         ))}

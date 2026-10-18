@@ -219,7 +219,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await help.getByLabel('Search help').fill('no-match-fixture');
     await expect(help).toContainText('No matching guides');
     await help.getByRole('button', { name: 'show all guides', exact: true }).click();
-    await expect(help.getByRole('status')).toHaveText('15 guides');
+    await expect(help.getByRole('status')).toHaveText('16 guides');
     expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
     await help.getByLabel('Search help').fill('messages between local sessions');
     await help.getByRole('button', { name: 'Open local messages', exact: true }).click();

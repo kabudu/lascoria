@@ -116,7 +116,7 @@ export function curated(text, version) {
   const body = rest.join('\n').trim();
   if (!body || body.includes('TODO'))
     throw Error(`Write the release notes in docs/releases/v${version}.md`);
-  if (/[—]/.test(text)) throw Error('Release notes must not use U+2014');
+  if (text.includes(String.fromCharCode(0x2014))) throw Error('Release notes must not use U+2014');
   return { title: title[1], body };
 }
 

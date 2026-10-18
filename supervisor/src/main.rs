@@ -41,6 +41,9 @@ const FEATURES: &[&str] = &[
     "transcriptExport",
     "usageLatest",
     "supportReport",
+    "compaction",
+    "effortPresets",
+    "testReuse",
 ];
 
 use anyhow::{Context, Result, bail, ensure};
@@ -136,6 +139,57 @@ impl Actor {
         }
         self.workers.insert(id, worker);
         Ok(())
+    }
+    /// The lowest reasoning effort the session's model advertises, applied with `setEffort`.
+    /// `None` when the model has no effort levels.
+    async fn economical(&mut self, id: &str, session: &str) -> Result<Option<String>> {
+        let catalog = self
+            .workers
+            .get_mut(session)
+            .context("Worker unavailable")?
+            .call(json!({"id":Uuid::new_v4().to_string(),"operation":"models","params":{"sessionId":session}}))
+            .await?;
+        ensure!(catalog.get("error").is_none(), "Model catalog unavailable");
+        let row = self.row(session)?;
+        let active = row["state"]["modelRoute"]["modelId"].clone();
+        let models = catalog["result"]["models"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let model = models
+            .iter()
+            .find(|m| m["modelId"] == active)
+            .or_else(|| models.iter().find(|m| m["isActive"] == true));
+        let Some(variants) = model.and_then(|m| m["variants"].as_array()) else {
+            return Ok(None);
+        };
+        const ORDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+        let Some(lowest) = variants
+            .iter()
+            .filter_map(Value::as_str)
+            .min_by_key(|v| ORDER.iter().position(|o| o == v).unwrap_or(ORDER.len()))
+        else {
+            return Ok(None);
+        };
+        if row["state"]["reasoningEffort"] == lowest {
+            return Ok(Some(lowest.to_owned()));
+        }
+        let lowest = lowest.to_owned();
+        let effort = format!("{id}-effort");
+        let result = self
+            .dispatch(
+                &effort,
+                "setEffort",
+                json!({"sessionId":session,"reasoningEffort":lowest}),
+                session,
+                None,
+            )
+            .await?;
+        ensure!(
+            ["applied", "accepted"].contains(&result["status"].as_str().unwrap_or("")),
+            "Muse did not apply the lower effort"
+        );
+        Ok(Some(lowest))
     }
     async fn dispatch(
         &mut self,
@@ -366,6 +420,9 @@ impl Actor {
             if operation == "workspace/inspect" {
                 return workspace::inspect(&row).await;
             }
+            if operation == "workspace/reusable" {
+                return workspace::reusable(&self.db, &row, &params).await;
+            }
             ensure!(
                 [
                     "workspace/run",
@@ -508,7 +565,8 @@ impl Actor {
                 "answer",
                 "resume",
                 "setModel",
-                "setEffort"
+                "setEffort",
+                "compact"
             ]
             .contains(&operation),
             "Unsupported operation"
@@ -657,24 +715,41 @@ impl Actor {
             if let Some(model) = params.get("modelId") {
                 wire["modelId"] = model.clone();
             }
+            let economical = params["effortPreset"] == "economical";
             let result = self
                 .dispatch(id, operation, params, &session, Some(wire))
                 .await?;
-            let db = self.db.lock().unwrap();
-            let mut row = db
-                .get("sessions", &session)?
-                .context("Started session disappeared")?;
-            if project.is_some() {
-                row["projectContextReceipt"] = json!({"requestId":id,"status":result["status"],"commandId":result["commandId"]});
-            }
-            row["lifecycle"] = json!(if result["status"] == "applied"
-                && row["state"]["current"] == true
             {
-                "connected"
-            } else {
-                "interrupted"
-            });
-            db.put("sessions", &session, &row)?;
+                let db = self.db.lock().unwrap();
+                let mut row = db
+                    .get("sessions", &session)?
+                    .context("Started session disappeared")?;
+                if project.is_some() {
+                    row["projectContextReceipt"] = json!({"requestId":id,"status":result["status"],"commandId":result["commandId"]});
+                }
+                row["lifecycle"] = json!(if result["status"] == "applied"
+                    && row["state"]["current"] == true
+                {
+                    "connected"
+                } else {
+                    "interrupted"
+                });
+                db.put("sessions", &session, &row)?;
+            }
+            // T4: the optional economical preset lowers reasoning effort to the least the
+            // model offers, as its own journalled command; the user can raise it any time.
+            if result["status"] == "applied" && economical {
+                let outcome = self.economical(id, &session).await;
+                let db = self.db.lock().unwrap();
+                if let Some(mut row) = db.get("sessions", &session)? {
+                    row["effortPreset"] = match outcome {
+                        Ok(Some(effort)) => json!({"preset":"economical","reasoningEffort":effort}),
+                        Ok(None) => json!({"preset":"economical","unavailable":true}),
+                        Err(error) => json!({"preset":"economical","error":error.to_string()}),
+                    };
+                    db.put("sessions", &session, &row)?;
+                }
+            }
             return Ok(result);
         }
         let session = params["sessionId"]
@@ -1204,7 +1279,7 @@ async fn supervisor_main() -> Result<()> {
                     if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
                     continue;
                 }
-                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "answer", "decide", "relay/deliver"].iter().any(|op| call.request["operation"] == *op)
+                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "compact", "answer", "decide", "relay/deliver"].iter().any(|op| call.request["operation"] == *op)
                     && !account_ready.load(std::sync::atomic::Ordering::SeqCst) {
                     let _ = call.response.send(Err(anyhow::anyhow!("Sign in or reconnect your Muse account before continuing")));
                     continue;

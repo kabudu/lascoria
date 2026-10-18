@@ -513,3 +513,87 @@ export function tokenFacts(state: Record<string, any> | undefined, turnId?: stri
       : null,
   };
 }
+
+/** T3/T4 preferences. Every behaviour change is opt-in; warnings are on by default. */
+export interface EfficiencyPrefs {
+  /** Warn when one task uses more tokens than this; 0 or absent turns the warning off. */
+  taskBudget?: number;
+  /** Cancel a task that goes over its budget (a soft limit: usage arrives after each call). */
+  stopOverBudget?: boolean;
+  /** Ask before starting a task when this many are already running; 0 or absent is off. */
+  concurrentTasks?: number;
+  /** Warn when the same tool call repeats this many times in one task (default 3; 0 off). */
+  repeatThreshold?: number;
+  /** Suggest compaction when Muse reports context pressure (default on). */
+  suggestCompaction?: boolean;
+  /** Reasoning effort for new sessions: Muse's default, or the lowest the model offers. */
+  preset?: 'balanced' | 'economical';
+}
+
+export interface EfficiencyAlert {
+  kind: 'budget' | 'repeat' | 'context';
+  turnId?: string;
+  message: string;
+}
+
+/** The task Muse is running, or the most recent one. */
+function currentTurn(state: Record<string, any> | undefined): string | undefined {
+  return state?.activeTurnId ?? state?.turns?.at?.(-1)?.turnId;
+}
+
+/**
+ * T3/T4 warnings for one session, from facts Muse reported: per-task tokens against the budget,
+ * the same tool call (tool and verbatim arguments) repeating within a task, and context pressure.
+ * They describe; acting on them is the user's choice (or the explicit stop-over-budget option).
+ */
+export function efficiencyAlerts(
+  state: Record<string, any> | undefined,
+  prefs: EfficiencyPrefs | undefined,
+): EfficiencyAlert[] {
+  const alerts: EfficiencyAlert[] = [];
+  const turnId = currentTurn(state);
+  const budget = prefs?.taskBudget ?? 0;
+  const used = turnId ? state?.tokens?.byTurn?.[turnId]?.totalTokens : undefined;
+  if (budget > 0 && turnId && typeof used === 'number' && used > budget)
+    alerts.push({
+      kind: 'budget',
+      turnId,
+      message: `This task has used ${used.toLocaleString()} tokens, over your ${budget.toLocaleString()}-token budget.`,
+    });
+  const threshold = prefs?.repeatThreshold ?? 3;
+  if (threshold > 0 && turnId) {
+    const counts = new Map<string, { tool: string; count: number }>();
+    for (const item of state?.items ?? []) {
+      if (item.kind !== 'toolCall' || item.turnId !== turnId || !item.tool) continue;
+      const key = `${item.tool}\u0000${item.args ?? ''}`;
+      const entry = counts.get(key) ?? { tool: item.tool, count: 0 };
+      entry.count++;
+      counts.set(key, entry);
+    }
+    const repeated = [...counts.values()].sort((a, b) => b.count - a.count)[0];
+    if (repeated && repeated.count >= threshold)
+      alerts.push({
+        kind: 'repeat',
+        turnId,
+        message: `Muse has made the same ${repeated.tool} call ${repeated.count} times in this task. It may be stuck; consider steering or stopping it.`,
+      });
+  }
+  const pressure = state?.sessionState?.['session/contextUsage']?.pressure;
+  if (prefs?.suggestCompaction !== false && (pressure === 'warning' || pressure === 'blocked'))
+    alerts.push({
+      kind: 'context',
+      message:
+        pressure === 'blocked'
+          ? 'The conversation has filled the model’s context. Compact it, or continue in a new session.'
+          : 'The conversation is getting close to the model’s context limit. Compacting summarises older messages to make room.',
+    });
+  return alerts;
+}
+
+/** Tasks running across sessions other than `except`, for the concurrency check. */
+export function runningTasks(
+  sessions: { id: string; state: Record<string, any> }[],
+  except?: string,
+) {
+  return sessions.filter((s) => s.id !== except && s.state?.activeTurnId).length;
+}

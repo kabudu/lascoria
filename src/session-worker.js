@@ -575,6 +575,13 @@ export async function createSession(send, onDeath) {
         throw new ValidationError('Effort is not advertised for the selected model');
       method = 'session/setReasoningEffort';
       wire = { sessionId, reasoningEffort: params.reasoningEffort };
+    } else if (operation === 'compact') {
+      // T4: user-requested native compaction. Muse summarises older history itself; Lascoria
+      // never rewrites the transcript. Only between tasks, so a running task is not disturbed.
+      if (runtime.session.fold.activeTurnId)
+        throw new ValidationError('Wait for the current task to finish before compacting');
+      method = 'session/compact';
+      wire = { sessionId };
     } else if (operation === 'cancel') {
       if (!params.turnId || runtime.session.fold.activeTurnId !== params.turnId)
         throw new ValidationError('Stale cancellation target');

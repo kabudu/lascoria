@@ -20,9 +20,12 @@ const fresh = (): Project => ({
 export function ProjectStart({
   started,
   disabled,
+  economical,
 }: {
   started: (id: string) => void;
   disabled: boolean;
+  /** T4: start with the lowest reasoning effort the model offers. */
+  economical?: boolean;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project>(fresh);
@@ -369,6 +372,7 @@ export function ProjectStart({
               projectRevision: saved!.revision,
               name: saved!.name,
               ...(model ? { modelId: model } : {}),
+              ...(economical ? { effortPreset: 'economical' } : {}),
             })
           }
         >

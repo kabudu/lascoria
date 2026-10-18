@@ -143,6 +143,15 @@ test(
     assert.equal(result.result.contentUnchanged, true);
     assert.match(result.result.stdout, /PASS direct test/);
     assert.deepEqual(await request(directory, 'workspace/run', runParams, 'test-run'), result);
+    // T2: with the folder unchanged, the same command's result can be reused, with provenance.
+    const reusable = await request(directory, 'workspace/reusable', runParams);
+    assert.equal(reusable.run.id, 'test-run');
+    assert.equal(reusable.run.outcome, 'passed');
+    assert.equal(reusable.run.fingerprint, result.result.endFingerprint);
+    assert.deepEqual(
+      await request(directory, 'workspace/reusable', { sessionId, command: 'npm test' }),
+      { run: null },
+    );
     await request(
       directory,
       'workspace/run',
@@ -175,6 +184,10 @@ test(
     );
     const preview = await request(directory, 'workspace/inspect', { sessionId });
     await writeFile(join(workspace, 'new.txt'), 'new edit\n');
+    // Any change in the folder retires the earlier result.
+    const retired = await request(directory, 'workspace/reusable', runParams);
+    assert.equal(retired.run, null);
+    assert.equal(retired.changedSince, result.result.completedAtMillis);
     const stale = await request(
       directory,
       'workspace/commit',
