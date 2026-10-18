@@ -685,6 +685,13 @@ impl Actor {
             row["lifecycle"] != "archived",
             "Archived sessions are read-only"
         );
+        // Model-visible notes and native roots are attached here from saved Projects only.
+        ensure!(
+            ["projectNote", "workspaceRoots", "images"]
+                .iter()
+                .all(|field| params.get(*field).is_none()),
+            "Unsupported task field"
+        );
         let mut replacement = None;
         if operation == "turn" {
             projects::settle_pending(&self.db.lock().unwrap(), session)?;

@@ -112,6 +112,13 @@ test(
       tokenState.sessionState['session/tokenUsage'].cumulative.totalTokens >= perTask.totalTokens,
     );
 
+    // Only the supervisor attaches model-visible notes and roots; a caller cannot.
+    for (const field of ['projectNote', 'workspaceRoots'])
+      await assert.rejects(
+        request(directory, 'turn', { sessionId, text: 'x', [field]: 'hidden' }, `forged-${field}`),
+        /Unsupported task field/,
+      );
+
     // Ordinary saves never touch the running session.
     await save(1, [apiFolder, appFolder], 'save-2');
     await save(2, [appFolder, apiFolder, docsFolder], 'save-3');
