@@ -231,7 +231,7 @@ fn verified(root: &Path, id: &str) -> Result<(PathBuf, Value)> {
 
 /// Destinations come from the native save dialog. They must be absolute, outside the
 /// private state directory and not an existing link.
-fn destination(root: &Path, destination: &str) -> Result<(PathBuf, PathBuf)> {
+pub(crate) fn destination(root: &Path, destination: &str) -> Result<(PathBuf, PathBuf)> {
     let destination = PathBuf::from(destination);
     ensure!(
         destination.is_absolute()
@@ -261,7 +261,7 @@ fn destination(root: &Path, destination: &str) -> Result<(PathBuf, PathBuf)> {
 }
 
 /// Write a private (0600) file next to the destination, verify it, then rename it into place.
-fn publish(
+pub(crate) fn publish(
     parent: &Path,
     destination: &Path,
     write: impl FnOnce(&mut fs::File) -> Result<()>,

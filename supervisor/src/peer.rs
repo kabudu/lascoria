@@ -122,6 +122,17 @@ impl Policy {
     }
 }
 
+/// Compares a presented control token with the expected one in time that depends only on the
+/// lengths, so response timing does not reveal how many leading bytes matched (F4).
+pub fn same_secret(presented: &str, expected: &str) -> bool {
+    let (a, b) = (presented.as_bytes(), expected.as_bytes());
+    let mut difference = a.len() ^ b.len();
+    for (index, byte) in b.iter().enumerate() {
+        difference |= usize::from(a.get(index).copied().unwrap_or(0) ^ byte);
+    }
+    std::hint::black_box(difference) == 0
+}
+
 pub fn authorise(peer: Peer, operation: &str) -> Result<()> {
     if peer == Peer::RelayHelper {
         ensure!(
@@ -141,6 +152,16 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn token_comparison_needs_every_byte_and_the_length() {
+        assert!(same_secret("abc123", "abc123"));
+        assert!(!same_secret("abc124", "abc123"));
+        assert!(!same_secret("abc12", "abc123"));
+        assert!(!same_secret("abc1234", "abc123"));
+        assert!(!same_secret("", "abc123"));
+        assert!(!same_secret("bbc123", "abc123"));
     }
 
     #[test]
