@@ -372,6 +372,7 @@ impl Service {
             "decision/feedback",
             "decision/metrics",
             "decision/tool",
+            "decision/toolAvailable",
         ]
         .contains(&operation)
         {

@@ -734,6 +734,19 @@ async fn triage_sends_only_chosen_parts_once_per_update_and_only_with_consent() 
     assert!(text.contains("Which branch?"));
 }
 
+async fn offered(service: &Service, db: &SharedDb) -> bool {
+    service
+        .handle(
+            db.clone(),
+            "decision/toolAvailable",
+            &json!({"sessionId":"session-a"}),
+            "t",
+        )
+        .await
+        .unwrap()["available"]
+        == true
+}
+
 #[tokio::test]
 async fn muse_tool_is_refused_until_enabled_never_pays_twice_and_has_a_daily_limit() {
     let f = fixture().await;
@@ -747,6 +760,10 @@ async fn muse_tool_is_refused_until_enabled_never_pays_twice_and_has_a_daily_lim
         .await
         .unwrap_err();
     assert!(refused.to_string().contains("not enabled for this session"));
+    assert!(
+        !offered(&service, &f.db).await,
+        "not offered before the user turns it on"
+    );
     mode(
         &service,
         f.db.clone(),
@@ -759,6 +776,10 @@ async fn muse_tool_is_refused_until_enabled_never_pays_twice_and_has_a_daily_lim
         json!({"mode":"tool","sessionId":"session-a","workspaceEnabled":true}),
     )
     .await;
+    assert!(
+        offered(&service, &f.db).await,
+        "offered once provider and workspace are on"
+    );
     let answer = service
         .handle(f.db.clone(), "decision/tool", &ask, "q-1")
         .await

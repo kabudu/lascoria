@@ -292,8 +292,29 @@ impl Service {
             }
             "decision/metrics" => metrics(&db.lock().unwrap()),
             "decision/tool" => self.tool(db, params, request_id).await,
+            "decision/toolAvailable" => Self::tool_available(&db, params),
             _ => bail!("Unsupported decision operation"),
         }
+    }
+
+    /// Whether Muse should be offered the tool at all for this session. No provider request.
+    /// The relay helper lists the tool only when this is true, so a session never sees a
+    /// tool that would refuse every call.
+    fn tool_available(db: &SharedDb, params: &Value) -> Result<Value> {
+        let session = id(params, "sessionId")?;
+        let database = db.lock().unwrap();
+        let cfg = config(&database)?;
+        let Ok((scope, _)) = workspace(&database, &session) else {
+            return Ok(json!({"available":false}));
+        };
+        let saved = mode(&cfg, "tool");
+        let available = saved["provider"]
+            .as_str()
+            .is_some_and(|p| usable_provider(&cfg, p).is_ok())
+            && saved["workspaces"]
+                .as_array()
+                .is_some_and(|w| w.iter().any(|v| v == &scope));
+        Ok(json!({"available":available}))
     }
 
     /// Model (c): Muse asks one question about text it chose, for a session whose workspace the
