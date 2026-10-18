@@ -227,7 +227,7 @@ These are known gaps from [daily coding workflow](daily-coding-workflow.md), not
 
 Requested for consideration in the preceding discussion; these policies are not implemented merely because Muse exposes usage events.
 
-- [ ] **T1 - Measure first:** per-task/session/model usage, cache/reasoning counters where reported, context pressure and correctly deduplicated child-agent totals. Keep token counts, estimated API cost and subscription usage windows distinct; missing data stays unknown.
+- [ ] **T1 - Measure first** (visibility implemented 18 October; validation open): per-task/session/model usage, cache/reasoning counters where reported, context pressure and correctly deduplicated child-agent totals. Keep token counts, estimated API cost and subscription usage windows distinct; missing data stays unknown.
 - [ ] **T2 - Reuse evidence:** reuse repository analysis, test results and reviews only while content/configuration fingerprints remain valid. Preserve provenance and invalidate on relevant changes.
 - [ ] **T3 - Bound work:** explicit delegation/concurrency budgets, duplicate-work/loop detection and warnings before admitting more work. Any spend limit based on post-call counters is a soft limit with in-flight overshoot, not guaranteed billing enforcement.
 - [ ] **T4 - Optional policies:** economical model/effort presets with user-visible escalation, focused context handoffs and deliberate use of Muse-native compaction. Preserve user instructions, correctness and permission boundaries; do not silently truncate history or rewrite transcripts.

@@ -12,6 +12,7 @@ import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
 import { SupportReport } from './SupportReport';
+import { TokenUse } from './TokenUse';
 import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
@@ -2046,6 +2047,7 @@ export function App() {
                       Connect sessions
                     </button>
                   )}
+                  <TokenUse state={session.state} turnId={task?.turnId ?? undefined} />
                   <div className="tabs" role="tablist">
                     {inspectorTabs.map((name) => (
                       <button

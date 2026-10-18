@@ -50,7 +50,7 @@ External credentials, platform access or human-trial gates will be recorded prec
 | D3 search / archive continuation | Search, continuation and transcript export implemented; Rust-backed UI verified on macOS | Bounded read-only search over retained transcript windows (latest 100 items per session, 50 results, Unicode-safe snippets) and an archived-session continuation that starts one linked session, in the retained task folder, without a model turn. 17 October: **Export transcript…** saves the retained window as Markdown (user's typed text, image markers, tool lines; 0600, atomic, never inside private state, 16 MB cap). Native save-dialog checks on all three OSes remain open. |
 | D4 notifications / attention | Desktop notifications implemented; native validation pending | Canvas activity and Attention verified earlier. 17 October: opt-in desktop notifications with kind and per-session preferences, shown by a narrow Rust command only while no window has focus, at most once per item and 12 a minute; the Rust-backed UI workflow passes on macOS. Native notification delivery on macOS/Windows/Linux, background WebView timer behaviour and notifications while Lascoria is closed (not provided) remain open. |
 | D5 capabilities management | Pending | R9 first; activation/plugin/MCP scope next. |
-| T1 token instrumentation | Pending | Distinguish child totals, context occupancy and subscription allowance. |
+| T1 token instrumentation | Partial implementation; validation in progress | 18 October: a collapsed **Token use** line in the inspector shows Muse's cumulative session total, per-task and per-model totals counted once from `session/tokenUsage`, subagent usage separately, context occupancy and pressure, and Muse's API cost estimate labelled as not a subscription charge. Missing values stay unknown. Real-Muse per-task proof added to the project-context test; native views and T2–T5 remain. |
 | T2 evidence reuse | Pending | Revision/configuration-bound validity, no inferred acceptance. |
 | T3 work budgets / loops | Pending | Soft admission limits, in-flight overshoot explicit. |
 | T4 efficiency policies | Pending | Optional model/effort presets and native compaction; preserve instructions. |
@@ -86,7 +86,7 @@ Audited against the code at `e9d55d7` plus the R8 increment below, at the user's
 | D3 Find / retain work | Awaiting validation | Search, continuation, transcript export. | Native save dialogs on three OSes. |
 | D4 Attention | Awaiting validation | Desktop notifications with preferences. | Native delivery on three OSes. |
 | D5 Capabilities management | Missing; Decision/blocker | None beyond R9. | Scope decision for plugin/MCP/activation management in the first release. |
-| T1–T5 Token efficiency | Missing; Decision/blocker | None (usage windows are not token accounting). | T1 measurement can start without approval; T3/T4 policies need agreed semantics; T5 needs repeated live tasks. First-release scope needs the user's decision. |
+| T1–T5 Token efficiency | T1 Partial; T2–T5 Missing, Decision/blocker | T1 token visibility (18 October). | T3/T4 policies need agreed semantics; T5 needs repeated live tasks; first-release scope for T2–T5 needs the user's decision. |
 
 ## Validation log
 
@@ -358,4 +358,8 @@ Follow-up, same day: the optional compact indicator. **Show the weekly allowance
 ### R15 goal and folder notes (18 October)
 
 Projects gained an optional goal and per-folder notes, revisioned with the Project and sent to Muse once per applied revision with the first plain task (or inside a folder-change note), never shown in place of the user's words. See [Projects](projects.md#goal-and-folder-notes-implemented-18-october).
+
+### T1 token visibility (18 October)
+
+Measurement only, no policy. The session worker counts each `session/tokenUsage` completion once (by view cursor, live or in recovered history) into per-task (last 100 tasks) and per-model totals. The inspector's collapsed **Token use** line shows Muse's own cumulative session total with its prompt, output and cache-read split, the selected task's tokens and model calls, subagent usage (reported on subagent items and never folded into the session total, so shown apart), context occupancy against the window with Muse's pressure level, a by-model split when more than one model ran, and Muse's estimated API cost marked partial when some calls had no price and explained as not a subscription charge. Absent data stays unknown rather than zero. Tests: presentation tests for every field and absence; the real-Muse project-context test asserts a per-task count with at least one call and a cumulative total that covers it. Not proven: native display, provider cache splits on a live provider, and long sessions beyond the 100-task window.
 

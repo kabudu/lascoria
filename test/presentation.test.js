@@ -439,3 +439,57 @@ test('usage readings stay honest: readable durations, over-limit and reset-passe
     true,
   );
 });
+test('token facts keep session totals, task figures, subagents and context apart', async () => {
+  const { tokenFacts } = await import('../ui/model.ts');
+  assert.deepEqual(tokenFacts(undefined, 't1'), {
+    session: null,
+    task: null,
+    byModel: {},
+    subagents: null,
+    context: null,
+  });
+  const state = {
+    sessionState: {
+      'session/tokenUsage': {
+        cumulative: {
+          totalTokens: 900,
+          promptTokens: 700,
+          outputTokens: 200,
+          cost: { usd: 0.0123, partial: true },
+        },
+      },
+      'session/contextUsage': { usedTokens: 50_000, windowTokens: 200_000, pressure: 'normal' },
+    },
+    tokens: {
+      byTurn: {
+        t1: {
+          calls: 2,
+          promptTokens: 300,
+          outputTokens: 100,
+          totalTokens: 400,
+          reasoningTokens: 0,
+          cacheReadTokens: 0,
+        },
+      },
+      byModel: { 'muse-wonder-1.0': { calls: 2, totalTokens: 400 } },
+    },
+    items: [
+      { kind: 'subagent', turnId: 't1', usage: { inputTokens: 40, outputTokens: 10 } },
+      { kind: 'subagent', turnId: 't2', usage: { inputTokens: 5, outputTokens: 5 } },
+      { kind: 'subagent', turnId: 't1' },
+    ],
+  };
+  const facts = tokenFacts(state, 't1');
+  assert.equal(facts.session.totalTokens, 900);
+  assert.equal(facts.session.cacheReadTokens, null, 'absent cache split stays unknown');
+  assert.equal(facts.session.costPartial, true);
+  assert.equal(facts.task.totalTokens, 400);
+  assert.deepEqual(facts.subagents, { count: 1, tokens: 50 });
+  assert.equal(facts.context.percent, 25);
+  assert.equal(tokenFacts(state, 'unknown').task, null);
+  assert.equal(
+    tokenFacts({ sessionState: { 'session/contextUsage': { usedTokens: 5, pressure: 'normal' } } })
+      .context.percent,
+    null,
+  );
+});

@@ -460,3 +460,56 @@ export function allowanceFacts(reading: AllowanceReading, observedAtMs: number, 
     stale: now - observedAtMs > USAGE_STALE_MS,
   };
 }
+
+export interface TokenTotals {
+  calls: number;
+  promptTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  reasoningTokens: number;
+  cacheReadTokens: number;
+}
+/**
+ * T1: what Muse reported about token use for a session and, optionally, one task. Session
+ * totals come from Muse's cumulative counter; per-task and per-model figures come from the
+ * completions this host saw. Subagent usage is reported on subagent items and never folded into
+ * the session total, so it is shown separately. Missing data stays `null`, never 0.
+ */
+export function tokenFacts(state: Record<string, any> | undefined, turnId?: string) {
+  const usage = state?.sessionState?.['session/tokenUsage'];
+  const context = state?.sessionState?.['session/contextUsage'];
+  const cumulative = usage?.cumulative;
+  const subagents = (state?.items ?? []).filter(
+    (item: any) => item.kind === 'subagent' && item.usage && (!turnId || item.turnId === turnId),
+  );
+  const subagentTokens = subagents.reduce(
+    (sum: number, item: any) =>
+      sum + (item.usage.inputTokens ?? 0) + (item.usage.outputTokens ?? 0),
+    0,
+  );
+  return {
+    session: cumulative
+      ? {
+          totalTokens: cumulative.totalTokens as number,
+          promptTokens: cumulative.promptTokens as number,
+          outputTokens: cumulative.outputTokens as number,
+          cacheReadTokens: (cumulative.cacheReadTokens ?? null) as number | null,
+          costUsd: (cumulative.cost?.usd ?? null) as number | null,
+          costPartial: Boolean(cumulative.cost?.partial),
+        }
+      : null,
+    task: turnId ? ((state?.tokens?.byTurn?.[turnId] ?? null) as TokenTotals | null) : null,
+    byModel: (state?.tokens?.byModel ?? {}) as Record<string, TokenTotals>,
+    subagents: subagents.length ? { count: subagents.length, tokens: subagentTokens } : null,
+    context: context
+      ? {
+          usedTokens: context.usedTokens as number,
+          windowTokens: (context.windowTokens ?? null) as number | null,
+          percent: context.windowTokens
+            ? Math.min(100, Math.round((context.usedTokens / context.windowTokens) * 100))
+            : null,
+          pressure: String(context.pressure),
+        }
+      : null,
+  };
+}

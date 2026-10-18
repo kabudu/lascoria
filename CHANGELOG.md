@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Token use** in the task inspector shows how many tokens a session and the selected task used, how full the model's context is, subagent use and Muse's API price estimate. It is collapsed by default and separate from your subscription allowance.
+
 - Projects can have an optional goal and a short note for each folder. Muse receives them with the first task of a Project session, so it knows how the folders fit together; your transcript still shows only what you typed.
 
 - **Support report** (workspace menu) prepares a summary of versions, session states and data sizes to help diagnose problems. You read exactly what it contains before saving it; it never includes your tasks, conversations, file paths, names or keys, and is never sent anywhere.
