@@ -211,6 +211,8 @@ impl Service {
     async fn key(&self, provider: &str) -> Result<Option<Vec<u8>>> {
         #[cfg(test)]
         {
+            // Native vault reads yield before reservation; model that boundary in tests too.
+            tokio::task::yield_now().await;
             return Ok(self.test_keys.lock().unwrap().get(provider).cloned());
         }
         #[cfg(not(test))]
@@ -345,8 +347,14 @@ impl Service {
                 .as_str()
                 .map(|s| workspace(&database, s).map(|v| v.0))
                 .transpose()?;
+            let current_triage = params["sessionId"]
+                .as_str()
+                .map(|session| modes::current_source(&database, &cfg, session))
+                .transpose()?
+                .flatten();
             return Ok(
-                json!({"revision":cfg["revision"],"admissionEpoch":self.epoch,"providers":providers,"modes":{"triage":modes::mode(&cfg,"triage"),"tool":modes::mode(&cfg,"tool")},"workspace":workspace,"recent":recent_runs(&database)?.into_iter().map(|mut r| { if r["status"] == "sending" && !self.active.lock().unwrap().contains_key(r["id"].as_str().unwrap_or_default()) {r["status"] = json!("unknown");} r }).collect::<Vec<_>>(),"limits":{"concurrency":2,"inputBytes":INPUT_LIMIT,"responseBytes":RESPONSE_LIMIT,"requestSeconds":20,"retainedResults":FULL_RESULTS,"requestIdentities":RUN_LIMIT}}),
+                json!({"revision":cfg["revision"],"admissionEpoch":self.epoch,"providers":providers,"modes":{"triage":modes::mode(&cfg,"triage"),"tool":modes::mode(&cfg,"tool")},"workspace":workspace,"recent":recent_runs(&database)?.into_iter().map(|mut r| { if r["status"] == "sending" && !self.active.lock().unwrap().contains_key(r["id"].as_str().unwrap_or_default()) {r["status"] = json!("unknown");}
+                    if params["sessionId"].is_string() && r["purpose"] == "triage" && r["source"]["sessionId"] == params["sessionId"] && r["status"] == "completed" && (current_triage.as_ref() != Some(&r["source"]) || r["configRevision"] != cfg["revision"]) {r["status"] = json!("stale");} r }).collect::<Vec<_>>(),"limits":{"concurrency":2,"inputBytes":INPUT_LIMIT,"responseBytes":RESPONSE_LIMIT,"requestSeconds":20,"retainedResults":FULL_RESULTS,"requestIdentities":RUN_LIMIT}}),
             );
         }
         if operation == "decision/result" {
@@ -672,6 +680,28 @@ impl Service {
                 read_run(&database, request_id)?.is_none(),
                 "Decision request already admitted; read its result"
             );
+            // Daily allowance and request identity share the same reservation lock.
+            // Native vault I/O yields, so an earlier count alone is not admission.
+            let cfg = config(&database)?;
+            ensure!(
+                cfg["revision"] == revision,
+                "Integration changed; nothing was sent"
+            );
+            if let Some(mode) = match purpose {
+                "museTool" => Some("tool"),
+                "triage" => Some("triage"),
+                _ => None,
+            } {
+                let limit = modes::mode(&cfg, mode)["dailyLimit"].as_i64().unwrap_or(50);
+                ensure!(
+                    modes::spent_today(&database, purpose)? < limit,
+                    "Today's decision limit is reached; nothing was sent"
+                );
+            }
+            ensure!(
+                modes::source_current(&database, &source)?,
+                "The update changed; nothing was sent"
+            );
             save_run(&database, row.clone())?;
         }
         let began = Instant::now();
@@ -685,7 +715,11 @@ impl Service {
         match result {
             Ok(result) => {
                 row["result"] = result;
-                let unchanged = config(&db.lock().unwrap())?["revision"] == revision;
+                let unchanged = {
+                    let database = db.lock().unwrap();
+                    config(&database)?["revision"] == revision
+                        && modes::source_current(&database, &source)?
+                };
                 let fresh = if let Some(root) = &root {
                     tokio::time::timeout(Duration::from_secs(10), review::capture(Path::new(root)))
                         .await
@@ -714,7 +748,9 @@ impl Service {
         }
         let database = db.lock().unwrap();
         if row["status"] == "completed"
-            && (config(&database)?["revision"] != revision || cancellation.is_cancelled())
+            && (config(&database)?["revision"] != revision
+                || cancellation.is_cancelled()
+                || !modes::source_current(&database, &source)?)
         {
             row["status"] = json!("stale");
         }

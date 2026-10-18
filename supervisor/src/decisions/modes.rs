@@ -54,7 +54,7 @@ pub(super) fn revoke(cfg: &mut Value, provider_id: &str) {
     }
 }
 
-fn spent_today(db: &Db, purpose: &str) -> Result<i64> {
+pub(super) fn spent_today(db: &Db, purpose: &str) -> Result<i64> {
     let since = now_ms().saturating_sub(86_400_000) as i64;
     Ok(db.0.query_row(
         "SELECT count(*) FROM decisions WHERE json_extract(value,'$.purpose')=?1 AND json_extract(value,'$.createdAtMillis')>=?2",
@@ -77,11 +77,16 @@ fn usable_provider(cfg: &Value, provider_id: &str) -> Result<()> {
 pub(super) fn triage_input(row: &Value, turn_id: &str, share: &[String]) -> Result<String> {
     let items = row["state"]["items"]
         .as_array()
-        .cloned()
+        .map(Vec::as_slice)
         .unwrap_or_default();
     let tail = |text: &str, n: usize| -> String {
-        let chars: Vec<char> = text.chars().collect();
-        chars[chars.len().saturating_sub(n)..].iter().collect()
+        text.chars()
+            .rev()
+            .take(n)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
     };
     let mut out = String::from(
         "An update from a coding assistant (Muse) working in a software repository.\n",
@@ -126,16 +131,23 @@ pub(super) fn triage_input(row: &Value, turn_id: &str, share: &[String]) -> Resu
                         .flatten()
                         .take(3)
                     {
-                        out += &format!(
-                            "Question: {}\n",
-                            tail(
-                                &input["requested"]["prompt"]
-                                    .as_str()
-                                    .map(str::to_owned)
-                                    .unwrap_or_else(|| input.to_string()),
-                                3000
-                            )
-                        );
+                        // Share question text, never the rest of the native request record.
+                        let prompts = input["questions"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .take(3)
+                            .filter_map(|q| q["question"].as_str())
+                            .collect::<Vec<_>>();
+                        if prompts.is_empty() {
+                            if let Some(prompt) = input["requested"]["prompt"].as_str() {
+                                out += &format!("Question: {}\n", tail(prompt, 3000));
+                            }
+                        } else {
+                            for prompt in prompts {
+                                out += &format!("Question: {}\n", tail(prompt, 3000));
+                            }
+                        }
                     }
                 }
             }
@@ -147,6 +159,48 @@ pub(super) fn triage_input(row: &Value, turn_id: &str, share: &[String]) -> Resu
         "Triage text exceeds the 32 KB disclosure limit"
     );
     Ok(out)
+}
+
+/// Reconstruct only the selected session's current triage identity. One read suffices
+/// for all its retained answers; history polling must not read the session per answer.
+pub(super) fn current_source(db: &Db, cfg: &Value, session: &str) -> Result<Option<Value>> {
+    let Some(row) = db.get("sessions", session)? else {
+        return Ok(None);
+    };
+    if row["lifecycle"] == "archived" {
+        return Ok(None);
+    }
+    let Some(turn) = row["state"]["turns"].as_array().and_then(|t| t.last()) else {
+        return Ok(None);
+    };
+    let Some(turn_id) = turn["turnId"].as_str() else {
+        return Ok(None);
+    };
+    let waiting = row["state"]["userInputs"]
+        .as_array()
+        .is_some_and(|a| !a.is_empty())
+        || row["state"]["approvals"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty());
+    let saved = mode(cfg, "triage");
+    let share = saved["share"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect::<Vec<_>>();
+    Ok(triage_input(&row,turn_id,&share).ok().map(|input| json!({"kind":"triage","sessionId":session,"turnId":turn_id,"waiting":waiting,"inputFingerprint":hash(input.as_bytes())})))
+}
+
+pub(super) fn source_current(db: &Db, source: &Value) -> Result<bool> {
+    if source["kind"] != "triage" {
+        return Ok(true);
+    }
+    let cfg = config(db)?;
+    Ok(
+        current_source(db, &cfg, source["sessionId"].as_str().unwrap_or_default())?.as_ref()
+            == Some(source),
+    )
 }
 
 fn triage_question() -> Value {
@@ -384,11 +438,15 @@ impl Service {
             }
         };
         ensure!(
-            ["completed", "stale"].contains(&row["status"].as_str().unwrap_or("")),
+            row["status"] == "completed",
             "{}",
-            row["message"].as_str().unwrap_or(
-                "The decision assistant did not answer. Continue without it; do not retry."
-            )
+            if row["status"] == "stale" {
+                "The decision answer is no longer current. Continue without it; do not retry."
+            } else {
+                row["message"].as_str().unwrap_or(
+                    "The decision assistant did not answer. Continue without it; do not retry.",
+                )
+            }
         );
         Ok(json!({
             "advisory": "An estimate from the user's external decision model. It does not approve anything and may be wrong; check the work yourself.",
@@ -467,12 +525,13 @@ impl Service {
                     .filter_map(|v| v.as_str().map(str::to_owned))
                     .collect();
                 let input = triage_input(&row, &turn_id, &share)?;
+                let input_fingerprint = hash(input.as_bytes());
                 found.push((
                     identity,
                     provider_id.to_owned(),
                     hash(path.as_bytes()),
                     input,
-                    json!({"kind":"triage","sessionId":session,"turnId":turn_id,"waiting":waiting}),
+                    json!({"kind":"triage","sessionId":session,"turnId":turn_id,"waiting":waiting,"inputFingerprint":input_fingerprint}),
                 ));
             }
             (cfg, found)

@@ -3045,3 +3045,44 @@ dialog.settings-dialog[open] {
   font-size: 1.1rem;
   font-weight: 600;
 }
+
+/* Share a layout owner so a wrapped session heading can never sit under its tools. */
+.workspace-chrome {
+  position: fixed;
+  inset: 78px 26px auto;
+  z-index: 21;
+  pointer-events: none;
+}
+.workspace-chrome > .workspace-title {
+  position: relative;
+  inset: auto;
+}
+.workspace-chrome > .surface-toolbar {
+  top: -6px;
+  pointer-events: auto;
+}
+.workspace-chrome:has(.project-context[open]) {
+  z-index: 26;
+}
+@media (max-width: 1100px) {
+  .workspace-chrome {
+    inset: 76px 16px auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .workspace-chrome > .surface-toolbar,
+  .workspace-chrome > .surface-toolbar.is-collapsed {
+    position: relative;
+    inset: auto;
+    transform: none;
+    width: min(580px, 100%);
+    min-width: 0;
+    align-self: center;
+    max-height: min(50dvh, 360px);
+    overflow: auto;
+  }
+  .workspace-chrome > .surface-toolbar.is-collapsed {
+    width: 220px;
+  }
+}

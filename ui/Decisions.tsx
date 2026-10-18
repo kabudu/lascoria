@@ -705,11 +705,13 @@ function ModeSettings({
                 void save(mode, { dailyLimit: Number(event.currentTarget.value) })
               }
             >
-              {[10, 25, 50, 100, 250].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
+              {[...new Set([1, 10, 25, 50, 100, 250, 1000, current.dailyLimit])]
+                .sort((a, b) => a - b)
+                .map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
             </select>
             requests a day
           </label>

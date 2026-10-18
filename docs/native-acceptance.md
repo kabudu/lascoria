@@ -90,3 +90,10 @@ Release builds reach only the compiled-in vendor endpoints, so these checks neve
 | DA4 | Turn the provider on and allow the workspace again. In the Diff tab save a snapshot, open **Optional decision assistance**, then **Preview exactly what will be sent**. | The preview shows the model, destination, size and exact request body before anything is sent. Do not send. |
 | DA5 | **Remove key…**, read the confirmation, **Remove key and turn off**. Open **Recent requests and metrics**. | The confirmation names the consequence and the remove button reads as destructive; the provider shows No key saved, the keychain item is gone, and no requests were made. |
 | DA6 | Narrow the window and use only the keyboard through the section. | Controls stay reachable and labelled; no text overlaps. |
+
+
+### Decision and canvas continuation, 18 October
+
+A rebuilt working-tree macOS QA release bundle based on `b9f173a` used isolated state and synthetic repositories. At 901 CSS pixels, New session remained clickable with expanded tools, task search filtered immediately, Settings chrome stayed fixed while its content scrolled, and the saved two-request daily limit displayed correctly. An exact manual Jev disclosure preview preceded one negative-control request: the added line said PASSED, and the question asking whether it said FAILED returned 4% probability of yes (`jev-1.13.0`). The advisory result and feedback controls were readable. The QA key was forgotten and owned processes stopped without restarting the user supervisor.
+
+Separate Rust-adapter live trials passed five simple oracles each for Jev and SubQ, including helper identity replay and automatic triage. These do not establish coding-task quality, calibration, a live Muse model choosing the tool, or Windows/Linux native acceptance. OpenAI returned 401; the user limited further trials to Jev and SubQ. Final clean-head source validation is recorded in draft PR #1.

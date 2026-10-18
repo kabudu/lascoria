@@ -91,6 +91,7 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
   try {
     await page.goto('/');
     await expect(page.locator('.task-node')).toHaveCount(50);
+    await expect(page.locator('.attention-row')).toHaveCount(0);
     const sceneGeometry = () =>
       page.locator('.task-map').evaluate((map) => ({
         transform: (map as HTMLElement).style.transform,
@@ -105,8 +106,10 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
     const originalScene = await sceneGeometry();
     for (const panel of ['Sessions', 'Attention', 'Task inspector']) {
       await page.getByRole('button', { name: `Expand ${panel} panel`, exact: true }).click();
+      if (panel === 'Attention') await expect(page.locator('.attention-row')).toHaveCount(500);
       expect(await sceneGeometry()).toEqual(originalScene);
       await page.getByRole('button', { name: `Collapse ${panel} panel`, exact: true }).click();
+      if (panel === 'Attention') await expect(page.locator('.attention-row')).toHaveCount(0);
       expect(await sceneGeometry()).toEqual(originalScene);
     }
 
@@ -162,9 +165,6 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
     await page.getByLabel('Workspace menu', { exact: true }).click();
     await page.getByRole('button', { name: 'Diagnostics', exact: true }).click();
     const report = JSON.parse(await page.getByLabel('Diagnostic report').inputValue());
-    expect(report.ui.navigationCommit.samples).toBeGreaterThanOrEqual(30);
-    expect(report.ui.warmAttachCommit.p95Ms).toBeLessThan(2000);
-    expect(report.ui.navigationCommit.p95Ms).toBeLessThan(100);
     const result = {
       schemaVersion: 1,
       kind: 'synthetic-ui-projection',
@@ -186,6 +186,10 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
       ],
     };
     await writeFile(info.outputPath('benchmark.json'), JSON.stringify(result, null, 2));
+    expect(report.ui.navigationCommit.samples).toBeGreaterThanOrEqual(30);
+    expect(report.ui.warmAttachCommit.p95Ms).toBeLessThan(2000);
+    expect(report.ui.navigationCommit.p95Ms).toBeLessThan(100);
+
     await page.getByRole('button', { name: 'Close dialog' }).click();
     status.features = [];
     await page.getByLabel('Workspace menu', { exact: true }).click();

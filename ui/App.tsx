@@ -1420,27 +1420,30 @@ export function App() {
             initial={{ x: 16, y: 460 }}
             onChange={(value) => panelChange('attention', value)}
           >
-            <section className="attention" aria-labelledby="attention-heading">
-              <div className="section-heading">
-                <h2 id="attention-heading">Attention</h2>
-                <span className="count">{queue.length}</span>
-              </div>
-              {queue.length === 0 ? (
-                <p className="muted">Nothing needs attention.</p>
-              ) : (
-                <>
-                  {queue.filter((entry) => !isHistoricalInterruption(entry)).map(renderAttention)}
-                  {queue.some(isHistoricalInterruption) && (
-                    <details className="attention-history">
-                      <summary>
-                        Runtime history <span>{queue.filter(isHistoricalInterruption).length}</span>
-                      </summary>
-                      {queue.filter(isHistoricalInterruption).map(renderAttention)}
-                    </details>
-                  )}
-                </>
-              )}
-            </section>
+            {!prefs.panels?.attention?.collapsed && (
+              <section className="attention" aria-labelledby="attention-heading">
+                <div className="section-heading">
+                  <h2 id="attention-heading">Attention</h2>
+                  <span className="count">{queue.length}</span>
+                </div>
+                {queue.length === 0 ? (
+                  <p className="muted">Nothing needs attention.</p>
+                ) : (
+                  <>
+                    {queue.filter((entry) => !isHistoricalInterruption(entry)).map(renderAttention)}
+                    {queue.some(isHistoricalInterruption) && (
+                      <details className="attention-history">
+                        <summary>
+                          Runtime history{' '}
+                          <span>{queue.filter(isHistoricalInterruption).length}</span>
+                        </summary>
+                        {queue.filter(isHistoricalInterruption).map(renderAttention)}
+                      </details>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
           </FloatingPanel>
           <div className="sidebar-foot">
             LOCAL EXECUTION
@@ -1451,79 +1454,255 @@ export function App() {
       )}
       <main id="workspace">
         {session && (
-          <div className="workspace-title">
-            <div>
-              <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
-              <h1 title={sessionName(session)}>{sessionName(session)}</h1>
-              {status.features?.includes('decisionTriage') && (
-                <TriageNote
-                  sessionId={session.id}
-                  latestTurn={session.state.turns?.at(-1)?.turnId as string | undefined}
-                  trigger={`${session.state.turns?.at(-1)?.turnId}:${String(session.state.turns?.at(-1)?.terminal)}:${(session.state.userInputs?.length ?? 0) + (session.state.approvals?.length ?? 0)}`}
-                />
-              )}
-              <div className="session-identity-actions">
-                {status.features?.includes('sessionNames') && (
-                  <button className="session-settings-trigger" onClick={() => setModal('rename')}>
-                    Rename session
-                  </button>
+          <div className="workspace-chrome">
+            <div className="workspace-title">
+              <div>
+                <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
+                <h1 title={sessionName(session)}>{sessionName(session)}</h1>
+                {status.features?.includes('decisionTriage') && (
+                  <TriageNote
+                    sessionId={session.id}
+                    latestTurn={session.state.turns?.at(-1)?.turnId as string | undefined}
+                    trigger={`${session.state.turns?.at(-1)?.turnId}:${String(session.state.turns?.at(-1)?.terminal)}:${(session.state.userInputs?.length ?? 0) + (session.state.approvals?.length ?? 0)}`}
+                  />
                 )}
-                {status.features?.includes('transcriptExport') && (
-                  <button
-                    className="session-settings-trigger"
-                    onClick={() => void exportTranscript(session)}
-                  >
-                    Export transcript…
-                  </button>
-                )}
-                {session.projectContext && (
-                  <details className="project-context">
-                    <summary title={session.projectContext.name}>
-                      {session.projectContext.folders.length} folders
-                    </summary>
-                    <div
-                      className="project-context-popover"
-                      role="region"
-                      aria-label="Project folders"
+                <div className="session-identity-actions">
+                  {status.features?.includes('sessionNames') && (
+                    <button className="session-settings-trigger" onClick={() => setModal('rename')}>
+                      Rename session
+                    </button>
+                  )}
+                  {status.features?.includes('transcriptExport') && (
+                    <button
+                      className="session-settings-trigger"
+                      onClick={() => void exportTranscript(session)}
                     >
-                      <strong>{session.projectContext.name}</strong>
-                      <p>
-                        {session.projectContextReceipt?.status !== 'applied'
-                          ? 'Requested folders; native start not confirmed'
-                          : session.projectContextReceipt.appliedWith === 'turn'
-                            ? 'Applied with a later task'
-                            : 'Applied at session start'}{' '}
-                        · revision {session.projectContext.revision}
-                      </p>
-                      <ol>
-                        {session.projectContext.folders.map((folder, i) => (
-                          <li key={folder.id}>
-                            <strong>
-                              {folder.name}
-                              {i === 0 ? ' (default)' : ''}
-                            </strong>
-                            <code>{folder.path}</code>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  </details>
-                )}
-                {!session.workspaceDiscarded && (
+                      Export transcript…
+                    </button>
+                  )}
+                  {session.projectContext && (
+                    <details className="project-context">
+                      <summary title={session.projectContext.name}>
+                        {session.projectContext.folders.length} folders
+                      </summary>
+                      <div
+                        className="project-context-popover"
+                        role="region"
+                        aria-label="Project folders"
+                      >
+                        <strong>{session.projectContext.name}</strong>
+                        <p>
+                          {session.projectContextReceipt?.status !== 'applied'
+                            ? 'Requested folders; native start not confirmed'
+                            : session.projectContextReceipt.appliedWith === 'turn'
+                              ? 'Applied with a later task'
+                              : 'Applied at session start'}{' '}
+                          · revision {session.projectContext.revision}
+                        </p>
+                        <ol>
+                          {session.projectContext.folders.map((folder, i) => (
+                            <li key={folder.id}>
+                              <strong>
+                                {folder.name}
+                                {i === 0 ? ' (default)' : ''}
+                              </strong>
+                              <code>{folder.path}</code>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    </details>
+                  )}
+                  {!session.workspaceDiscarded && (
+                    <button
+                      className="session-settings-trigger"
+                      onClick={() => void openInEditor(session)}
+                      title="Choose the editor in Settings"
+                    >
+                      Open in editor
+                    </button>
+                  )}
+                </div>
+                <p className="muted">Tasks, decisions and the evidence behind a change.</p>
+              </div>
+              <button className="primary" onClick={() => setModal('start')}>
+                New session
+              </button>
+            </div>
+            <div
+              className={`surface-toolbar ${prefs.canvasControlsCollapsed ? 'is-collapsed' : ''}`}
+              role="region"
+              aria-label="Canvas controls"
+            >
+              <div className="canvas-dock-heading">
+                <span className="eyebrow">
+                  Canvas{' '}
+                  <span className="dock-zoom">
+                    · {prefs.view === 'list' ? 'List' : `${Math.round(zoom * 100)}%`}
+                  </span>
+                </span>
+                <button
+                  aria-label={
+                    prefs.canvasControlsCollapsed
+                      ? 'Expand canvas controls'
+                      : 'Collapse canvas controls'
+                  }
+                  aria-expanded={!prefs.canvasControlsCollapsed}
+                  disabled={!loaded.current}
+                  onClick={() =>
+                    updatePrefs({ canvasControlsCollapsed: !prefs.canvasControlsCollapsed })
+                  }
+                >
+                  {prefs.canvasControlsCollapsed ? 'Show tools' : 'Hide tools'}
+                </button>
+              </div>
+              <div className="canvas-tools" hidden={!!prefs.canvasControlsCollapsed}>
+                {status.features?.includes('relayMap') && (
                   <button
-                    className="session-settings-trigger"
-                    onClick={() => void openInEditor(session)}
-                    title="Choose the editor in Settings"
+                    onClick={() => {
+                      panelChange('connections', {
+                        x:
+                          prefs.panels?.connections?.x ?? Math.max(16, window.innerWidth / 2 - 210),
+                        y: prefs.panels?.connections?.y ?? 160,
+                        collapsed: false,
+                      });
+                      updatePrefs({ canvasControlsCollapsed: true });
+                    }}
                   >
-                    Open in editor
+                    Session links
                   </button>
                 )}
+                <button
+                  onClick={() => {
+                    mapRef.current?.scrollTo({ left: 0, top: 0 });
+                    updatePrefs({ canvasOffset: { x: 0, y: 0 }, viewport: { x: 0, y: 0 } });
+                  }}
+                >
+                  Recenter canvas
+                </button>
+                <button
+                  disabled={prefs.view === 'list' || zoom <= 0.02}
+                  aria-label="Zoom out"
+                  onClick={() => changeZoom(zoom / 1.25)}
+                >
+                  −
+                </button>
+                <button
+                  disabled={prefs.view === 'list'}
+                  aria-label="Reset zoom to 100 percent"
+                  onClick={() => changeZoom(1)}
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  disabled={prefs.view === 'list' || zoom >= 2}
+                  aria-label="Zoom in"
+                  onClick={() => changeZoom(zoom * 1.25)}
+                >
+                  +
+                </button>
+                <button
+                  disabled={prefs.view === 'list' || !visible.length}
+                  onClick={() => {
+                    const element = mapRef.current;
+                    if (!element) return;
+                    const canvas = element.getBoundingClientRect();
+                    const obstacles = [
+                      ...document.querySelectorAll(
+                        '.floating-panel, .workspace-title, .surface-toolbar, .surface-foot, .layout-controls',
+                      ),
+                    ].map((panel) => {
+                      const box = panel.getBoundingClientRect();
+                      return {
+                        x: box.left - canvas.left,
+                        y: box.top - canvas.top,
+                        width: box.width,
+                        height: box.height,
+                      };
+                    });
+                    const frame = freeCanvasFrame(
+                      element.clientWidth,
+                      element.clientHeight,
+                      obstacles,
+                    );
+                    if (!frame.width) {
+                      setNotice('Move or collapse a panel to make room for fit-to-view.');
+                      return;
+                    }
+                    const points = visible.map((node, index) => position(node, index));
+                    const fit = fitConstellation(
+                      points,
+                      element.clientWidth,
+                      element.clientHeight,
+                      frame,
+                    );
+                    if (
+                      points.some(
+                        (point) =>
+                          point.x * fit.zoom + fit.offset.x < frame.x ||
+                          (point.x + 220) * fit.zoom + fit.offset.x > frame.x + frame.width ||
+                          point.y * fit.zoom + fit.offset.y < frame.y ||
+                          (point.y + 140) * fit.zoom + fit.offset.y > frame.y + frame.height,
+                      )
+                    ) {
+                      setNotice(
+                        'Move or collapse a panel to fit all visible nodes at the minimum zoom.',
+                      );
+                      return;
+                    }
+                    updatePrefs({
+                      zoom: fit.zoom,
+                      canvasOffset: fit.offset,
+                      viewport: { x: 0, y: 0 },
+                    });
+                  }}
+                >
+                  Fit to view
+                </button>
+                <div className="segmented">
+                  <button
+                    aria-pressed={prefs.view !== 'list'}
+                    onClick={() => updatePrefs({ view: 'map' })}
+                  >
+                    Task map
+                  </button>
+                  <button
+                    aria-pressed={prefs.view === 'list'}
+                    onClick={() => updatePrefs({ view: 'list' })}
+                  >
+                    List
+                  </button>
+                </div>
+                <label className="search">
+                  <span>Search tasks</span>
+                  <input
+                    value={prefs.search ?? ''}
+                    onChange={(e) => updatePrefs({ search: e.target.value })}
+                    placeholder="Filter tasks…"
+                  />
+                </label>
+                <label className="runtime-filter">
+                  <input
+                    type="checkbox"
+                    checked={prefs.showRuntimeReminders ?? false}
+                    onChange={(event) =>
+                      updatePrefs({ showRuntimeReminders: event.target.checked })
+                    }
+                  />
+                  Runtime reminders
+                </label>
+                <button
+                  onClick={() =>
+                    updatePrefs({
+                      collapsed: nodes.filter((n) => n.status === 'completed').map((n) => n.id),
+                    })
+                  }
+                >
+                  Collapse completed
+                </button>
+                <button onClick={() => updatePrefs({ collapsed: [] })}>Expand</button>
               </div>
-              <p className="muted">Tasks, decisions and the evidence behind a change.</p>
             </div>
-            <button className="primary" onClick={() => setModal('start')}>
-              New session
-            </button>
           </div>
         )}
         <div className="notification-stack" role="region" aria-label="Workspace notifications">
@@ -1668,181 +1847,6 @@ export function App() {
           <>
             <div className="workspace-grid">
               <section className="task-surface">
-                <div
-                  className={`surface-toolbar ${prefs.canvasControlsCollapsed ? 'is-collapsed' : ''}`}
-                  role="region"
-                  aria-label="Canvas controls"
-                >
-                  <div className="canvas-dock-heading">
-                    <span className="eyebrow">
-                      Canvas{' '}
-                      <span className="dock-zoom">
-                        · {prefs.view === 'list' ? 'List' : `${Math.round(zoom * 100)}%`}
-                      </span>
-                    </span>
-                    <button
-                      aria-label={
-                        prefs.canvasControlsCollapsed
-                          ? 'Expand canvas controls'
-                          : 'Collapse canvas controls'
-                      }
-                      aria-expanded={!prefs.canvasControlsCollapsed}
-                      disabled={!loaded.current}
-                      onClick={() =>
-                        updatePrefs({ canvasControlsCollapsed: !prefs.canvasControlsCollapsed })
-                      }
-                    >
-                      {prefs.canvasControlsCollapsed ? 'Show tools' : 'Hide tools'}
-                    </button>
-                  </div>
-                  <div className="canvas-tools" hidden={!!prefs.canvasControlsCollapsed}>
-                    {status.features?.includes('relayMap') && (
-                      <button
-                        onClick={() => {
-                          panelChange('connections', {
-                            x:
-                              prefs.panels?.connections?.x ??
-                              Math.max(16, window.innerWidth / 2 - 210),
-                            y: prefs.panels?.connections?.y ?? 160,
-                            collapsed: false,
-                          });
-                          updatePrefs({ canvasControlsCollapsed: true });
-                        }}
-                      >
-                        Session links
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        mapRef.current?.scrollTo({ left: 0, top: 0 });
-                        updatePrefs({ canvasOffset: { x: 0, y: 0 }, viewport: { x: 0, y: 0 } });
-                      }}
-                    >
-                      Recenter canvas
-                    </button>
-                    <button
-                      disabled={prefs.view === 'list' || zoom <= 0.02}
-                      aria-label="Zoom out"
-                      onClick={() => changeZoom(zoom / 1.25)}
-                    >
-                      −
-                    </button>
-                    <button
-                      disabled={prefs.view === 'list'}
-                      aria-label="Reset zoom to 100 percent"
-                      onClick={() => changeZoom(1)}
-                    >
-                      {Math.round(zoom * 100)}%
-                    </button>
-                    <button
-                      disabled={prefs.view === 'list' || zoom >= 2}
-                      aria-label="Zoom in"
-                      onClick={() => changeZoom(zoom * 1.25)}
-                    >
-                      +
-                    </button>
-                    <button
-                      disabled={prefs.view === 'list' || !visible.length}
-                      onClick={() => {
-                        const element = mapRef.current;
-                        if (!element) return;
-                        const canvas = element.getBoundingClientRect();
-                        const obstacles = [
-                          ...document.querySelectorAll(
-                            '.floating-panel, .surface-toolbar, .surface-foot, .layout-controls',
-                          ),
-                        ].map((panel) => {
-                          const box = panel.getBoundingClientRect();
-                          return {
-                            x: box.left - canvas.left,
-                            y: box.top - canvas.top,
-                            width: box.width,
-                            height: box.height,
-                          };
-                        });
-                        const frame = freeCanvasFrame(
-                          element.clientWidth,
-                          element.clientHeight,
-                          obstacles,
-                        );
-                        if (!frame.width) {
-                          setNotice('Move or collapse a panel to make room for fit-to-view.');
-                          return;
-                        }
-                        const points = visible.map((node, index) => position(node, index));
-                        const fit = fitConstellation(
-                          points,
-                          element.clientWidth,
-                          element.clientHeight,
-                          frame,
-                        );
-                        if (
-                          points.some(
-                            (point) =>
-                              point.x * fit.zoom + fit.offset.x < frame.x ||
-                              (point.x + 220) * fit.zoom + fit.offset.x > frame.x + frame.width ||
-                              point.y * fit.zoom + fit.offset.y < frame.y ||
-                              (point.y + 140) * fit.zoom + fit.offset.y > frame.y + frame.height,
-                          )
-                        ) {
-                          setNotice(
-                            'Move or collapse a panel to fit all visible nodes at the minimum zoom.',
-                          );
-                          return;
-                        }
-                        updatePrefs({
-                          zoom: fit.zoom,
-                          canvasOffset: fit.offset,
-                          viewport: { x: 0, y: 0 },
-                        });
-                      }}
-                    >
-                      Fit to view
-                    </button>
-                    <div className="segmented">
-                      <button
-                        aria-pressed={prefs.view !== 'list'}
-                        onClick={() => updatePrefs({ view: 'map' })}
-                      >
-                        Task map
-                      </button>
-                      <button
-                        aria-pressed={prefs.view === 'list'}
-                        onClick={() => updatePrefs({ view: 'list' })}
-                      >
-                        List
-                      </button>
-                    </div>
-                    <label className="search">
-                      <span>Search tasks</span>
-                      <input
-                        value={prefs.search ?? ''}
-                        onChange={(e) => updatePrefs({ search: e.target.value })}
-                        placeholder="Filter tasks…"
-                      />
-                    </label>
-                    <label className="runtime-filter">
-                      <input
-                        type="checkbox"
-                        checked={prefs.showRuntimeReminders ?? false}
-                        onChange={(event) =>
-                          updatePrefs({ showRuntimeReminders: event.target.checked })
-                        }
-                      />
-                      Runtime reminders
-                    </label>
-                    <button
-                      onClick={() =>
-                        updatePrefs({
-                          collapsed: nodes.filter((n) => n.status === 'completed').map((n) => n.id),
-                        })
-                      }
-                    >
-                      Collapse completed
-                    </button>
-                    <button onClick={() => updatePrefs({ collapsed: [] })}>Expand</button>
-                  </div>
-                </div>
                 {prefs.view === 'list' ? (
                   <ul className="task-list" aria-label="Task list">
                     {visible.map((node) => (
