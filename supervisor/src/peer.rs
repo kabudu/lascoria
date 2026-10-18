@@ -155,6 +155,20 @@ mod tests {
     }
 
     #[test]
+    fn relay_helpers_cannot_read_keys_or_spend_on_decision_providers() {
+        for operation in [
+            "decision/status",
+            "decision/setKey",
+            "decision/test",
+            "decision/evaluate",
+            "decision/result",
+        ] {
+            assert!(authorise(Peer::RelayHelper, operation).is_err());
+            assert!(authorise(Peer::Desktop, operation).is_ok());
+        }
+    }
+
+    #[test]
     fn token_comparison_needs_every_byte_and_the_length() {
         assert!(same_secret("abc123", "abc123"));
         assert!(!same_secret("abc124", "abc123"));

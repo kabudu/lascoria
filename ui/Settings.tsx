@@ -28,6 +28,16 @@ export const SETTINGS_GROUPS = [
     ],
   },
   {
+    name: 'Integrations',
+    sections: [
+      [
+        'decisions',
+        'Decision assistance',
+        'BYOK Jev TypeSafe SubQ OpenAI provider API key advice decisions',
+      ],
+    ],
+  },
+  {
     name: 'Data & privacy',
     sections: [
       ['data', 'Data & backups', 'backup export import restore cleanup remove archive'],

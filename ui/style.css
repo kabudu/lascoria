@@ -2985,3 +2985,33 @@ dialog.settings-dialog {
   padding: 0.6rem 0.8rem;
   margin: 0.6rem 0;
 }
+.decision-provider,
+.decision-review,
+.decision-result {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 12px 0;
+  min-width: 0;
+}
+.decision-provider > summary,
+.decision-review > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.decision-settings code,
+.decision-preview code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.decision-preview pre,
+.decision-result pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.decision-answer {
+  font-size: 1.1rem;
+  font-weight: 600;
+}

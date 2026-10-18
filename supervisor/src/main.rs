@@ -1,7 +1,9 @@
 mod attachments;
 mod auth;
+mod credentials;
 mod data;
 mod db;
+mod decisions;
 mod dedicated;
 mod metrics;
 mod peer;
@@ -44,6 +46,7 @@ const FEATURES: &[&str] = &[
     "compaction",
     "effortPresets",
     "testReuse",
+    "decisionAssistance",
 ];
 
 use anyhow::{Context, Result, bail, ensure};
@@ -973,6 +976,10 @@ async fn connection(
                 }
             })
             .await?;
+        }
+        // Decision credentials and paid-request identities never enter the Muse command journal.
+        if request["operation"].as_str().is_some_and(|op|op.starts_with("decision/")) {
+            return decisions::handle(db.clone(),request["operation"].as_str().unwrap(),&request["params"],request["id"].as_str().context("Request ID required")?).await;
         }
         // Data lifecycle work is file I/O under the journal lock; keep it off async workers.
         if request["operation"].as_str().is_some_and(|op| op.starts_with("data/")) {
