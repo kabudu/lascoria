@@ -2803,3 +2803,29 @@ select {
 .notification-settings .error {
   color: var(--error);
 }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.skill-picker .skill-group {
+  margin: 0.4rem 0 0.2rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+.skill-picker .skill-source {
+  font-size: 0.72rem;
+  padding: 0 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 99px;
+  opacity: 0.8;
+}
+.skill-picker .skill-source.duplicate {
+  font-weight: 600;
+  opacity: 1;
+}
