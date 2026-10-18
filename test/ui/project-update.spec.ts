@@ -153,7 +153,7 @@ test('Project folder changes are offered for the next task and applied through t
     );
     await writeFile(join(api, 'routes.txt'), 'api change, edited\n');
     await page.getByRole('tab', { name: /^diff$/i }).click();
-    await page.getByLabel('Folder', { exact: true }).selectOption({ label: 'API' });
+    await page.locator('.snapshot-folder select').selectOption({ label: 'API' });
     await page.getByRole('button', { name: 'Save snapshot', exact: true }).click();
     await expect(page.locator('.revision-badge')).toContainText('Folder: API');
     await expect(page.locator('.diff-review')).toContainText('routes.txt');
