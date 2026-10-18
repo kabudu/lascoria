@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- In-app updates (Settings, Updates): Lascoria checks for new versions, shows what changed, and downloads and installs signature-checked updates only when you choose. Running work is never interrupted by surprise.
+
 - **Settings…** in the workspace menu brings every app setting into one dialog, grouped and searchable.
 
 - **Open in editor** opens a session's folder, or a file from it, in your editor of choice (set in Settings, Editor).

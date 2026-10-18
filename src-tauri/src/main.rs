@@ -3,6 +3,7 @@ mod editor;
 mod folder_picker;
 mod muse_setup;
 mod notifications;
+mod updates;
 use serde_json::{Value, json};
 use std::{path::PathBuf, process::Stdio};
 use tauri::{Emitter, Manager};
@@ -335,6 +336,9 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         // No capability grants its IPC commands; only notifications.rs can show one.
         .plugin(tauri_plugin_notification::init())
+        // Its own IPC commands are not granted to the WebView; updates.rs drives it.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::Updates::default())
         .manage(notifications::Notifier::default())
         .manage(folder_picker::FolderPicker::default())
         .manage(muse_setup::Setup::default())
@@ -349,6 +353,11 @@ fn main() {
             editor::list_editors,
             editor::pick_editor_application,
             editor::open_in_editor,
+            updates::update_status,
+            updates::update_check,
+            updates::update_download,
+            updates::update_cancel,
+            updates::update_install,
             open_account_browser,
             notifications::notify_attention,
             notifications::notify_test,

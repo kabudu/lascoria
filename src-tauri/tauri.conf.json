@@ -32,5 +32,12 @@
     "resources": {
       "../.dev/bundle-runtime/": "runtime/"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [],
+      "requireSignedVersion": true
+    }
   }
 }

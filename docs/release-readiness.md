@@ -35,7 +35,7 @@ Reference: [official Muse installation documentation](https://dev.meta.ai/docs/m
 - [ ] CI builds/tests each supported target, creates signed updater artifacts and publishes versioned GitHub releases/manifests only after gates pass. Anonymous public installs must not contain a GitHub personal access token; public availability is a separate release step while this repository remains private.
 - [ ] Exercise real packaged N-to-N+1 install, idle and active-session update, question/approval waiting states, UI reopen, interrupted download/install, invalid signature, unavailable GitHub/rate limits, incompatible supervisor, migration failure and unsupported target. Verify no command/tool replay and correct restored progress.
 
-Reference: [Tauri v2 updater](https://v2.tauri.app/plugin/updater/) supports signed update artifacts and static manifests on GitHub Releases. Lascoria has not integrated it yet. Existing live UI-close/reconnect and graceful-logout proofs in [accounts](accounts.md) are prerequisites, not an update-install proof.
+Reference: [Tauri v2 updater](https://v2.tauri.app/plugin/updater/) supports signed update artifacts and static manifests on GitHub Releases. Integrated 18 October with a prepared release pipeline ([Cutting a release](RELEASE.md#cutting-a-release)); the acceptance items above still need a signed release to validate. Existing live UI-close/reconnect and graceful-logout proofs in [accounts](accounts.md) are prerequisites, not an update-install proof.
 
 ### R4 - Repository rename and public-release preparation
 

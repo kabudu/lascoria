@@ -285,7 +285,7 @@ impl Actor {
             let commands = db.recent_commands(100)?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands}),
+                json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -874,7 +874,7 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?}));
         }
         // R7 support report: counts and states only, previewed before anything is saved.
         if request["operation"] == "support/preview" || request["operation"] == "support/save" {

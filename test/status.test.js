@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -52,6 +53,8 @@ test(
     });
     const first = await ready();
     assert.equal(typeof first.version, 'string');
+    // R3 handoff: the background service reports its release version.
+    assert.equal(first.appVersion, JSON.parse(readFileSync('package.json', 'utf8')).version);
     assert.deepEqual(await request(directory, 'status', { since: first.version }), {
       unchanged: true,
       version: first.version,
