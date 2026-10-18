@@ -89,6 +89,8 @@ test(
     const modelCalls = model.requests.length;
     const usage = await request(directory, 'usage', { sessionId });
     assert.equal(typeof usage, 'object');
+    // The account-scoped reading is the freshest one any host reported, served without a host.
+    assert.deepEqual(await request(directory, 'usage/latest'), usage);
     const skills = await request(directory, 'skills', { sessionId });
     assert.ok(Array.isArray(skills.skills));
     for (const text of ['/usage', '/lascoria-missing-skill-qa']) {
@@ -104,6 +106,11 @@ test(
     assert.equal(afterUsage.generation, beforeUsage.generation);
     assert.equal(model.requests.length, modelCalls, 'usage cannot invoke the model');
     await request(directory, 'account/logout');
+    assert.equal(
+      (await request(directory, 'usage/latest')).usage,
+      null,
+      'usage from the previous account is forgotten',
+    );
     let state = (await status()).sessions[0];
     assert.equal(state.lifecycle, 'interrupted');
     assert.equal(state.state.shutdown.turnId, turnId);

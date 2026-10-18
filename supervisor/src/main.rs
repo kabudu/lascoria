@@ -11,6 +11,7 @@ mod relay_mcp;
 mod review;
 mod search;
 mod session_names;
+mod usage;
 mod worker;
 mod workspace;
 
@@ -256,7 +257,7 @@ impl Actor {
             let commands = db.recent_commands(100)?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport","usageLatest"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -436,6 +437,13 @@ impl Actor {
                 "Session read failed: {}",
                 response["error"]
             );
+            if operation == "usage" {
+                // Every host reports the same account windows: answer with the freshest one.
+                if !response["result"]["usage"].is_null() {
+                    usage::record(&response["result"]["usage"], db::now_ms() as u64);
+                }
+                return Ok(usage::latest());
+            }
             return Ok(response["result"].clone());
         }
         if operation == "stop" {
@@ -793,6 +801,8 @@ async fn connection(
         started = Some(Instant::now());
         if request["operation"] == "account/status" { return auth.lock().await.status().await; }
         if request["operation"] == "diagnostics" { return Ok(metrics.lock().unwrap().snapshot()); }
+        // The cached account observation: no host, session lane or model request involved.
+        if request["operation"] == "usage/latest" { return Ok(usage::latest()); }
         // Snapshot reads bypass session command lanes, including during recovery.
         if request["operation"] == "status" {
             let db = db.lock().unwrap();
@@ -800,7 +810,7 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport","usageLatest"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?}));
         }
         // Data lifecycle work is file I/O under the journal lock; keep it off async workers.
         if request["operation"].as_str().is_some_and(|op| op.starts_with("data/")) {
@@ -1084,6 +1094,8 @@ async fn supervisor_main() -> Result<()> {
                         for lane in actors { stopping.spawn(async move { lane.actor.lock().await.stop().await; }); }
                         while let Some(result) = stopping.join_next().await { if let Err(error) = result { eprintln!("Account host drain failed: {error}"); } }
                         if let Some(broker) = broker.lock().await.take() { broker.stop().await; }
+                        // Usage observed for the previous account must not show for the next.
+                        usage::clear(db::now_ms() as u64);
                         let database = db.lock().unwrap();
                         for mut row in database.all("sessions")? {
                             if row["lifecycle"] != "archived" { row["attempts"] = json!(0); database.put("sessions", row["id"].as_str().unwrap(), &row)?; }

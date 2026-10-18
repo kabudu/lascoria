@@ -114,7 +114,7 @@ test('Stage C synthetic projection benchmark: 10 sessions, 50 nodes, paged 10000
     // Opening the menu reads the weekly allowance once; nothing polls in the background.
     await expect(page.getByText('· 0% weekly left')).toBeVisible();
     expect(usageReads).toBe(1);
-    await page.getByRole('button', { name: /^Usage/ }).click();
+    await page.getByRole('button', { name: /^Account & usage/ }).click();
     await expect.poll(() => usageReads).toBe(2);
     await expect(page.getByText('125% used · 0% remaining')).toBeVisible();
     await expect(page.getByText('20% used · 80% remaining')).toBeVisible();

@@ -92,11 +92,12 @@ export function App() {
   const [account, setAccount] = useState<AccountStatus | null>(null);
   // Last weekly allowance read when the menu opened; never polled in the background.
   const [menuUsage, setMenuUsage] = useState<{
-    sessionId: string;
     weeklyRemaining: number;
     observedAtMs: number;
     readAtMs: number;
   } | null>(null);
+  // Usage belongs to one account: forget the menu figure when the account changes.
+  useEffect(() => setMenuUsage(null), [account?.mode, account?.subscription?.state]);
   const accountOnboarded = useRef(false);
   const accountRequest = useRef(0);
   const accountAccepted = useRef(0);
@@ -1011,19 +1012,20 @@ export function App() {
             className="workspace-menu"
             ref={workspaceMenu}
             onToggle={(event) => {
-              if (!event.currentTarget.open || !session?.state.current) return;
+              if (!event.currentTarget.open) return;
+              const latest = Boolean(status.features?.includes('usageLatest'));
+              if (!session?.state.current && !latest) return;
               if (!status.features?.includes('usage') || account?.mode === 'apiKey') return;
-              if (menuUsage?.sessionId === session.id && Date.now() - menuUsage.readAtMs < 60_000)
-                return;
-              const sessionId = session.id;
+              // Usage belongs to the account, so one recent reading serves every session.
+              if (menuUsage && Date.now() - menuUsage.readAtMs < 60_000) return;
+              const sessionId = session?.state.current ? session.id : undefined;
               void request<{
-                usage?: { weekly: { usedPercent: number }; observedAtMs: number };
-              }>('usage', { sessionId }).then(
+                usage?: { weekly: { usedPercent: number }; observedAtMs: number } | null;
+              }>(sessionId ? 'usage' : 'usage/latest', sessionId ? { sessionId } : {}).then(
                 (result) =>
                   setMenuUsage(
                     result.usage
                       ? {
-                          sessionId,
                           weeklyRemaining: Math.max(0, 100 - result.usage.weekly.usedPercent),
                           observedAtMs: result.usage.observedAtMs,
                           readAtMs: Date.now(),
@@ -1100,16 +1102,19 @@ export function App() {
                 </button>
               )}
               <button
-                disabled={!session || !status.features?.includes('usage')}
+                disabled={
+                  !status.features?.includes('usage') ||
+                  (!session && !status.features?.includes('usageLatest'))
+                }
                 onClick={() => setModal('usage')}
                 title={
-                  menuUsage?.sessionId === session?.id && menuUsage
+                  menuUsage
                     ? `Weekly allowance as of ${new Date(menuUsage.observedAtMs).toLocaleString()}`
                     : undefined
                 }
               >
-                Usage
-                {menuUsage && menuUsage.sessionId === session?.id && (
+                Account &amp; usage
+                {menuUsage && (
                   <span className="menu-usage"> · {menuUsage.weeklyRemaining}% weekly left</span>
                 )}
               </button>
@@ -2786,7 +2791,7 @@ export function App() {
                         : modal === 'relay'
                           ? 'Local session messages'
                           : modal === 'usage'
-                            ? 'Muse usage'
+                            ? 'Account & usage'
                             : modal === 'account'
                               ? 'Your Muse connection'
                               : modal === 'start'
@@ -2818,7 +2823,10 @@ export function App() {
             available={{
               account: Boolean(status.features?.includes('accounts')),
               start: connected,
-              usage: Boolean(session && status.features?.includes('usage')),
+              usage: Boolean(
+                status.features?.includes('usage') &&
+                (session || status.features?.includes('usageLatest')),
+              ),
               relay: Boolean(session && status.features?.includes('localRelay')),
               notifications: true,
             }}
@@ -2900,7 +2908,10 @@ export function App() {
         {modal === 'usage' && (
           <Usage
             key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}
-            sessionId={session?.id}
+            sessionId={session?.state.current ? session.id : undefined}
+            latestEnabled={Boolean(status.features?.includes('usageLatest'))}
+            mode={account?.managed ? account.mode : undefined}
+            signedIn={account?.managed ? account.authenticated : undefined}
           />
         )}
         {modal === 'account' && (

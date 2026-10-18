@@ -93,6 +93,12 @@ test(
     assert.equal(changed.unchanged, undefined);
     assert.notEqual(changed.version, first.version);
     assert.equal(changed.sessions[0].state.turns.at(-1).terminal, 'completed');
+    // R8: before any host reports, account usage is unknown (null), never 0%. A session read
+    // answers with the same account-scoped reading the supervisor serves without a host.
+    assert.ok(changed.features.includes('usageLatest'));
+    const read = await request(directory, 'usage', { sessionId: started.sessionId });
+    assert.ok('usage' in read);
+    assert.deepEqual(await request(directory, 'usage/latest'), read);
     const old = changed.version;
     await stop();
     daemon = boot();
