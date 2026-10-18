@@ -508,6 +508,14 @@ impl Service {
                     artifact["sessionId"] == session,
                     "Snapshot belongs to another session"
                 );
+                // Consent is for the session's own folder; a snapshot of another Project
+                // folder would send a different repository's changes.
+                ensure!(
+                    artifact["folder"]["path"]
+                        .as_str()
+                        .is_none_or(|path| path == root),
+                    "Decision review is available for snapshots of this session's main folder only"
+                );
                 ensure!(
                     saved["enabled"] == true
                         && saved["workspaces"]

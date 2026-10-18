@@ -389,6 +389,7 @@ export function App() {
     evidence: [],
   });
   const [artifactId, setArtifactId] = useState(''),
+    [snapshotFolder, setSnapshotFolder] = useState<string>(),
     [fresh, setFresh] = useState<{ fresh: boolean; checkedAtMillis: number } | null>(null);
   const [history, setHistory] = useState<Item[] | null>(null),
     [offset, setOffset] = useState(0),
@@ -1070,7 +1071,13 @@ export function App() {
   }
   async function capture() {
     if (!session || !task?.turnId) return;
-    const value = await mutate('artifact/capture', { sessionId: session.id, taskId: task.turnId });
+    const folders = session.projectContext?.folders;
+    const folderId = folders && (folders.find((f) => f.id === snapshotFolder) ?? folders[0])?.id;
+    const value = await mutate('artifact/capture', {
+      sessionId: session.id,
+      taskId: task.turnId,
+      ...(folderId ? { folderId } : {}),
+    });
     if (value) {
       await loadReview();
       setArtifactId(value.id);
@@ -2445,18 +2452,27 @@ export function App() {
                     )}
                     {tab === 'diff' && (
                       <section className="diff-review" aria-label="Saved changes">
-                        {session.projectContext && (
-                          <p className="muted">
-                            Project snapshots need a repository picker. Combined snapshots are
-                            unavailable; inspect changes in each repository directly.
-                          </p>
-                        )}
                         <div className="diff-toolbar">
+                          {session.projectContext && (
+                            // One repository per snapshot: Project folders are separate
+                            // repositories, so their changes are never combined.
+                            <label className="snapshot-folder">
+                              Folder
+                              <select
+                                value={snapshotFolder ?? session.projectContext.folders[0]?.id}
+                                onChange={(event) => setSnapshotFolder(event.target.value)}
+                              >
+                                {session.projectContext.folders.map((folder) => (
+                                  <option key={folder.id} value={folder.id}>
+                                    {folder.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                           <button
                             className="primary"
-                            disabled={
-                              !available || busy || !task?.turnId || !!session.projectContext
-                            }
+                            disabled={!available || busy || !task?.turnId}
                             onClick={() => void capture()}
                           >
                             Save snapshot
@@ -2485,6 +2501,7 @@ export function App() {
                             <option value="">Choose a snapshot</option>
                             {review.artifacts.map((a) => (
                               <option key={a.id} value={a.id}>
+                                {a.folder ? `${a.folder.name} · ` : ''}
                                 {short(a.fingerprint.slice(7))} ·{' '}
                                 {new Date(a.capturedAtMillis).toLocaleTimeString()}
                               </option>
@@ -3649,6 +3666,7 @@ function RevisionBadge({
             : 'Stale: repository changed'
           : 'Freshness unknown'}
       </strong>
+      {artifact.folder && <span>Folder: {artifact.folder.name}</span>}
       <code>{artifact.fingerprint}</code>
       <small>
         Base / HEAD: {artifact.base} · task association: {artifact.provenance}

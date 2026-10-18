@@ -918,3 +918,36 @@ async fn overrides_and_metrics_aggregate_the_retained_history() {
     assert_eq!(jev["disagreed"], 1);
     assert!(jev["latencyP50Ms"].is_number());
 }
+
+#[tokio::test]
+async fn snapshots_of_another_project_folder_are_not_sent_under_this_workspace_consent() {
+    let f = fixture().await;
+    let service = Service::new().unwrap();
+    enable(&service, f.db.clone(), "subq").await;
+    let p = params("subq");
+    assert!(
+        service
+            .handle(f.db.clone(), "decision/preview", &p, "preview")
+            .await
+            .is_ok()
+    );
+    let mut artifact =
+        f.db.lock()
+            .unwrap()
+            .get("artifacts", "capture-a")
+            .unwrap()
+            .unwrap();
+    artifact["folder"] = json!({"id":"f-api","name":"API","path":f.root.join("api")});
+    f.db.lock()
+        .unwrap()
+        .put("artifacts", "capture-a", &artifact)
+        .unwrap();
+    let refused = service
+        .handle(f.db.clone(), "decision/preview", &p, "preview-2")
+        .await
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("main folder only"),
+        "{refused}"
+    );
+}

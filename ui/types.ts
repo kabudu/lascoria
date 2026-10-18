@@ -128,6 +128,8 @@ export interface Artifact {
   untracked: { path: string; text?: string; bytes: number; sha256: string }[];
   capturedAtMillis: number;
   provenance: string;
+  /** The Project folder (repository) the snapshot was taken from, for Project sessions. */
+  folder?: { id: string; name: string; path: string };
 }
 export interface Evidence {
   id: string;

@@ -42,6 +42,8 @@ Keep native permission/trust authority. Adding a folder must not approve tools, 
 
 Define Git ownership per folder/repository. Existing isolated tasks own one worktree; do not imply that one primary worktree isolates edits across every project root. Before enabling isolation/commit/diff for a multi-repository project, implement and validate repository-scoped worktrees, selected repository actions, attribution and cleanup, or explicitly block the unsupported combination. Never stage or discard changes in an unintended sibling repository.
 
+Implemented 19 October: Diff snapshots in a Project session belong to one folder the user chooses from the session's confirmed folders. The folder is resolved by ID from the applied context, recorded with the snapshot and used for freshness and evidence, so changes in sibling repositories are never combined or attributed to it. Decision review is limited to snapshots of the session's main folder. Isolated worktrees and commits remain single-folder; Project sessions cannot commit, which keeps staging out of sibling repositories until repository-scoped worktrees exist.
+
 Bound folder counts, context manifests, discovery work and session admission. Preserve existing streaming, recovery, evidence identities and token observability. Define portable path handling and migration for all three operating systems. R15 completion requires real cross-folder implementation and native permission/recovery/Git validation, not just setup screenshots.
 
 ## Session and project names
