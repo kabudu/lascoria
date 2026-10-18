@@ -17,6 +17,15 @@ fn directory() -> PathBuf {
 }
 async fn request(operation: &str, params: Value, id: String) -> Result<Value, String> {
     if ![
+        "decision/status",
+        "decision/result",
+        "decision/configure",
+        "decision/setKey",
+        "decision/forgetKey",
+        "decision/preview",
+        "decision/evaluate",
+        "decision/test",
+        "decision/cancel",
         "account/status",
         "account/login",
         "account/cancel",
@@ -105,6 +114,9 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
     }
     let duration = if operation == "status" {
         Duration::from_millis(500)
+    } else if ["decision/evaluate", "decision/test"].contains(&operation) {
+        // Vault (10s), two capture checks (10s each) and HTTP (20s), plus IPC overhead.
+        Duration::from_secs(65)
     } else if operation.starts_with("data/") && operation != "data/summary" {
         // Backups copy the whole journal; the supervisor bounds this at 280 seconds.
         Duration::from_secs(300)
@@ -213,6 +225,24 @@ async fn open_account_browser(url: String) -> Result<(), String> {
     {
         return Err("Muse returned an unsupported browser login address".into());
     }
+    open_browser(url).await
+}
+
+#[tauri::command]
+async fn open_provider_policy(url: String) -> Result<(), String> {
+    if ![
+        "https://help.typesafe.ai/articles/5974925716-how-is-submitted-data-used-or-retained",
+        "https://docs.subq.ai/using-the-api/data-retention/",
+        "https://developers.openai.com/api/docs/guides/your-data",
+    ]
+    .contains(&url.as_str())
+    {
+        return Err("Unsupported provider policy address".into());
+    }
+    open_browser(url).await
+}
+
+async fn open_browser(url: String) -> Result<(), String> {
     #[cfg(windows)]
     {
         // ShellExecute opens the registered HTTPS handler without cmd.exe or Explorer parsing.
@@ -229,9 +259,7 @@ async fn open_account_browser(url: String) -> Result<(), String> {
             )
         } as isize;
         if result <= 32 {
-            return Err(
-                "Could not open your browser. Open the Muse verification page manually".into(),
-            );
+            return Err("Could not open your browser. Open the address manually".into());
         }
     }
     #[cfg(not(windows))]
@@ -361,6 +389,7 @@ fn main() {
             updates::update_cancel,
             updates::update_install,
             open_account_browser,
+            open_provider_policy,
             notifications::notify_attention,
             notifications::notify_test,
             finish_quit,

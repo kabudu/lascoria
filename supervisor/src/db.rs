@@ -11,7 +11,7 @@ pub fn now_ms() -> u128 {
 }
 
 /// Highest journal schema this supervisor reads. Newer databases and backups are refused, never downgraded.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 /// Full command records retained for review. Older terminal records can be compacted to tombstones.
 pub const JOURNAL_LIMIT: usize = 2000;
 /// Tombstones keep request identity forever; this hard bound keeps the journal finite.
@@ -46,9 +46,10 @@ impl Db {
           CREATE TABLE IF NOT EXISTS commands(id TEXT PRIMARY KEY, value TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS presentation(id TEXT PRIMARY KEY, value TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS artifacts(id TEXT PRIMARY KEY, value TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, value TEXT NOT NULL);",
+          CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, value TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS decisions(id TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )?;
-        db.execute_batch("PRAGMA user_version=3;")?;
+        db.execute_batch("PRAGMA user_version=4;")?;
         Ok(Self(db, uuid::Uuid::new_v4().to_string()))
     }
     /// Inspect only auth-failure IDs and command timestamps, never materialize retained transcripts.
@@ -94,6 +95,7 @@ impl Db {
             "presentation",
             "artifacts",
             "evidence",
+            "decisions",
         ]
         .contains(&table)
         {
@@ -112,7 +114,8 @@ impl Db {
                 "commands",
                 "presentation",
                 "artifacts",
-                "evidence"
+                "evidence",
+                "decisions"
             ]
             .contains(&table),
             "Invalid table"
@@ -135,6 +138,7 @@ impl Db {
             "presentation",
             "artifacts",
             "evidence",
+            "decisions",
         ]
         .contains(&table)
         {
@@ -157,7 +161,8 @@ impl Db {
                 "commands",
                 "presentation",
                 "artifacts",
-                "evidence"
+                "evidence",
+                "decisions"
             ]
             .contains(&table),
             "Invalid table"
@@ -309,6 +314,46 @@ impl Db {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn schema_three_upgrade_preserves_sessions_and_adds_decision_identities() -> Result<()> {
+        let path =
+            std::env::temp_dir().join(format!("lascoria-schema4-{}.sqlite", uuid::Uuid::new_v4()));
+        {
+            let db = Db::open(&path)?;
+            db.put(
+                "sessions",
+                "old-session",
+                &json!({"id":"old-session","label":"retained fixture"}),
+            )?;
+            db.0.execute_batch("DROP TABLE decisions; PRAGMA user_version=3;")?;
+        }
+        {
+            let db = Db::open(&path)?;
+            assert_eq!(
+                db.0.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))?,
+                SCHEMA_VERSION
+            );
+            assert_eq!(
+                db.get("sessions", "old-session")?.unwrap()["label"],
+                "retained fixture"
+            );
+            db.put(
+                "decisions",
+                "paid-once",
+                &json!({"id":"paid-once","status":"unknown"}),
+            )?;
+        }
+        {
+            let db = Db::open(&path)?;
+            assert_eq!(
+                db.get("decisions", "paid-once")?.unwrap()["status"],
+                "unknown"
+            );
+        }
+        std::fs::remove_file(path)?;
+        Ok(())
+    }
 
     #[test]
     fn status_reads_only_the_newest_commands_in_journal_order() -> Result<()> {

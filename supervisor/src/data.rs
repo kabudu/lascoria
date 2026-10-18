@@ -737,6 +737,9 @@ pub fn remove_archived(
             )?;
             tombstoned += 1;
         }
+        // Keep only the paid-request identity after session removal. Full questions,
+        // answers and source metadata are removed, while delayed retries cannot spend again.
+        transaction.execute("UPDATE decisions SET value=json_object('id',id,'fingerprint',json_extract(value,'$.fingerprint'),'provider',json_extract(value,'$.provider'),'status','retained','createdAtMillis',json_extract(value,'$.createdAtMillis'),'detailsPruned',json('true'),'message','Full advice data was removed with the session. This request will not be sent again') WHERE json_extract(value,'$.source.sessionId')=?1",[id])?;
         for table in ["artifacts", "evidence"] {
             transaction.execute(
                 &format!("DELETE FROM {table} WHERE json_extract(value,'$.sessionId')=?1"),

@@ -39,82 +39,11 @@ fn account() -> String {
         .collect();
     format!("{hash}:meta-api-key")
 }
-#[cfg(target_os = "macos")]
-fn key() -> Result<Option<Vec<u8>>> {
-    match security_framework::passwords::get_generic_password(SERVICE, &account()) {
-        Ok(value) => Ok(Some(value)),
-        Err(error) if error.code() == -25300 => Ok(None),
-        Err(_) => bail!("Keychain unavailable; unlock your Mac and retry"),
-    }
-}
-#[cfg(not(target_os = "macos"))]
-fn key() -> Result<Option<Vec<u8>>> {
-    match keyring::Entry::new(SERVICE, &account())?.get_secret() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(_) => bail!("Secure credential store unavailable; unlock your account vault and retry"),
-    }
-}
-#[cfg(target_os = "macos")]
-fn save_key(value: Option<&[u8]>) -> Result<()> {
-    let result = match value {
-        Some(value) => {
-            security_framework::passwords::set_generic_password(SERVICE, &account(), value)
-        }
-        None => security_framework::passwords::delete_generic_password(SERVICE, &account()),
-    };
-    match result {
-        Ok(()) => Ok(()),
-        Err(e) if value.is_none() && e.code() == -25300 => Ok(()),
-        Err(_) => bail!("Could not update the Lascoria Keychain entry"),
-    }
-}
-#[cfg(not(target_os = "macos"))]
-fn save_key(value: Option<&[u8]>) -> Result<()> {
-    let entry = keyring::Entry::new(SERVICE, &account())?;
-    match value.map_or_else(|| entry.delete_credential(), |v| entry.set_secret(v)) {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) if value.is_none() => Ok(()),
-        Err(_) => bail!("Could not update the secure Lascoria credential entry"),
-    }
-}
-
-async fn vault_permit() -> Result<tokio::sync::OwnedSemaphorePermit> {
-    static ACCESS: std::sync::OnceLock<Arc<tokio::sync::Semaphore>> = std::sync::OnceLock::new();
-    timeout(
-        Duration::from_millis(250),
-        ACCESS
-            .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(1)))
-            .clone()
-            .acquire_owned(),
-    )
-    .await
-    .context("Credential operation still in progress; unlock your account vault and retry")?
-    .context("Secure credential storage unavailable")
-}
 async fn read_key() -> Result<Option<Vec<u8>>> {
-    let permit = vault_permit().await?;
-    timeout(
-        Duration::from_secs(10),
-        tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            key()
-        }),
-    )
-    .await
-    .context("Credential read timed out")??
+    crate::credentials::read(SERVICE, account()).await
 }
 async fn write_key(value: Option<Vec<u8>>) -> Result<()> {
-    let permit = vault_permit().await?;
-    timeout(
-        Duration::from_secs(10),
-        tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            save_key(value.as_deref())
-        }),
-    )
-    .await
-    .context("Credential update timed out; check account settings before retrying")??
+    crate::credentials::write(SERVICE, account(), value).await
 }
 
 pub fn validate(operation: &str, params: &Value) -> Result<()> {

@@ -101,6 +101,8 @@ References: [native skill discovery](https://meta-models.github.io/muse-code-sdk
 
 User requirement added 15 October: support Jev (TypeSafe), Subquadratic/SubQ and OpenAI decision APIs with user-supplied keys. A clean, uncluttered workspace is a fundamental product constraint.
 
+Manual snapshot-review foundations are now implemented with separate vault credentials, explicit workspace opt-in, disclosure preview and durable no-replay outcomes. This is a partial R10 increment; background triage, Muse tools and release acceptance remain open. See [decision assistance](decision-assistance.md) and the running checklist for evidence.
+
 Scope decided by the user on 18 October: all three interaction models ship in the first release (a: user-requested evaluation of selected evidence, b: opt-in bounded background triage, c: an explicit tool Muse can call), and the paid, data-disclosing integrations are included. Nothing is sent until the user adds a key for a provider and turns a model on; Settings management must have a great UX.
 
 Verified first-party contracts (15 October 2026; recheck before implementation):

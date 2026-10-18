@@ -1,3 +1,4 @@
+import { DecisionSettings, DecisionReview } from './Decisions';
 import { ProjectStart } from './ProjectStart';
 import { FolderPath } from './FolderPath';
 import { Help } from './Help';
@@ -144,6 +145,7 @@ export function App() {
     };
   }, [prefs.usageIndicator, usageLatest, account?.mode]);
   // R3: this app's version, whether updates are configured, and any update found.
+  const [decisionRevision, setDecisionRevision] = useState(0);
   const [appUpdate, setAppUpdate] = useState<UpdateStatus | null>(null);
   // T3: the session whose task start is waiting for "start anyway", and the one confirmed.
   const [concurrencyAsk, setConcurrencyAsk] = useState<string | null>(null);
@@ -360,6 +362,7 @@ export function App() {
       | 'editor'
       | 'updates'
       | 'efficiency'
+      | 'decisions'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
@@ -2474,6 +2477,13 @@ export function App() {
                           <>
                             <RevisionBadge artifact={artifact} fresh={fresh} />
                             <DiffView key={artifact.id} patch={artifact.patch} />
+                            {status.features?.includes('decisionAssistance') && (
+                              <DecisionReview
+                                key={`decision-${artifact.id}-${decisionRevision}`}
+                                artifact={artifact}
+                                openSettings={() => setModal('decisions')}
+                              />
+                            )}
                             {artifact.untracked.map((f) => (
                               <details key={f.path} open>
                                 <summary>
@@ -3197,13 +3207,15 @@ export function App() {
             section={modal}
             open={setModal}
             available={(id) =>
-              id === 'data'
-                ? Boolean(status.features?.includes('dataLifecycle'))
-                : id === 'support'
-                  ? Boolean(status.features?.includes('supportReport'))
-                  : id === 'usage'
-                    ? Boolean(status.features?.includes('usage'))
-                    : true
+              id === 'decisions'
+                ? Boolean(status.features?.includes('decisionAssistance'))
+                : id === 'data'
+                  ? Boolean(status.features?.includes('dataLifecycle'))
+                  : id === 'support'
+                    ? Boolean(status.features?.includes('supportReport'))
+                    : id === 'usage'
+                      ? Boolean(status.features?.includes('usage'))
+                      : true
             }
           >
             <h3 className="settings-heading">
@@ -3213,6 +3225,13 @@ export function App() {
             </h3>
             {modal === 'general' && <GeneralSettings prefs={prefs} update={updatePrefs} />}
             {modal === 'editor' && <EditorSettings prefs={prefs} update={updatePrefs} />}
+            {modal === 'decisions' && (
+              <DecisionSettings
+                key={session?.id ?? 'no-session'}
+                sessionId={session?.id}
+                changed={() => setDecisionRevision((revision) => revision + 1)}
+              />
+            )}
             {modal === 'efficiency' && <EfficiencySettings prefs={prefs} update={updatePrefs} />}
             {modal === 'updates' && (
               <UpdateSettings

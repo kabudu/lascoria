@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Optional decision assistance can review a selected diff snapshot using your Jev, SubQ or OpenAI API key. Configure it per workspace, inspect exactly what will be sent, and explicitly request separately billed advice. Results cannot accept evidence or change Muse permissions; lost replies are retrieved without repeating a paid call. Background triage and Muse tools are still pending.
+
 - Settings radio controls stay beside their labels, and session actions wrap so Project folders remain accessible alongside editor handoff.
 
 - Update cancellation and channel changes cannot restore an older download after it was discarded. Installing shares the verified package buffer to avoid a second full copy in memory.
