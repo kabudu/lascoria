@@ -63,3 +63,17 @@ Start two sessions in disposable folders first (**New session**, any small Git r
 ## Recording
 
 For each OS record: OS version, hardware, build revision from `provenance.json`, Muse build, and for each ID pass/fail/not run with a one-line note. Summarise in [implementation progress](implementation-progress.md); keep raw evidence in `.dev/`. Then stop everything with `qa-launch.mjs stop` and delete the `state-*` folders.
+
+## Settings, updates and efficiency follow-up (18 October)
+
+These checks cover commits `f6dfbc0`, `90ef03f`, `338864d` and the takeover updater fixes. They remain pending until outcomes are recorded for the tested platform.
+
+| ID | Steps | Expected |
+| --- | --- | --- |
+| S1 | Open Settings, search for "theme", press Enter, then navigate sections with arrow keys. Resize the window narrower. | Matching section opens, navigation stays keyboard accessible, and the sidebar stacks without obscuring controls. |
+| S2 | In Editor choose a detected editor. Open the session folder, then a file from Workspace. | The chosen editor opens the correct folder/file. A missing editor produces recoverable feedback. |
+| S3 | Open Updates in a development/QA build without a release key. | Updates are explicitly unavailable; no unsigned download or installation is offered. |
+| S4 | In Token efficiency set a budget and concurrency warning. Start controlled tasks, exercise the warning and cancel it. | Warnings explain the soft limit. Cancelling the concurrency question does not start work. Compaction is unavailable while a task runs. |
+| S5 | Run a Workspace test, offer its recorded result, then change the folder and ask again. | The result is labelled as not rerun, adding it only edits the draft, and changed content retires reuse. |
+
+Actual signed download cancellation, replacement, signature rejection and N-to-N+1 installation require signed release fixtures on each target OS. Development-mode S3 is not evidence for those cases. Live T5 savings require separate isolated live trials with independent correctness checks.

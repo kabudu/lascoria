@@ -72,6 +72,13 @@ test('settings are grouped and searchable, and Open in editor uses the chosen ed
     'page',
   );
 
+  // Radio controls must not inherit the full-width text-input style.
+  expect(
+    await dialog
+      .getByRole('radio', { name: 'Light' })
+      .evaluate((el) => el.getBoundingClientRect().width),
+  ).toBeLessThan(24);
+
   // Appearance applies at once and is saved with the layout.
   await dialog.getByRole('radio', { name: 'Dark' }).check();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

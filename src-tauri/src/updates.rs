@@ -7,7 +7,7 @@
 //! Downloading never installs: installing is a separate, explicit step after the app has made
 //! sure running work is safe (see `install_stops_work`).
 use serde_json::{Value, json};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
@@ -31,11 +31,32 @@ pub struct Updates {
 #[derive(Default)]
 struct State {
     available: Option<Update>,
-    downloaded: Option<Vec<u8>>,
+    downloaded: Option<Arc<Vec<u8>>>,
+    generation: u64,
     download: Option<tauri::async_runtime::JoinHandle<()>>,
     progress: Option<(u64, Option<u64>)>,
     last_checked_ms: Option<u128>,
     last_error: Option<String>,
+}
+
+impl State {
+    fn invalidate_download(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        if let Some(task) = self.download.take() {
+            task.abort();
+        }
+        self.downloaded = None;
+        self.progress = None;
+    }
+
+    fn finish_download(&mut self, generation: u64, bytes: Vec<u8>) -> bool {
+        if self.generation != generation {
+            return false;
+        }
+        self.downloaded = Some(Arc::new(bytes));
+        self.last_error = None;
+        true
+    }
 }
 
 fn now_ms() -> u128 {
@@ -105,6 +126,7 @@ pub async fn update_check(
     let Ok(_guard) = updates.checking.try_lock() else {
         return Err("Already checking for updates".into());
     };
+    let generation = updates.state.lock().unwrap().generation;
     let result = async {
         app.updater_builder()
             .pubkey(pubkey)
@@ -123,18 +145,25 @@ pub async fn update_check(
     }
     .await;
     let mut state = updates.state.lock().unwrap();
+    if state.generation != generation {
+        return Err("Update settings changed; check again for your chosen channel".into());
+    }
     state.last_checked_ms = Some(now_ms());
     match result {
         Ok(update) => {
-            let changed =
-                state.available.as_ref().map(|u| &u.version) != update.as_ref().map(|u| &u.version);
+            // Channels may announce different artifacts with the same version. The
+            // verified bytes belong to the URL and signature too, not just the version.
+            let identity = |u: &Update| {
+                (
+                    u.version.clone(),
+                    u.download_url.clone(),
+                    u.signature.clone(),
+                )
+            };
+            let changed = state.available.as_ref().map(identity) != update.as_ref().map(identity);
             if changed {
-                // A different version supersedes any download in progress or finished.
-                if let Some(task) = state.download.take() {
-                    task.abort();
-                }
-                state.downloaded = None;
-                state.progress = None;
+                // A different artifact supersedes any download in progress or finished.
+                state.invalidate_download();
             }
             state.available = update;
             state.last_error = None;
@@ -163,6 +192,8 @@ pub fn update_download(
         return Ok(());
     }
     let update = state.available.clone().ok_or("Check for updates first")?;
+    state.generation = state.generation.wrapping_add(1);
+    let generation = state.generation;
     state.downloaded = None;
     state.progress = Some((0, None));
     let handle = app.clone();
@@ -174,7 +205,11 @@ pub fn update_download(
                 |chunk, total| {
                     received += chunk as u64;
                     let updates = progress.state::<Updates>();
-                    updates.state.lock().unwrap().progress = Some((received, total));
+                    let mut state = updates.state.lock().unwrap();
+                    if state.generation != generation {
+                        return;
+                    }
+                    state.progress = Some((received, total));
                     let _ = progress.emit(
                         "update-progress",
                         json!({"received":received,"total":total}),
@@ -185,11 +220,14 @@ pub fn update_download(
             .await;
         let updates = handle.state::<Updates>();
         let mut state = updates.state.lock().unwrap();
+        if state.generation != generation {
+            return;
+        }
         match result {
             Ok(bytes) => {
-                state.downloaded = Some(bytes);
-                state.last_error = None;
-                let _ = handle.emit("update-progress", json!({"ready":true}));
+                if state.finish_download(generation, bytes) {
+                    let _ = handle.emit("update-progress", json!({"ready":true}));
+                }
             }
             Err(error) => {
                 state.progress = None;
@@ -202,13 +240,12 @@ pub fn update_download(
 }
 
 #[tauri::command]
-pub fn update_cancel(updates: tauri::State<'_, Updates>) {
+pub fn update_cancel(updates: tauri::State<'_, Updates>, clear_available: Option<bool>) {
     let mut state = updates.state.lock().unwrap();
-    if let Some(task) = state.download.take() {
-        task.abort();
+    state.invalidate_download();
+    if clear_available == Some(true) {
+        state.available = None;
     }
-    state.downloaded = None;
-    state.progress = None;
 }
 
 /// Installs the verified download and restarts Lascoria. The window has already confirmed
@@ -229,7 +266,30 @@ pub fn update_install(
         )
     };
     update
-        .install(bytes)
+        .install(bytes.as_slice())
         .map_err(|e| format!("The update could not be installed: {}", explain(&e)))?;
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancelled_download_cannot_become_ready_or_replace_its_successor() {
+        let mut state = State::default();
+        let old = state.generation;
+        state.invalidate_download();
+        assert!(!state.finish_download(old, vec![1, 2]));
+        assert!(state.downloaded.is_none());
+        let current = state.generation;
+        assert!(state.finish_download(current, vec![3, 4]));
+        assert!(!state.finish_download(old, vec![1, 2]));
+        assert_eq!(state.downloaded.as_ref().unwrap().as_slice(), &[3, 4]);
+        // Preparing an install shares the verified bytes instead of duplicating the bundle.
+        let install = state.downloaded.clone().unwrap();
+        assert!(Arc::ptr_eq(&install, state.downloaded.as_ref().unwrap()));
+        state.invalidate_download();
+        assert!(state.downloaded.is_none());
+    }
 }
