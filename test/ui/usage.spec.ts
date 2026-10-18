@@ -32,6 +32,8 @@ async function open(page: Page, account: unknown) {
         return account;
       case 'presentation/get':
         return { revision: 0, value: {} };
+      case 'presentation/save':
+        return { revision: args.params.expectedRevision + 1, value: args.params.value };
       case 'usage/latest':
         return reading;
       case 'usage':
@@ -79,6 +81,13 @@ test('Account & usage works without a session and stays honest as time passes', 
   expect(calls.filter((c) => c === 'usage/latest').length).toBe(reads);
   await panel.getByRole('button', { name: 'Refresh usage' }).click();
   await expect.poll(() => calls.filter((c) => c === 'usage/latest').length).toBe(reads + 1);
+  expect(calls).not.toContain('usage');
+
+  // The optional toolbar figure is off until chosen, then reads only Lascoria's cache.
+  await expect(page.getByRole('button', { name: /^Weekly .* left$/ })).toHaveCount(0);
+  await panel.getByLabel('Show the weekly allowance in the toolbar').check();
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(page.getByRole('button', { name: 'Weekly 80% left' })).toBeVisible();
   expect(calls).not.toContain('usage');
 });
 

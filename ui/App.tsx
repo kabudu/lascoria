@@ -97,6 +97,40 @@ export function App() {
     observedAtMs: number;
     readAtMs: number;
   } | null>(null);
+  // Optional toolbar figure: re-read Lascoria's cached account reading (never Muse) each
+  // minute while the window is visible.
+  const usageLatest = Boolean(status.features?.includes('usageLatest'));
+  useEffect(() => {
+    if (!prefs.usageIndicator || !usageLatest) return;
+    if (account?.mode === 'apiKey') return;
+    let cancelled = false;
+    const read = () => {
+      if (document.hidden) return;
+      void request<{
+        usage?: { weekly: { usedPercent: number }; observedAtMs: number } | null;
+      }>('usage/latest').then(
+        (result) => {
+          if (!cancelled)
+            setMenuUsage(
+              result.usage
+                ? {
+                    weeklyRemaining: Math.max(0, 100 - result.usage.weekly.usedPercent),
+                    observedAtMs: result.usage.observedAtMs,
+                    readAtMs: Date.now(),
+                  }
+                : null,
+            );
+        },
+        () => {},
+      );
+    };
+    read();
+    const timer = setInterval(read, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [prefs.usageIndicator, usageLatest, account?.mode]);
   // Usage belongs to one account: forget the menu figure when the account changes.
   useEffect(() => setMenuUsage(null), [account?.mode, account?.subscription?.state]);
   const accountOnboarded = useRef(false);
@@ -986,6 +1020,19 @@ export function App() {
             >
               Review drafts (
               {Object.keys(draftConflicts).length + Object.keys(relayDrafts.conflicts).length})
+            </button>
+          )}
+          {prefs.usageIndicator && account?.mode !== 'apiKey' && (
+            <button
+              className="usage-indicator"
+              onClick={() => setModal('usage')}
+              title={
+                menuUsage
+                  ? `Weekly allowance as of ${new Date(menuUsage.observedAtMs).toLocaleString()}`
+                  : 'Muse has not reported usage yet'
+              }
+            >
+              {menuUsage ? `Weekly ${menuUsage.weeklyRemaining}% left` : 'Weekly usage unknown'}
             </button>
           )}
           <span className={`connection ${connected ? 'live' : ''}`}>
@@ -2920,6 +2967,12 @@ export function App() {
             latestEnabled={Boolean(status.features?.includes('usageLatest'))}
             mode={account?.managed ? account.mode : undefined}
             signedIn={account?.managed ? account.authenticated : undefined}
+            indicator={Boolean(prefs.usageIndicator)}
+            setIndicator={
+              status.features?.includes('usageLatest')
+                ? (on) => updatePrefs({ usageIndicator: on })
+                : undefined
+            }
           />
         )}
         {modal === 'support' && <SupportReport />}
