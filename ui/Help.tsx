@@ -44,7 +44,7 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Files and attachments',
-    text: 'Add image beside the composer attaches PNG, JPEG, GIF or WebP images, up to 5 MB each and 4 per task. Pasting or dropping an image onto the composer does the same. Images wait, privately, for that session until you start a task; they are not sent with steering, and Remove deletes a waiting image. Repository text can be inserted as task context. Video, PDF and other file attachments are not available yet. Typing a filename is not the same as attaching its bytes. Check images and task text before sharing private material.',
+    text: 'Attach file beside the composer adds PNG, JPEG, GIF or WebP images (up to 5 MB each, 4 per task), one MP4 or QuickTime video per task (up to 100 MB) and UTF-8 text files such as code, notes or logs (up to 256 KB each, 4 per task). Pasting or dropping files onto the composer does the same. Attachments wait, privately, for that session until you start a task; they are not sent with steering, and Remove deletes a waiting one. A text file is added to the task as clearly marked text, and the transcript names it without repeating it. Muse keeps a sent video in the session for as long as the session exists. PDFs, audio, archives and office documents cannot be attached because Muse has no way to read them here. Typing a filename is not the same as attaching its bytes. Check attachments and task text before sharing private material.',
   },
   {
     title: 'Messages between local sessions',

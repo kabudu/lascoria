@@ -73,12 +73,13 @@ test(
     };
     const sessionId = await start('start-a');
     const other = await start('start-b');
-    const stage = async (session, bytes, name = 'pixel.png') => {
+    const stage = async (session, bytes, name = 'pixel.png', kind = 'image') => {
       const attachmentId = randomUUID();
       await request(directory, 'attachment/begin', {
         sessionId: session,
         attachmentId,
         name,
+        kind,
         bytes: bytes.length,
       });
       for (let offset = 0; offset < bytes.length; offset += 30000)
@@ -183,6 +184,64 @@ test(
       'image-task',
     );
     assert.equal(retried.commandId, sent.commandId);
+
+    // A text file travels as delimited task text and a video through Muse's media/upload,
+    // both only on Send. The journal and transcript keep neither file's contents.
+    const notes = await stage(
+      sessionId,
+      Buffer.from('LASCORIA_TEXT_FILE_MARKER\n'),
+      'notes.md',
+      'text',
+    );
+    await notes.finished;
+    const mp4 = Buffer.concat([
+      Buffer.from([0, 0, 0, 24]),
+      Buffer.from('ftypisom'),
+      Buffer.from([0, 0, 2, 0]),
+      Buffer.from('isommp41'),
+      Buffer.alloc(70000, 1),
+    ]);
+    const clip = await stage(sessionId, mp4, 'clip.mp4', 'video');
+    assert.equal((await clip.finished).mediaType, 'video/mp4');
+    await assert.rejects(
+      stage(sessionId, Buffer.from('not a video'), 'fake.mp4', 'video').then((s) => s.finished),
+      /MP4 or QuickTime/,
+    );
+    const before = model.requests.length;
+    const mixed = await request(
+      directory,
+      'turn',
+      { sessionId, text: 'Use the notes', attachments: [notes.attachmentId, clip.attachmentId] },
+      'files-task',
+    );
+    assert.ok(['applied', 'accepted'].includes(mixed.status), JSON.stringify(mixed));
+    await until(
+      status,
+      (s) =>
+        s.sessions.find((r) => r.id === sessionId).state.turns?.at(-1)?.terminal === 'completed',
+    );
+    const bodies = model.requests.slice(before);
+    assert.ok(
+      bodies.some((body) => body.includes('LASCORIA_TEXT_FILE_MARKER')),
+      'The text file reaches the model request',
+    );
+    console.log(
+      'video in model request:',
+      bodies.some((body) => body.includes(mp4.subarray(0, 4096).toString('base64').slice(0, 64))),
+    );
+    const afterFiles = await status();
+    assert.ok(!JSON.stringify(afterFiles.commands).includes('LASCORIA_TEXT_FILE_MARKER'));
+    const filesMessage = afterFiles.sessions
+      .find((r) => r.id === sessionId)
+      .state.items.find(
+        (item) => item.kind === 'userMessage' && item.turnId === mixed.result.turnId,
+      );
+    assert.match(JSON.stringify(filesMessage), /Attached: notes\.md/);
+    assert.ok(!JSON.stringify(filesMessage).includes('LASCORIA_TEXT_FILE_MARKER'));
+    assert.equal(
+      (await request(directory, 'attachment/list', { sessionId })).attachments.length,
+      0,
+    );
 
     // Archiving a session removes images still waiting in its composer.
     const waiting = await stage(other, PNG);

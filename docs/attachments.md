@@ -1,6 +1,6 @@
 # Attachments in Lascoria
 
-Status: R14 is partially implemented. Images (PNG, JPEG, GIF, WebP) can be added to a session's next task from 17 October; video, PDFs and other files are not supported yet. Native platform acceptance remains open.
+Status: R14 is partially implemented. Images (PNG, JPEG, GIF, WebP) can be added to a session's next task from 17 October, and MP4/QuickTime videos and UTF-8 text files from 19 October. PDFs, audio, archives and office documents are refused with an explanation because the pinned Muse has no input path for them. Native platform acceptance remains open.
 
 ## Current behaviour
 
@@ -28,6 +28,20 @@ Primary references: [turn input parts](https://meta-models.github.io/muse-code-s
 **Evidence.** Rust tests cover base64, header parsing for all four formats, malformed and oversized images, a PDF named `.png`, chunk order and retries, cross-session refusal and bounds. The real-Muse test (`test/attachments.test.js`, Muse 1.4.10 with a controlled loopback model) proves the image bytes reach the model request, the journal holds no bytes, Muse records image metadata on the user message, the staged copy is removed after sending and a retry sends nothing, and that unknown, cross-session, steering and archived-session cases are refused. The Rust-backed UI test (`test/ui/images.spec.ts`) covers choosing, an unsupported file, paste, reload persistence, remove, sending, the transcript marker, accessibility and narrow layout. Review fixes, 18 October: Rust tests reserve announced bytes across interleaved sessions and under 16 concurrent begins (both failed against the previous byte-file accounting), and free reservations on discard and expiry; `test/ui/images-recovery.spec.ts` refuses an oversized image with no upload call while the limits read is held and after it fails, and loses the `finish` and a middle `append` reply after commit, retries and reloads, leaving exactly the two intended images and no orphan staging.
 
 **Open.** Native picker, paste and drag-and-drop on macOS, Windows and Linux (the window now disables Tauri's own file-drop handling so the composer receives HTML drops; that needs native confirmation); behaviour with real provider models, including models without image input; R11 memory and CPU measurements for large images; video, PDFs and other files.
+
+## Videos and text files (implemented 19 October)
+
+**Experience.** The composer control is now **Attach file**; choosing, pasting or dropping images, videos and text files stages them in the same strip, with a kind badge, size, progress, Retry and Remove. Files Muse cannot read (PDF, audio, archives, office documents, other image or video formats) are refused before any byte is read, with the reason. Help lists the limits.
+
+**Probe of the pinned Muse 1.4.10 (19 October, macOS, echo provider).** `media/upload` accepted 4 KiB to 600 MiB uploads in 4 MiB chunks (about 9 ms per MiB) and accepted bytes that were not a video at all; it refused any type other than `video/mp4` or `video/quicktime`. A `video` turn part was accepted and an upload receipt could be used by more than one task. Muse keeps uploaded videos in the session's own store (`input-assets/video`) for the life of the session. These results set Lascoria's own checks and limits below.
+
+**Boundary.** `attachment/begin` takes a declared `kind` (`image`, `video` or `text`, default `image` for older clients), so the right limit applies before any byte arrives; finish confirms it by content and refuses a mismatch. Videos must start with an ISO base media `ftyp` box (`qt  ` brand means QuickTime, otherwise MP4); text files must be UTF-8 with no NUL bytes. Finish now streams the checksum instead of reading the file into memory. Limits: one video per task, up to 100 MB (it also bounds the copy Muse keeps); text files up to 256 KB each, four and 512 KB per task; still eight waiting per session, and the shared storage reservation is now 256 MB. A video's upload receipt (a UUIDv7) is minted once at begin.
+
+**Sending.** On Send the supervisor hands each video to Muse before dispatching the task: one bounded worker call per 4 MiB chunk, read by the worker from the verified private file (the first call re-checks the whole file's SHA-256, streaming), with a command identity derived from the receipt and chunk number, so a resent task replays chunks Muse already holds instead of storing them twice. The task then carries a `video` part naming the receipt. A text file is re-checked and added after the task text as `<attached_file name=".." bytes="..">` text; the transcript shows the user's own words followed by "Attached: name". The journal keeps attachment IDs only. Staged copies are removed once Muse accepts the task, as for images.
+
+**Evidence.** Rust tests cover MP4 and QuickTime detection, a fake video, text and binary detection, per-kind limits, a retried begin that changes kind, per-task counts and a stable upload receipt; the reservation tests now use 100 MB videos against the 256 MB cap. The real-Muse test (`test/attachments.test.js`) sends a text file and a video with one task through the loopback model and checks the file text reaches the model, the journal and transcript keep no contents and the staged copies are gone. The Rust-backed UI test covers attaching a text file next to an image, refusing a PDF and the transcript marker.
+
+**Open.** Whether a real provider model receives and understands the video (the loopback model records the request but cannot judge it), native pick/paste/drop on all three operating systems, and R11 measurements for 100 MB uploads, which pass through the 64 KiB control channel in about 3,100 chunks and are held once in the window's memory while being read.
 
 ## Proposed composer experience
 

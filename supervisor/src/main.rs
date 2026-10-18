@@ -814,12 +814,13 @@ impl Actor {
             row["lifecycle"] == "connected" && row["state"]["current"] == true,
             "Session state is not current; recover before issuing commands"
         );
-        // Images travel as verified private files read by the worker; the journal keeps IDs only.
+        // Attachments travel as verified private files read by the worker; the journal keeps
+        // IDs only.
         let images = match params.get("attachments") {
             Some(ids) => {
                 ensure!(
                     operation == "turn",
-                    "Images can be added to a new task, not to steering or other actions"
+                    "Attachments can be added to a new task, not to steering or other actions"
                 );
                 Some(attachments::for_turn(
                     &lascoria_runtime::state_dir(),
@@ -851,8 +852,30 @@ impl Actor {
         let fields = wire.as_object_mut().unwrap();
         fields.remove("projectRevision");
         fields.remove("attachments");
-        if let Some(images) = &images {
-            wire["images"] = json!(images);
+        if let Some(items) = &images {
+            let of = |kind: &str| {
+                items
+                    .iter()
+                    .filter(|item| item["kind"] == kind)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
+            let (pictures, videos, texts) = (of("image"), of("video"), of("text"));
+            // A video reaches Muse's own session store before the task that refers to it.
+            // Each chunk is its own bounded worker call with a stable identity, so a resent
+            // task finds the chunks Muse already holds instead of storing them twice.
+            for video in &videos {
+                self.upload_video(session, video).await?;
+            }
+            if !pictures.is_empty() {
+                wire["images"] = json!(pictures);
+            }
+            if !videos.is_empty() {
+                wire["videos"] = json!(videos);
+            }
+            if !texts.is_empty() {
+                wire["files"] = json!(texts);
+            }
         }
         if let Some(project) = &replacement {
             // Durable intent before dispatch: the confirmed context stays authoritative until
@@ -891,6 +914,30 @@ impl Actor {
             );
         }
         result
+    }
+    /// Send one staged video to Muse with `media/upload`, in chunks the worker reads from the
+    /// verified file itself, so no video bytes cross the supervisor's control channel.
+    async fn upload_video(&mut self, session: &str, video: &Value) -> Result<()> {
+        let bytes = video["bytes"].as_u64().context("Video size missing")?;
+        let count = bytes.div_ceil(attachments::VIDEO_CHUNK_BYTES).max(1);
+        for index in 0..count {
+            let worker = self
+                .workers
+                .get_mut(session)
+                .context("SDK worker unavailable")?;
+            let id = Uuid::now_v7().to_string();
+            let response = worker
+                .call(json!({"id":id,"commandId":id,"operation":"mediaUpload","params":{"sessionId":session,"path":video["path"],"sha256":video["sha256"],"bytes":bytes,"mediaType":video["mediaType"],"uploadId":video["uploadId"],"chunkIndex":index,"chunkCount":count,"chunkBytes":attachments::VIDEO_CHUNK_BYTES}}))
+                .await
+                .context("The video could not be handed to Muse; send the task again")?;
+            if let Some(error) = response.get("error") {
+                bail!(
+                    "The video could not be handed to Muse: {}",
+                    error["message"].as_str().unwrap_or("unknown error")
+                );
+            }
+        }
+        Ok(())
     }
     async fn stop(&mut self) {
         for (_, mut worker) in self.workers.drain() {
@@ -1007,7 +1054,7 @@ async fn connection(
                 let row = db.lock().unwrap().get("sessions", params["sessionId"].as_str().unwrap_or_default())?;
                 ensure!(
                     row.is_some_and(|r| r["lifecycle"] != "archived"),
-                    "Images can be added only to an open session"
+                    "Attachments can be added only to an open session"
                 );
             }
             return tokio::task::spawn_blocking(move || {

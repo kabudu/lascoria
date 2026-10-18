@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 
-/** One image waiting in a session's composer. Bytes stay in Lascoria's private storage. */
+type Kind = 'image' | 'video' | 'text';
+/** One attachment waiting in a session's composer. Bytes stay in Lascoria's private storage. */
 type Staged = {
   key: string;
   id: string;
+  kind?: Kind;
   name: string;
   bytes: number;
   mediaType?: string;
@@ -16,7 +18,16 @@ type Staged = {
   preview?: string;
   file?: File;
 };
-type Limits = { imageBytes: number; perTurn: number; perSession: number; chunkBase64: number };
+type Limits = {
+  imageBytes: number;
+  perTurn: number;
+  perSession: number;
+  chunkBase64: number;
+  videoBytes?: number;
+  videosPerTurn?: number;
+  textBytes?: number;
+  textsPerTurn?: number;
+};
 // Used until the supervisor reports its limits (or if that read fails), so a large file is
 // refused before any preview, read or hash, never only after it has been loaded into memory.
 const FALLBACK: Limits = {
@@ -24,8 +35,30 @@ const FALLBACK: Limits = {
   perTurn: 4,
   perSession: 8,
   chunkBase64: 44 * 1024,
+  videoBytes: 100 * 1024 * 1024,
+  videosPerTurn: 1,
+  textBytes: 256 * 1024,
+  textsPerTurn: 4,
 };
-const ACCEPT = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const IMAGES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const VIDEOS = ['video/mp4', 'video/quicktime'];
+const VIDEO_NAME = /\.(mp4|m4v|mov)$/i;
+// Formats Muse has no way to read here. Refused before reading, with the reason.
+const UNREADABLE =
+  /^(application\/(pdf|zip|x-zip|gzip|x-tar|x-7z|x-rar|vnd\.|msword)|audio\/|video\/|image\/|font\/)/;
+const UNREADABLE_NAME =
+  /\.(pdf|zip|gz|tgz|tar|7z|rar|docx?|xlsx?|pptx?|key|pages|numbers|mp3|wav|m4a|aac|flac|ogg|avi|mkv|webm|heic|tiff?|bmp|exe|dmg|pkg|app|so|dylib|dll|wasm|bin|sqlite|db)$/i;
+
+/** What a chosen file will be staged as, or why it cannot be attached. */
+export function kindOf(file: { name: string; type: string }): Kind | string {
+  if (IMAGES.includes(file.type)) return 'image';
+  if (VIDEOS.includes(file.type) || (!file.type && VIDEO_NAME.test(file.name))) return 'video';
+  if (UNREADABLE.test(file.type) || UNREADABLE_NAME.test(file.name))
+    return `${file.name || 'That file'} can't be attached: Lascoria attaches PNG, JPEG, GIF or WebP images, MP4 or QuickTime videos and text files.`;
+  return 'text';
+}
+const NOUN: Record<Kind, string> = { image: 'image', video: 'video', text: 'text file' };
+const ICON: Record<Kind, string> = { image: 'IMG', video: 'VID', text: 'TXT' };
 const RAW_CHUNK = (base64: number) => Math.floor(base64 / 4) * 3;
 
 function size(bytes: number) {
@@ -52,9 +85,10 @@ const readPreview = (file: File) =>
   });
 
 /**
- * Compact image strip for the composer (R14). Choosing, pasting or dropping only stages an
- * image for this session; nothing reaches Muse until the user starts a task. Images waiting
- * here survive reloads because the supervisor keeps them, owned by the session.
+ * Compact attachment strip for the composer (R14): images, videos and text files. Choosing,
+ * pasting or dropping only stages a file for this session; nothing reaches Muse until the
+ * user starts a task. Attachments waiting here survive reloads because the supervisor keeps
+ * them, owned by the session.
  */
 export function ComposerImages({
   sessionId,
@@ -66,7 +100,7 @@ export function ComposerImages({
   sessionId: string;
   disabled: boolean;
   steering: boolean;
-  /** Ready image IDs in order, and whether sending must wait (preparing or too many). */
+  /** Ready attachment IDs in order, and whether sending must wait (preparing or too many). */
   onChange: (ready: string[], blocked: boolean) => void;
   /** Files pasted or dropped onto the composer by the parent form. */
   addRequest?: { files: File[]; at: number };
@@ -95,7 +129,7 @@ export function ComposerImages({
           ...previous,
         ]);
       },
-      () => live.current && setNotice('Images waiting for this session could not be loaded.'),
+      () => live.current && setNotice('Attachments waiting for this session could not be loaded.'),
     );
     return () => {
       live.current = false;
@@ -103,10 +137,7 @@ export function ComposerImages({
   }, [sessionId]);
   useEffect(() => {
     const ready = items.filter((i) => i.status === 'ready').map((i) => i.id);
-    onChange(
-      ready,
-      items.some((i) => i.status === 'preparing') || ready.length > (limits ?? FALLBACK).perTurn,
-    );
+    onChange(ready, items.some((i) => i.status === 'preparing') || Boolean(excess()));
   }, [items, limits]);
   useEffect(() => {
     if (addRequest?.files.length && addRequest.at >= mountedAt.current) void add(addRequest.files);
@@ -125,6 +156,7 @@ export function ComposerImages({
         attachmentId: id,
         name: file.name || 'Pasted image',
         bytes: data.byteLength,
+        kind: item.kind ?? 'image',
       });
       const step = RAW_CHUNK((limits ?? FALLBACK).chunkBase64);
       const bytes = new Uint8Array(data);
@@ -155,29 +187,37 @@ export function ComposerImages({
 
   async function add(files: File[]) {
     setNotice('');
-    const accepted: File[] = [];
+    const accepted: [File, Kind][] = [];
+    const current = limits ?? FALLBACK;
     for (const file of files) {
-      if (!ACCEPT.includes(file.type)) {
+      const kind = kindOf(file);
+      if (kind !== 'image' && kind !== 'video' && kind !== 'text') {
+        setNotice(kind);
+        continue;
+      }
+      const cap =
+        kind === 'image'
+          ? current.imageBytes
+          : kind === 'video'
+            ? (current.videoBytes ?? FALLBACK.videoBytes!)
+            : (current.textBytes ?? FALLBACK.textBytes!);
+      if (file.size > cap) {
         setNotice(
-          `${file.name || 'That file'} is not a PNG, JPEG, GIF or WebP image. Other files can't be attached yet.`,
+          `${file.name || 'That file'} is larger than ${size(cap)}, the ${NOUN[kind]} limit.`,
         );
         continue;
       }
-      const cap = (limits ?? FALLBACK).imageBytes;
-      if (file.size > cap) {
-        setNotice(`${file.name || 'That image'} is larger than ${size(cap)}.`);
-        continue;
-      }
-      accepted.push(file);
+      accepted.push([file, kind]);
     }
-    const perSession = (limits ?? FALLBACK).perSession;
+    const perSession = current.perSession;
     const room = perSession - items.length;
     if (accepted.length > room)
-      setNotice(`A session can hold ${perSession} waiting images; remove one first.`);
-    for (const file of accepted.slice(0, Math.max(0, room))) {
+      setNotice(`A session can hold ${perSession} waiting attachments; remove one first.`);
+    for (const [file, kind] of accepted.slice(0, Math.max(0, room))) {
       const item: Staged = {
         key: crypto.randomUUID(),
         id: '',
+        kind,
         name: file.name || 'Pasted image',
         bytes: file.size,
         status: 'preparing',
@@ -185,9 +225,25 @@ export function ComposerImages({
         file,
       };
       setItems((previous) => [...previous, item]);
-      void readPreview(file).then((preview) => update(item.key, { preview }));
+      if (kind === 'image') void readPreview(file).then((preview) => update(item.key, { preview }));
       await upload(item, file);
     }
+  }
+
+  /** The first per-task limit the ready attachments exceed, as a sentence. */
+  function excess() {
+    const current = limits ?? FALLBACK;
+    const ready = items.filter((i) => i.status === 'ready');
+    const count = (kind: Kind) => ready.filter((i) => (i.kind ?? 'image') === kind).length;
+    const rules: [Kind, number][] = [
+      ['image', current.perTurn],
+      ['video', current.videosPerTurn ?? 1],
+      ['text', current.textsPerTurn ?? 4],
+    ];
+    for (const [kind, most] of rules)
+      if (count(kind) > most)
+        return `A task can include ${most === 1 ? 'one' : most} ${NOUN[kind]}${most === 1 ? '' : 's'}; remove ${count(kind) - most}.`;
+    return '';
   }
 
   async function remove(item: Staged) {
@@ -198,8 +254,7 @@ export function ComposerImages({
       );
   }
 
-  const ready = items.filter((i) => i.status === 'ready').length;
-  const tooMany = limits && ready > limits.perTurn;
+  const tooMany = excess();
   return (
     <div className="composer-images">
       <div className="composer-images-row">
@@ -209,15 +264,14 @@ export function ComposerImages({
           disabled={disabled}
           onClick={() => input.current?.click()}
         >
-          Add image
+          Attach file
         </button>
         <input
           ref={input}
           type="file"
-          accept={ACCEPT.join(',')}
           multiple
           hidden
-          aria-label="Choose images to attach"
+          aria-label="Choose files to attach"
           onChange={(event) => {
             const files = [...(event.target.files ?? [])];
             event.target.value = '';
@@ -225,14 +279,14 @@ export function ComposerImages({
           }}
         />
         {items.length > 0 && (
-          <ul className="composer-images-strip" aria-label="Images for the next task">
+          <ul className="composer-images-strip" aria-label="Attachments for the next task">
             {items.map((item) => (
               <li key={item.key} className={`composer-image ${item.status}`}>
                 {item.preview ? (
                   <img src={item.preview} alt="" />
                 ) : (
                   <span className="composer-image-icon" aria-hidden="true">
-                    IMG
+                    {ICON[item.kind ?? 'image']}
                   </span>
                 )}
                 <span className="composer-image-text">
@@ -272,10 +326,7 @@ export function ComposerImages({
       </div>
       {(notice || (steering && items.length > 0) || tooMany) && (
         <p className="composer-images-note" role="status">
-          {notice ||
-            (tooMany
-              ? `A task can include ${limits!.perTurn} images; remove ${ready - limits!.perTurn}.`
-              : 'Images are sent with the next task, not with steering.')}
+          {notice || tooMany || 'Attachments are sent with the next task, not with steering.'}
         </p>
       )}
     </div>
