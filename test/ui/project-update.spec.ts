@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -141,6 +141,27 @@ test('Project folder changes are offered for the next task and applied through t
     await expect(page.locator('.project-context')).toContainText('Applied with a later task');
     await expect(page.locator('.project-context')).toContainText('3 folders');
     await page.locator('.project-context summary').click();
+
+    // Snapshots belong to one chosen folder: API's change is captured, App is not included.
+    await exec('git', ['init', '-q'], { cwd: api });
+    await writeFile(join(api, 'routes.txt'), 'api change\n');
+    await exec('git', ['add', '.'], { cwd: api });
+    await exec(
+      'git',
+      ['-c', 'user.name=QA', '-c', 'user.email=qa@example.test', 'commit', '-qm', 'init'],
+      { cwd: api },
+    );
+    await writeFile(join(api, 'routes.txt'), 'api change, edited\n');
+    await page.getByRole('tab', { name: /^diff$/i }).click();
+    await page.getByLabel('Folder', { exact: true }).selectOption({ label: 'API' });
+    await page.getByRole('button', { name: 'Save snapshot', exact: true }).click();
+    await expect(page.locator('.revision-badge')).toContainText('Folder: API');
+    await expect(page.locator('.diff-review')).toContainText('routes.txt');
+    const snapshot = (await request(directory, 'review/list', {
+      sessionId: (await status()).sessions[0].id,
+    })) as any;
+    expect(snapshot.artifacts.at(-1).folder.name).toBe('API');
+    await page.getByRole('tab', { name: /^transcript$/i }).click();
 
     // A new default folder cannot be applied to this session.
     await save(2, [folders.api, folders.app, folders.docs], 'save-3');

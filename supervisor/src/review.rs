@@ -65,6 +65,14 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// The repository a snapshot was taken from: its recorded Project folder, or the session's
+/// own folder for snapshots without one.
+pub fn artifact_root<'a>(artifact: &'a Value, workspace: &'a Path) -> &'a Path {
+    artifact["folder"]["path"]
+        .as_str()
+        .map_or(workspace, Path::new)
+}
+
 pub async fn capture(root: &Path) -> Result<Value> {
     let top = String::from_utf8(git(root, &["rev-parse", "--show-toplevel"]).await?)?;
     ensure!(
@@ -296,10 +304,22 @@ pub async fn handle(
             .context("Workspace required")?,
     );
     if operation == "artifact/capture" {
-        ensure!(
-            session.get("projectContext").is_none(),
-            "Project diff captures need repository selection and are not supported yet"
-        );
+        // A Project session spans several folders: the user picks the one repository a
+        // snapshot belongs to, from the folders the session has confirmed. Its path is
+        // recorded with the snapshot, so every later check reads that same repository.
+        let folder = match session.get("projectContext") {
+            Some(project) => {
+                let id = params["folderId"]
+                    .as_str()
+                    .context("Choose which Project folder to snapshot")?;
+                let folder = project["folders"]
+                    .as_array()
+                    .and_then(|folders| folders.iter().find(|f| f["id"] == id))
+                    .context("That folder is no longer part of this session's Project")?;
+                Some(json!({"id":folder["id"],"name":folder["name"],"path":folder["path"]}))
+            }
+            None => None,
+        };
         let key = format!("capture_{request_id}");
         if let Some(prior) = db.lock().unwrap().get("artifacts", &key)? {
             ensure!(
@@ -321,11 +341,18 @@ pub async fn handle(
                 .is_some_and(|turns| turns.iter().any(|t| t["turnId"] == task)),
             "Unknown producing turn"
         );
-        let mut row = capture(root).await?;
+        let target = folder
+            .as_ref()
+            .and_then(|f| f["path"].as_str())
+            .map_or(root, Path::new);
+        let mut row = capture(target).await?;
         ensure!(
-            capture(root).await?["fingerprint"] == row["fingerprint"],
+            capture(target).await?["fingerprint"] == row["fingerprint"],
             "Repository changed during capture; try again"
         );
+        if let Some(folder) = folder {
+            row["folder"] = folder;
+        }
         row["id"] = json!(key);
         row["sessionId"] = json!(session_id);
         row["taskId"] = json!(task);
@@ -359,6 +386,7 @@ pub async fn handle(
     if operation == "artifact/read" {
         return Ok(artifact);
     }
+    let root = artifact_root(&artifact, root);
     if operation == "artifact/check" {
         let current = capture(root).await?;
         return Ok(
@@ -545,6 +573,91 @@ mod tests {
                 .to_string()
                 .contains("non-regular")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn project_snapshots_belong_to_the_chosen_folder_and_stay_there() -> Result<()> {
+        let fixture = Fixture(std::env::temp_dir().join(format!("sch-project-{}", Uuid::new_v4())));
+        let (app, api) = (fixture.0.join("app"), fixture.0.join("api"));
+        for (repo, file) in [(&app, "app.txt"), (&api, "api.txt")] {
+            std::fs::create_dir_all(repo)?;
+            git(repo, &["init", "-q"]).await?;
+            std::fs::write(repo.join(file), "before\n")?;
+            git(repo, &["add", "."]).await?;
+            git(
+                repo,
+                &[
+                    "-c",
+                    "user.name=F",
+                    "-c",
+                    "user.email=f@example.test",
+                    "commit",
+                    "-qm",
+                    "init",
+                ],
+            )
+            .await?;
+            std::fs::write(repo.join(file), "after\n")?;
+        }
+        let db: SharedDb = std::sync::Arc::new(std::sync::Mutex::new(crate::db::Db::open(
+            &fixture.0.join("journal.sqlite"),
+        )?));
+        let folders =
+            json!([{"id":"f-app","name":"App","path":app},{"id":"f-api","name":"API","path":api}]);
+        db.lock().unwrap().put(
+            "sessions",
+            "s",
+            &json!({"id":"s","workspace":app,"lifecycle":"connected","state":{"turns":[{"turnId":"t1"}]},"projectContext":{"revision":1,"folders":folders}}),
+        )?;
+        let capture = |params: Value, id: &str| {
+            let db = db.clone();
+            let id = id.to_owned();
+            async move { handle(db, "artifact/capture", &params, &id).await }
+        };
+        assert!(
+            capture(json!({"sessionId":"s","taskId":"t1"}), "c0")
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("Choose which Project folder")
+        );
+        assert!(
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"elsewhere"}),
+                "c1"
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("no longer part")
+        );
+        let snapshot = capture(
+            json!({"sessionId":"s","taskId":"t1","folderId":"f-api"}),
+            "c2",
+        )
+        .await?;
+        assert_eq!(snapshot["folder"]["name"], "API");
+        let patch = snapshot["patch"].as_str().unwrap();
+        assert!(
+            patch.contains("api.txt") && !patch.contains("app.txt"),
+            "{patch}"
+        );
+        // Freshness reads the snapshot's own repository: a change in the sibling folder does
+        // not make it stale, a change in its own folder does.
+        let check = |db: SharedDb| async move {
+            handle(
+                db,
+                "artifact/check",
+                &json!({"sessionId":"s","artifactId":"capture_c2"}),
+                "k",
+            )
+            .await
+        };
+        std::fs::write(app.join("app.txt"), "sibling edit\n")?;
+        assert_eq!(check(db.clone()).await?["fresh"], true);
+        std::fs::write(api.join("api.txt"), "own edit\n")?;
+        assert_eq!(check(db.clone()).await?["fresh"], false);
         Ok(())
     }
 }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Project sessions can save Diff snapshots again, one folder at a time: choose the folder beside Save snapshot. The snapshot names its folder and is checked against that repository only.
+
 - Attach file in the composer now also takes one MP4 or QuickTime video per task (up to 100 MB) and UTF-8 text files such as code, notes or logs (up to 256 KB each). Each is checked by its content and sent only with the next task; PDFs, audio, archives and office documents are refused with the reason.
 
 - Optional decision assistance can review a selected diff snapshot using your Jev, SubQ or OpenAI API key. Configure it per workspace, inspect exactly what will be sent, and explicitly request separately billed advice. Results cannot accept evidence or change Muse permissions; lost replies are retrieved without repeating a paid call. Optional background triage notes when a session likely needs you, and an optional tool lets Muse ask your decision model a question; both are off until you turn them on for a workspace. A usage summary and Seems right / Seems wrong marks help you judge the advice.
