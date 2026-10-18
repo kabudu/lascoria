@@ -47,6 +47,8 @@ const FEATURES: &[&str] = &[
     "effortPresets",
     "testReuse",
     "decisionAssistance",
+    "decisionTriage",
+    "decisionTool",
 ];
 
 use anyhow::{Context, Result, bail, ensure};
@@ -1163,6 +1165,8 @@ async fn supervisor_main() -> Result<()> {
             let _ = monitor_account.lock().await.status().await;
         }
     });
+    // R10 background triage: idle until the user enables it for a provider and workspace.
+    let triage = tokio::spawn(decisions::triage_loop(db.clone()));
     let global = Lane::new(make_actor(None));
     let lanes = Arc::new(Mutex::new(HashMap::new()));
     for row in db.lock().unwrap().all("sessions")? {
@@ -1381,6 +1385,7 @@ async fn supervisor_main() -> Result<()> {
         broker.stop().await;
     }
     account_monitor.abort();
+    triage.abort();
     let _ = account_monitor.await;
     account.lock().await.stop().await;
     fs::remove_file(socket_path)?;

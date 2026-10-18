@@ -1,6 +1,6 @@
 # Decision assistance
 
-Status: manual snapshot review is implemented; background triage, Muse-callable tools, live BYOK acceptance and the complete R10 release gate remain open. These are separate APIs and charges from Muse Code. Lascoria's official Node SDK worker continues to own Muse integration; the Rust supervisor owns this optional advice service.
+Status: all three interaction models are implemented (manual snapshot review, background triage and a Muse-callable tool), with aggregate metrics and agree/disagree overrides. Live BYOK acceptance, independent quality checks and native platform acceptance remain open, so the R10 release gate is not closed. These are separate APIs and charges from Muse Code. Lascoria's official Node SDK worker continues to own Muse integration; the Rust supervisor owns this optional advice service.
 
 ## Configure and review
 
@@ -13,6 +13,20 @@ In a standalone session's **Diff** tab, select a saved snapshot and expand **Opt
 Only **Send this snapshot for advice** starts the paid review. Lascoria verifies the live repository fingerprint before sending and again after receiving the answer. A changed snapshot, configuration or credential revision invalidates the preview or marks the answer stale. Results describe a dated check; files may change afterwards. Advice cannot accept evidence, approve a tool, route a model or send anything to Muse.
 
 Provider probabilities are estimates, not correctness guarantees, and are not comparably calibrated across providers. Choice and score details retain each provider's native probabilities, labels and confidence; no explanation or chain of thought is fabricated. Model/request identity, source fingerprint, rubric version, timestamp, reported token counts and latency are inspectable. Price remains unknown because these contracts do not report a billed amount.
+
+## Background triage
+
+**Background triage** in the same settings is off until you choose a provider for it and turn it on for a session's workspace; this consent is separate from manual reviews, and choosing a different provider clears it. Unlike manual reviews it sends data without asking each time. About every 15 seconds Lascoria looks at the chosen workspaces for a session whose latest task finished or that is waiting for you, and sends one predicate ("does this need the user's attention soon?") about each such update, once. The text is built by the supervisor from the session record and limited to the parts you choose: what you asked for (your own words, never Lascoria's hidden context notes), Muse's latest reply and the task outcome, and the question Muse is waiting on. At most three updates are sent per pass and at most the daily limit you set (default 50). When the answer is at least 50%, a quiet "Likely needs you" note appears beside the session name.
+
+## Muse can ask
+
+**Muse can ask** gives sessions in the workspaces you turn on an `ask_decision_assistant` tool in their local Lascoria tools. Muse asks one yes/no, choice or score question (two to eight options) about up to 16,000 characters of text it chooses. The tool is refused, with an instruction to continue without it, unless you turned it on for that workspace; it has a daily limit, and repeating a request ID returns the recorded answer without a second call. Muse sees the answer with a notice that it is an estimate that approves nothing. Because Muse chooses the text, a confused or prompt-injected session could send repository content to your provider: turn this on only where that is acceptable (security finding F8).
+
+Replacing, removing or disabling a provider's key turns off both modes for that provider, before the vault is touched.
+
+## Metrics and overrides
+
+A collapsed **Usage summary** shows, per provider, requests overall and in the last 24 hours, by use (reviews, triage, Muse, tests) and by outcome, reported tokens, typical and 95th-percentile latency, and how often you marked an answer wrong. **Seems right / Seems wrong** on an answered result records that judgement. Cost stays unknown because these APIs do not report a billed amount.
 
 ## Failure, privacy and bounds
 
@@ -30,4 +44,4 @@ The provider's account retention policy applies. Lascoria neither promises zero 
 
 ## Acceptance still required
 
-Controlled tests cover native wire shapes for all nine provider/question combinations, local HTTP lifecycle, disclosure, workspace consent, lost replies, retained identities, cancellation, admission, stale files/configuration, bad responses, credential reflection and helper authority. These prove integration mechanics, not live model quality, live billing or native platform acceptance. Background triage and explicit Muse tools remain off and unimplemented. R10 is not complete until those modes, optional aggregate metrics/overrides, live trials, independent task-quality checks and native Windows/Linux acceptance pass.
+Controlled tests cover native wire shapes for all nine provider/question combinations, local HTTP lifecycle, disclosure, workspace consent, lost replies, retained identities, cancellation, admission, stale files/configuration, bad responses, credential reflection and helper authority. These prove integration mechanics, not live model quality, live billing or native platform acceptance. Background triage, the Muse tool, metrics and overrides have their own controlled tests (consent, chosen parts only, once per update, daily limits, idempotency, revocation). R10 is not complete until live trials, independent task-quality checks and native macOS, Windows and Linux acceptance pass.

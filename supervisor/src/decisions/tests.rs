@@ -644,3 +644,256 @@ async fn retained_identity_capacity_refuses_new_spend_without_forgetting_old_ids
     );
     assert!(service.active.lock().unwrap().is_empty());
 }
+
+async fn mode(service: &Service, db: SharedDb, params: Value) -> Value {
+    let revision = config(&db.lock().unwrap()).unwrap()["revision"].clone();
+    let mut params = params;
+    params["expectedRevision"] = revision;
+    service
+        .handle(db, "decision/configureMode", &params, "mode")
+        .await
+        .unwrap()
+}
+fn finished_task(db: &SharedDb, waiting: bool) {
+    let database = db.lock().unwrap();
+    let mut row = database.get("sessions", "session-a").unwrap().unwrap();
+    row["state"] = json!({
+        "items":[
+            {"kind":"userMessage","turnId":"t1","text":"Lascoria note: hidden folder list. Fix the parser","displayText":"Fix the parser"},
+            {"kind":"agentMessage","turnId":"t1","text":"Parser fixed; SECRET-REPLY tests pass"}],
+        "turns":[{"turnId":"t1","terminal":if waiting {Value::Null} else {json!("completed")}}],
+        "userInputs": if waiting {json!([{"requested":{"prompt":"Which branch?"}}])} else {json!([])},
+        "approvals":[]
+    });
+    database.put("sessions", "session-a", &row).unwrap();
+}
+
+#[tokio::test]
+async fn triage_sends_only_chosen_parts_once_per_update_and_only_with_consent() {
+    let f = fixture().await;
+    let mut service = Service::new().unwrap();
+    enable(&service, f.db.clone(), "jev").await;
+    let server = server(response("jev"), 0, None, 200).await;
+    service.endpoint = Some(server.url.clone());
+    finished_task(&f.db, false);
+    // Off by default: nothing is sent.
+    assert_eq!(service.triage_pass(f.db.clone()).await.unwrap(), 0);
+    // A provider without workspace consent for triage still sends nothing.
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"triage","provider":"jev","share":["request","question"]}),
+    )
+    .await;
+    assert_eq!(service.triage_pass(f.db.clone()).await.unwrap(), 0);
+    assert_eq!(server.calls.load(Ordering::SeqCst), 0);
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"triage","sessionId":"session-a","workspaceEnabled":true}),
+    )
+    .await;
+    assert_eq!(service.triage_pass(f.db.clone()).await.unwrap(), 1);
+    assert_eq!(
+        service.triage_pass(f.db.clone()).await.unwrap(),
+        0,
+        "one request per update"
+    );
+    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    let recent = service
+        .handle(f.db.clone(), "decision/status", &json!({}), "status")
+        .await
+        .unwrap()["recent"]
+        .clone();
+    let triaged = recent
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["purpose"] == "triage")
+        .unwrap()
+        .clone();
+    assert_eq!(triaged["status"], "completed");
+    assert_eq!(triaged["source"]["turnId"], "t1");
+    // A new wait for the user is a new update.
+    finished_task(&f.db, true);
+    assert_eq!(service.triage_pass(f.db.clone()).await.unwrap(), 1);
+    assert_eq!(server.calls.load(Ordering::SeqCst), 2);
+    // Text shares the user's words, not hidden notes, and not the reply when it is not chosen.
+    let row =
+        f.db.lock()
+            .unwrap()
+            .get("sessions", "session-a")
+            .unwrap()
+            .unwrap();
+    let text = modes::triage_input(&row, "t1", &["request".into(), "question".into()]).unwrap();
+    assert!(
+        text.contains("Fix the parser")
+            && !text.contains("Lascoria note")
+            && !text.contains("SECRET-REPLY")
+    );
+    assert!(text.contains("Which branch?"));
+}
+
+#[tokio::test]
+async fn muse_tool_is_refused_until_enabled_never_pays_twice_and_has_a_daily_limit() {
+    let f = fixture().await;
+    let mut service = Service::new().unwrap();
+    enable(&service, f.db.clone(), "subq").await;
+    let server = server(response("subq"), 0, None, 200).await;
+    service.endpoint = Some(server.url.clone());
+    let ask = json!({"sessionId":"session-a","question":"Is this ready to merge?","kind":"yes_no","context":"All 12 tests pass.","requestId":"q-1"});
+    let refused = service
+        .handle(f.db.clone(), "decision/tool", &ask, "q-1")
+        .await
+        .unwrap_err();
+    assert!(refused.to_string().contains("not enabled for this session"));
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"tool","provider":"subq","dailyLimit":1}),
+    )
+    .await;
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"tool","sessionId":"session-a","workspaceEnabled":true}),
+    )
+    .await;
+    let answer = service
+        .handle(f.db.clone(), "decision/tool", &ask, "q-1")
+        .await
+        .unwrap();
+    assert!(
+        answer["advisory"]
+            .as_str()
+            .unwrap()
+            .contains("does not approve anything")
+    );
+    assert_eq!(answer["answer"]["noul"], 0.9);
+    // The same request again returns the recorded answer without a second paid call.
+    assert_eq!(
+        service
+            .handle(f.db.clone(), "decision/tool", &ask, "q-1")
+            .await
+            .unwrap(),
+        answer
+    );
+    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+    let mut second = ask.clone();
+    second["requestId"] = json!("q-2");
+    let limited = service
+        .handle(f.db.clone(), "decision/tool", &second, "q-2")
+        .await
+        .unwrap_err();
+    assert!(limited.to_string().contains("limit"));
+    for bad in [
+        json!({"sessionId":"session-a","question":"","context":"x"}),
+        json!({"sessionId":"session-a","question":"Which?","kind":"choice","options":"only one","context":"x"}),
+        json!({"sessionId":"session-a","question":"Q","kind":"essay","context":"x"}),
+        json!({"sessionId":"session-a","question":"Q","context":"x".repeat(16_001)}),
+    ] {
+        assert!(
+            service
+                .handle(f.db.clone(), "decision/tool", &bad, "bad")
+                .await
+                .is_err(),
+            "{bad}"
+        );
+    }
+    assert_eq!(server.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn replacing_or_disabling_a_key_revokes_every_mode_that_used_it() {
+    let f = fixture().await;
+    let service = Service::new().unwrap();
+    enable(&service, f.db.clone(), "openai").await;
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"triage","provider":"openai"}),
+    )
+    .await;
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"triage","sessionId":"session-a","workspaceEnabled":true}),
+    )
+    .await;
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"tool","provider":"openai"}),
+    )
+    .await;
+    let revision = config(&f.db.lock().unwrap()).unwrap()["revision"].clone();
+    service.handle(f.db.clone(),"decision/setKey",&json!({"provider":"openai","expectedRevision":revision,"apiKey":"replacement-credential"}),"key2").await.unwrap();
+    let cfg = config(&f.db.lock().unwrap()).unwrap();
+    for name in modes::MODES {
+        assert_eq!(modes::mode(&cfg, name)["provider"], Value::Null, "{name}");
+        assert_eq!(modes::mode(&cfg, name)["workspaces"], json!([]), "{name}");
+    }
+    // A mode cannot use a provider that is off.
+    let revision = cfg["revision"].clone();
+    let error = service
+        .handle(
+            f.db.clone(),
+            "decision/configureMode",
+            &json!({"mode":"tool","provider":"openai","expectedRevision":revision}),
+            "m",
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("Turn this provider on"));
+}
+
+#[tokio::test]
+async fn overrides_and_metrics_aggregate_the_retained_history() {
+    let f = fixture().await;
+    let mut service = Service::new().unwrap();
+    enable(&service, f.db.clone(), "jev").await;
+    let server = server(response("jev"), 0, None, 200).await;
+    service.endpoint = Some(server.url.clone());
+    let mut p = params("jev");
+    let preview = service
+        .handle(f.db.clone(), "decision/preview", &p, "preview")
+        .await
+        .unwrap();
+    p["fingerprint"] = preview["fingerprint"].clone();
+    service
+        .handle(f.db.clone(), "decision/evaluate", &p, "eval-1")
+        .await
+        .unwrap();
+    let marked = service
+        .handle(
+            f.db.clone(),
+            "decision/feedback",
+            &json!({"requestId":"eval-1","verdict":"disagree"}),
+            "fb",
+        )
+        .await
+        .unwrap();
+    assert_eq!(marked["userVerdict"], "disagree");
+    assert!(
+        service
+            .handle(
+                f.db.clone(),
+                "decision/feedback",
+                &json!({"requestId":"eval-1","verdict":"maybe"}),
+                "fb"
+            )
+            .await
+            .is_err()
+    );
+    let metrics = service
+        .handle(f.db.clone(), "decision/metrics", &json!({}), "m")
+        .await
+        .unwrap();
+    let jev = &metrics["providers"]["jev"];
+    assert_eq!(jev["requests"], 1);
+    assert_eq!(jev["byPurpose"]["manual"], 1);
+    assert_eq!(jev["byStatus"]["completed"], 1);
+    assert_eq!(jev["inputTokens"], 12);
+    assert_eq!(jev["disagreed"], 1);
+    assert!(jev["latencyP50Ms"].is_number());
+}
