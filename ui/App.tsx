@@ -100,13 +100,20 @@ export function App() {
   const accountOnboarded = useRef(false);
   const accountRequest = useRef(0);
   const accountAccepted = useRef(0);
+  const lastAccount = useRef('');
   async function refreshAccount() {
     const order = ++accountRequest.current;
     try {
       const next = await request<AccountStatus>('account/status');
       if (order < accountAccepted.current) return;
       accountAccepted.current = order;
-      setAccount(next);
+      // Polled every two seconds: keep the same object when nothing changed, so an idle
+      // window does not re-render the whole workspace on every poll.
+      const text = JSON.stringify(next);
+      if (text !== lastAccount.current) {
+        lastAccount.current = text;
+        setAccount(next);
+      }
       if (next.managed && !next.authenticated && !accountOnboarded.current) {
         accountOnboarded.current = true;
         setModal('account');
@@ -114,6 +121,7 @@ export function App() {
     } catch (error) {
       if (order >= accountAccepted.current) {
         accountAccepted.current = order;
+        lastAccount.current = '';
         setAccount((previous) =>
           previous ? { ...previous, authenticated: false, unavailable: true } : null,
         );

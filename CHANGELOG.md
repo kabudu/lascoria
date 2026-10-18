@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Lower idle CPU: the window no longer re-renders the whole workspace every two seconds while checking your account; with ten idle sessions Lascoria's own processes use about 0.7% of one core instead of 1.2%.
+
 - Optional desktop notifications (workspace menu, **Notifications**) for questions, permission requests, failed tasks, unexpected stops and finished tasks while Lascoria is in the background. Off by default; choose which kinds and which sessions. Notifications name the session, never your task text, and nothing already waiting is announced when you reopen Lascoria.
 
 - Export a session's retained transcript as a Markdown file from **Export transcript…** beside the session heading.
