@@ -110,7 +110,7 @@ test('composer images: bounded intake without limits and exactly-once recovery a
     rejectList = true;
     await page.reload();
     await expect(
-      page.getByText('Images waiting for this session could not be loaded.'),
+      page.getByText('Attachments waiting for this session could not be loaded.'),
     ).toBeVisible();
     calls.length = 0;
     await chooser.setInputFiles([tooLarge]);

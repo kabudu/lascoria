@@ -215,7 +215,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     const help = page.getByRole('dialog');
     await help.getByLabel('Search help').fill('attachments');
     await expect(help.getByText('Files and attachments', { exact: true })).toBeVisible();
-    await expect(help).toContainText('are not available yet');
+    await expect(help).toContainText('cannot be attached because Muse has no way to read them');
     await help.getByLabel('Search help').fill('no-match-fixture');
     await expect(help).toContainText('No matching guides');
     await help.getByRole('button', { name: 'show all guides', exact: true }).click();
