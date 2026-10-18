@@ -77,3 +77,16 @@ These checks cover commits `f6dfbc0`, `90ef03f`, `338864d` and the takeover upda
 | S5 | Run a Workspace test, offer its recorded result, then change the folder and ask again. | The result is labelled as not rerun, adding it only edits the draft, and changed content retires reuse. |
 
 Actual signed download cancellation, replacement, signature rejection and N-to-N+1 installation require signed release fixtures on each target OS. Development-mode S3 is not evidence for those cases. Live T5 savings require separate isolated live trials with independent correctness checks.
+
+## Decision assistance (R10, 19 October)
+
+Release builds reach only the compiled-in vendor endpoints, so these checks never press **Test connection**, **Send for review** or any control that sends, and never leave a workspace turned on for background triage while a key is saved. A key used here is a made-up value saved only to check the native vault; it is forgotten before the run ends. Live quality trials are separate and need a deliberately configured key of your own.
+
+| ID | Steps | Expected |
+| --- | --- | --- |
+| DA1 | **Settings…**, search "decision", open **Decision assistance**. Read the intro and each provider's policy link and endpoint. | Every provider is off with no key; nothing says advice approves anything; the page explains that the provider bills the requests. |
+| DA2 | Before saving any key, look at **Background triage** and **Muse can ask**. | Each provider list offers only Off, with "Enable a provider with a saved key above first." |
+| DA3 | Save a made-up key for one provider, turn it on with manual reviews for session 1's workspace, choose it for **Muse can ask** and tick **Use it for this session's workspace**. List the session helper's tools (`testing/relay-tools.mjs`), untick, list again, tick again. Then save a replacement made-up key. | The key field clears and the provider stays open. `ask_decision_assistant` is listed only while ticked. The replacement key turns the provider and both modes off, and the tool is no longer listed. The keychain holds one Lascoria decision item, scoped to the QA state. |
+| DA4 | Turn the provider on and allow the workspace again. In the Diff tab save a snapshot, open **Optional decision assistance**, then **Preview exactly what will be sent**. | The preview shows the model, destination, size and exact request body before anything is sent. Do not send. |
+| DA5 | **Remove key…**, read the confirmation, **Remove key and turn off**. Open **Recent requests and metrics**. | The confirmation names the consequence and the remove button reads as destructive; the provider shows No key saved, the keychain item is gone, and no requests were made. |
+| DA6 | Narrow the window and use only the keyboard through the section. | Controls stay reachable and labelled; no text overlaps. |

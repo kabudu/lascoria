@@ -104,6 +104,13 @@ export function SettingsShell({
                     <button
                       id={`settings-nav-${id}`}
                       aria-current={section === id ? 'page' : undefined}
+                      // One tab stop for the list (arrow keys move within it), so Tab goes
+                      // on to the section's own controls.
+                      tabIndex={
+                        section === id || (!visible.some(([v]) => v === section) && index === 0)
+                          ? 0
+                          : -1
+                      }
                       onClick={() => open(id)}
                       onKeyDown={(event) => {
                         const next =
