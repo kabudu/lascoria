@@ -68,7 +68,7 @@ export function UpdateSettings({
   async function changeChannel(next: 'stable' | 'beta') {
     setBusy(true);
     setError('');
-    update({ updates: { ...settings, channel: next } });
+    update({ updates: { ...settings, channel: next, lastCheckedAtMs: undefined } });
     try {
       await invoke('update_cancel', { clearAvailable: true });
       setConfirming(false);
