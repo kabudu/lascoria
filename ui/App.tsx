@@ -11,6 +11,7 @@ import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
+import { SupportReport } from './SupportReport';
 import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
@@ -232,6 +233,7 @@ export function App() {
       | 'data'
       | 'search'
       | 'notifications'
+      | 'support'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
@@ -1126,6 +1128,9 @@ export function App() {
               )}
               <button onClick={() => setModal('notifications')}>Notifications</button>
               <button onClick={() => setModal('help')}>Help</button>
+              {status.features?.includes('supportReport') && (
+                <button onClick={() => setModal('support')}>Support report</button>
+              )}
               <button onClick={() => updatePrefs({ panels: {} })}>Reset panels</button>
               <button
                 disabled={!status.features?.includes('diagnostics')}
@@ -2789,21 +2794,23 @@ export function App() {
                       ? 'Search history'
                       : modal === 'notifications'
                         ? 'Desktop notifications'
-                        : modal === 'relay'
-                          ? 'Local session messages'
-                          : modal === 'usage'
-                            ? 'Account & usage'
-                            : modal === 'account'
-                              ? 'Your Muse connection'
-                              : modal === 'start'
-                                ? 'Start a Muse session'
-                                : modal === 'stop'
-                                  ? 'Log out of Lascoria'
-                                  : modal === 'diagnostics'
-                                    ? 'Performance diagnostics'
-                                    : modal === 'settings'
-                                      ? 'Session model and effort'
-                                      : 'Command palette'}
+                        : modal === 'support'
+                          ? 'Support report'
+                          : modal === 'relay'
+                            ? 'Local session messages'
+                            : modal === 'usage'
+                              ? 'Account & usage'
+                              : modal === 'account'
+                                ? 'Your Muse connection'
+                                : modal === 'start'
+                                  ? 'Start a Muse session'
+                                  : modal === 'stop'
+                                    ? 'Log out of Lascoria'
+                                    : modal === 'diagnostics'
+                                      ? 'Performance diagnostics'
+                                      : modal === 'settings'
+                                        ? 'Session model and effort'
+                                        : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
@@ -2915,6 +2922,7 @@ export function App() {
             signedIn={account?.managed ? account.authenticated : undefined}
           />
         )}
+        {modal === 'support' && <SupportReport />}
         {modal === 'account' && (
           <Account account={account} refresh={refreshAccount} onRuntimeReady={setRuntimeReady} />
         )}

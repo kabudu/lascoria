@@ -150,6 +150,42 @@ pub async fn pick_transcript_destination(
         .map_err(|_| "File chooser closed unexpectedly")?
 }
 
+/// Destination for a support report the user has already previewed.
+#[tauri::command]
+pub async fn pick_support_report_destination(
+    window: tauri::WebviewWindow,
+    picker: tauri::State<'_, FolderPicker>,
+) -> Result<Option<String>, String> {
+    let permit = picker
+        .0
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "A file chooser is already open")?;
+    let (send, receive) = oneshot::channel();
+    window
+        .app_handle()
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title("Save support report")
+        .set_file_name("lascoria-support-report.json")
+        .add_filter("JSON", &["json"])
+        .save_file(move |selection| {
+            let _permit = permit;
+            let result = selection
+                .map(|file| {
+                    file.into_path()
+                        .map_err(|e| e.to_string())
+                        .and_then(selected_path)
+                })
+                .transpose();
+            let _ = send.send(result);
+        });
+    receive
+        .await
+        .map_err(|_| "File chooser closed unexpectedly")?
+}
+
 /// Backup file to import. Only a path leaves the chooser; the supervisor validates the file.
 #[tauri::command]
 pub async fn pick_backup_file(

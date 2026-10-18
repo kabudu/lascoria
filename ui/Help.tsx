@@ -64,7 +64,7 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Updates and troubleshooting',
-    text: 'In-app updates are not available yet. Do not replace runtime files while tasks are active. For a disconnected supervisor, reopen Lascoria and inspect retained progress. For provider authentication errors, open Muse account and reconnect. Diagnostics contains local technical timings for troubleshooting; it is not a billing or complete resource report. Keep logs and transcripts private when asking for support.',
+    text: 'In-app updates are not available yet. Do not replace runtime files while tasks are active. For a disconnected supervisor, reopen Lascoria and inspect retained progress. For provider authentication errors, open Muse account and reconnect. Diagnostics contains local technical timings for troubleshooting; it is not a billing or complete resource report. When asking for help, Support report in the workspace menu prepares a summary of versions, session states and data sizes that you can read before saving; it contains no tasks, conversations, paths, names or keys. Lascoria keeps no log files. Keep transcripts private.',
   },
 ];
 export function Help({

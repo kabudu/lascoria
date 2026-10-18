@@ -178,6 +178,51 @@ pub fn peer_executable(stream: &Stream) -> io::Result<Option<std::path::PathBuf>
         process_executable(pid).map(Some)
     }
 }
+/// The path the operating system resolved for an already open file. Checking this after
+/// opening closes the window in which a checked path is swapped for a link (F3).
+#[cfg(target_os = "linux")]
+pub fn opened_path(file: &File) -> io::Result<std::path::PathBuf> {
+    use std::os::fd::AsRawFd;
+    fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
+}
+#[cfg(target_os = "macos")]
+pub fn opened_path(file: &File) -> io::Result<std::path::PathBuf> {
+    use std::os::{fd::AsRawFd, unix::ffi::OsStringExt};
+    let mut buffer = vec![0u8; libc::PATH_MAX as usize];
+    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETPATH, buffer.as_mut_ptr()) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    let length = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
+    buffer.truncate(length);
+    Ok(std::ffi::OsString::from_vec(buffer).into())
+}
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+pub fn opened_path(_file: &File) -> io::Result<std::path::PathBuf> {
+    Err(io::Error::other(
+        "Open-file path lookup is unsupported on this platform",
+    ))
+}
+#[cfg(windows)]
+pub fn opened_path(file: &File) -> io::Result<std::path::PathBuf> {
+    use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_NAME_NORMALIZED, GetFinalPathNameByHandleW,
+    };
+    let mut buffer = vec![0u16; 32768];
+    let length = unsafe {
+        GetFinalPathNameByHandleW(
+            file.as_raw_handle(),
+            buffer.as_mut_ptr(),
+            buffer.len() as u32,
+            FILE_NAME_NORMALIZED,
+        )
+    };
+    if length == 0 || length as usize >= buffer.len() {
+        return Err(io::Error::last_os_error());
+    }
+    buffer.truncate(length as usize);
+    Ok(std::ffi::OsString::from_wide(&buffer).into())
+}
 #[cfg(target_os = "linux")]
 pub fn process_executable(pid: u32) -> io::Result<std::path::PathBuf> {
     fs::read_link(format!("/proc/{pid}/exe"))

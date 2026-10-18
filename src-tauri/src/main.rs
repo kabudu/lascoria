@@ -82,6 +82,8 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "attachment/finish",
         "attachment/discard",
         "attachment/list",
+        "support/preview",
+        "support/save",
     ]
     .contains(&operation)
     {
@@ -298,6 +300,7 @@ fn main() {
             folder_picker::pick_backup_destination,
             folder_picker::pick_backup_file,
             folder_picker::pick_transcript_destination,
+            folder_picker::pick_support_report_destination,
             open_account_browser,
             notifications::notify_attention,
             notifications::notify_test,

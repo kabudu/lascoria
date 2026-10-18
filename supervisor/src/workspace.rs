@@ -407,6 +407,25 @@ async fn stream(
     Ok(())
 }
 
+/// Opens `path` without following a final link and confirms, from the open handle, that the
+/// file is a regular file inside `root` (canonical).
+fn open_contained(root: &Path, path: &Path) -> Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let file = options.open(path).context("File is unavailable")?;
+    let real = lascoria_runtime::platform::opened_path(&file)?;
+    ensure!(
+        real.starts_with(root) && file.metadata()?.is_file(),
+        "File must remain inside the repository"
+    );
+    Ok(file)
+}
+
 pub async fn files(row: &Value, params: &Value) -> Result<Value> {
     let root = std::fs::canonicalize(row["workspace"].as_str().context("Workspace missing")?)?;
     if let Some(path) = params["path"].as_str() {
@@ -444,7 +463,10 @@ pub async fn files(row: &Value, params: &Value) -> Result<Value> {
             listed.split('\0').any(|p| p == path),
             "File is not Git-visible"
         );
-        let mut input = tokio::fs::File::open(file).await?.take(65537);
+        // Open first, then check where the opened file really is: a directory swapped for a
+        // link after the checks above cannot redirect the read outside the repository (F3).
+        let opened = open_contained(&root, &root.join(path))?;
+        let mut input = tokio::fs::File::from_std(opened).take(65537);
         let mut bytes = Vec::new();
         input.read_to_end(&mut bytes).await?;
         ensure!(
@@ -474,4 +496,38 @@ pub async fn files(row: &Value, params: &Value) -> Result<Value> {
     let truncated = paths.len() > 200;
     paths.truncate(200);
     Ok(json!({"paths":paths,"truncated":truncated}))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_are_checked_against_the_opened_file_not_the_checked_path() -> Result<()> {
+        let base = std::env::temp_dir().join(format!("lascoria-f3-{}", uuid::Uuid::new_v4()));
+        let root = base.join("repo");
+        let outside = base.join("outside");
+        std::fs::create_dir_all(root.join("src"))?;
+        std::fs::create_dir_all(&outside)?;
+        std::fs::write(root.join("src/ok.txt"), "inside")?;
+        std::fs::write(outside.join("ok.txt"), "secret")?;
+        let root = std::fs::canonicalize(&root)?;
+        let result = (|| {
+            assert!(open_contained(&root, &root.join("src/ok.txt")).is_ok());
+            // The race F3 describes, made permanent: an intermediate directory is now a link.
+            std::fs::rename(root.join("src"), root.join("src-old"))?;
+            std::os::unix::fs::symlink(&outside, root.join("src"))?;
+            let error = open_contained(&root, &root.join("src/ok.txt")).unwrap_err();
+            assert!(
+                error.to_string().contains("inside the repository"),
+                "{error}"
+            );
+            // A final-component link is refused outright.
+            std::os::unix::fs::symlink(outside.join("ok.txt"), root.join("link.txt"))?;
+            assert!(open_contained(&root, &root.join("link.txt")).is_err());
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&base);
+        result
+    }
 }

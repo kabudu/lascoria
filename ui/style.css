@@ -2829,3 +2829,18 @@ select {
   font-weight: 600;
   opacity: 1;
 }
+.support-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.6rem 0;
+}
+.support-preview {
+  max-height: 22rem;
+  overflow: auto;
+  font-size: 0.72rem;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  white-space: pre;
+}

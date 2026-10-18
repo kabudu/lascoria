@@ -11,9 +11,37 @@ mod relay_mcp;
 mod review;
 mod search;
 mod session_names;
+mod support;
 mod usage;
 mod worker;
 mod workspace;
+
+/// Capabilities this supervisor offers the desktop app, reported in every status snapshot.
+const FEATURES: &[&str] = &[
+    "skills",
+    "usage",
+    "modelSelection",
+    "sessionSettings",
+    "diagnostics",
+    "taskWorkspaces",
+    "accounts",
+    "drafts",
+    "localRelay",
+    "relayDrafts",
+    "relayViews",
+    "relayUnread",
+    "relayMap",
+    "sessionNames",
+    "projects",
+    "dataLifecycle",
+    "search",
+    "continuation",
+    "projectContextUpdates",
+    "attachments",
+    "transcriptExport",
+    "usageLatest",
+    "supportReport",
+];
 
 use anyhow::{Context, Result, bail, ensure};
 use db::Db;
@@ -257,7 +285,7 @@ impl Actor {
             let commands = db.recent_commands(100)?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport","usageLatest"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -790,7 +818,10 @@ async fn connection(
             .context("Request missing")??;
         let request: Value = serde_json::from_str(&line)?;
         ensure!(
-            request["version"] == 1 && request["token"] == token,
+            request["version"] == 1
+                && request["token"]
+                    .as_str()
+                    .is_some_and(|presented| peer::same_secret(presented, &token)),
             "Invalid version or authentication"
         );
         let peer_class = peer_class?;
@@ -810,7 +841,30 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport","usageLatest"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?}));
+        }
+        // R7 support report: counts and states only, previewed before anything is saved.
+        if request["operation"] == "support/preview" || request["operation"] == "support/save" {
+            let operation = request["operation"].as_str().unwrap().to_owned();
+            let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+            let id = request["id"].as_str().context("Request ID required")?.to_owned();
+            let extra = if operation == "support/preview" {
+                // A failed account read is itself useful: report the route as unknown.
+                let account = auth.lock().await.status().await.unwrap_or(Value::Null);
+                json!({"features":FEATURES,"metrics":metrics.lock().unwrap().snapshot(),"account":account})
+            } else {
+                Value::Null
+            };
+            let db = db.clone();
+            return tokio::task::spawn_blocking(move || {
+                let root = lascoria_runtime::state_dir();
+                if operation == "support/preview" {
+                    support::preview(&db.lock().unwrap(), &root, &extra, &id)
+                } else {
+                    support::save(&root, &params)
+                }
+            })
+            .await?;
         }
         // Data lifecycle work is file I/O under the journal lock; keep it off async workers.
         if request["operation"].as_str().is_some_and(|op| op.starts_with("data/")) {
