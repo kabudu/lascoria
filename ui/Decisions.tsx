@@ -709,7 +709,7 @@ function ModeSettings({
       {section(
         'tool',
         'Muse can ask',
-        'In workspaces you turn on, Muse gets a tool to ask your decision model one question about text Muse chooses (up to 16,000 characters). Muse sees the advice; it never approves anything.',
+        'In workspaces you turn on, sessions started afterwards give Muse a tool to ask your decision model one question about text Muse chooses (up to 16,000 characters). Muse sees the advice; it never approves anything.',
       )}
     </>
   );
