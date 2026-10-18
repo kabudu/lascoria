@@ -2408,8 +2408,9 @@ select {
 }
 .session-identity-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   min-width: 0;
 }
 .session-identity-actions .session-settings-trigger {
@@ -2420,6 +2421,7 @@ select {
 .project-context {
   position: relative;
   min-width: 0;
+  flex-shrink: 0;
 }
 .project-context-popover {
   position: absolute;
@@ -2913,6 +2915,12 @@ dialog.settings-dialog {
   align-items: center;
   gap: 0.45rem;
   margin: 0.3rem 0;
+}
+.settings-choice input:is([type='radio'], [type='checkbox']) {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent);
 }
 @media (max-width: 700px) {
   .settings-shell {

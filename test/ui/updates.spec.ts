@@ -60,6 +60,8 @@ test('updates are checked, downloaded and installed only on request, with a safe
         return update;
       }
       if (command === 'update_download') update = { ...update, downloaded: true };
+      if (command === 'update_cancel' && args?.clearAvailable)
+        update = { ...update, available: null, downloaded: false, downloading: false };
       if (command === 'update_install') return null;
       return update;
     }
@@ -101,6 +103,11 @@ test('updates are checked, downloaded and installed only on request, with a safe
   await panel.getByRole('button', { name: 'Check for updates' }).click();
   await expect(panel.getByRole('heading', { name: 'Lascoria 0.2.0 is available' })).toBeVisible();
   expect(calls).not.toContain('update_download');
+  await panel.getByRole('button', { name: 'Download' }).click();
+  // Changing the channel retires the previous artifact even when it was downloaded.
+  await panel.getByRole('radio', { name: /Beta releases/ }).check();
+  await expect(panel.getByRole('button', { name: 'Install and restart…' })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Check for updates' }).click();
   await panel.getByRole('button', { name: 'Download' }).click();
   await panel.getByRole('button', { name: 'Install and restart…' }).click();
   const confirm = panel.getByRole('group', { name: 'Confirm installation' });

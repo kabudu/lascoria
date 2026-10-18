@@ -24,6 +24,8 @@ async function open(page: Page, account: unknown) {
       sessions: [],
     };
     if (command === 'connect_supervisor') return status;
+    if (command === 'update_status') return { configured: false };
+    if (command.startsWith('plugin:event|')) return 1;
     calls.push(args.operation);
     switch (args.operation) {
       case 'status':

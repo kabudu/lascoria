@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Settings radio controls stay beside their labels, and session actions wrap so Project folders remain accessible alongside editor handoff.
+
+- Update cancellation and channel changes cannot restore an older download after it was discarded. Installing shares the verified package buffer to avoid a second full copy in memory.
+
 - Token efficiency (Settings, Token efficiency): optional task budgets that warn or stop a task, warnings when Muse repeats the same tool call or many tasks run at once, an Economical reasoning-effort preset for new sessions, one-click Muse compaction when the context fills up, and reuse of an unchanged test result instead of running tests again.
 
 - In-app updates (Settings, Updates): Lascoria checks for new versions, shows what changed, and downloads and installs signature-checked updates only when you choose. Running work is never interrupted by surprise.

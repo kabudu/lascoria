@@ -65,6 +65,21 @@ export function UpdateSettings({
       void reload();
     }
   }
+  async function changeChannel(next: 'stable' | 'beta') {
+    setBusy(true);
+    setError('');
+    update({ updates: { ...settings, channel: next } });
+    try {
+      await invoke('update_cancel', { clearAvailable: true });
+      setConfirming(false);
+      await reload();
+    } catch (e) {
+      update({ updates: settings });
+      setError(failure(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function install() {
     setBusy(true);
     setError('');
@@ -210,7 +225,8 @@ export function UpdateSettings({
                   type="radio"
                   name="update-channel"
                   checked={channel === value}
-                  onChange={() => update({ updates: { ...settings, channel: value } })}
+                  disabled={busy}
+                  onChange={() => void changeChannel(value)}
                 />
                 {label}
               </label>
