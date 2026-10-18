@@ -207,7 +207,7 @@ test('decision settings and snapshot disclosure require explicit opt-in and neve
   await expect(panel.locator('summary').filter({ hasText: 'Jev / TypeSafe' })).toContainText(
     'Key saved',
   );
-  await panel.locator('summary').filter({ hasText: 'Jev / TypeSafe' }).click();
+  // The provider stays open after saving, with the key field cleared.
   await expect(panel.getByLabel('API key for Jev / TypeSafe')).toHaveValue('');
   await panel
     .getByRole('checkbox', { name: 'Enable manual reviews with this provider' })

@@ -2875,11 +2875,37 @@ select {
 dialog.settings-dialog {
   width: min(880px, 94vw);
 }
+/* A steady frame: the heading, close button and section list stay put while only the
+   chosen section scrolls, and switching sections does not resize the dialog. */
+dialog.settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  height: min(680px, 85vh);
+  overflow: hidden;
+}
 .settings-shell {
   display: grid;
   grid-template-columns: 11rem 1fr;
+  grid-template-rows: minmax(0, 1fr);
   gap: 1.25rem;
-  min-height: 24rem;
+  flex: 1;
+  min-height: 0;
+}
+.settings-shell > nav,
+.settings-section {
+  min-height: 0;
+  overflow-y: auto;
+}
+.settings-shell > nav {
+  padding: 3px;
+}
+.settings-section {
+  padding: 3px 6px 3px 3px;
+}
+.decision-limit select {
+  display: inline-block;
+  width: auto;
+  margin: 0 0.4rem;
 }
 .settings-shell nav ul {
   list-style: none;
@@ -2925,6 +2951,7 @@ dialog.settings-dialog {
 @media (max-width: 700px) {
   .settings-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
   .settings-shell nav ul {
     grid-auto-flow: column;
@@ -3003,6 +3030,9 @@ dialog.settings-dialog {
 .decision-preview code {
   overflow-wrap: anywhere;
   white-space: normal;
+}
+.decision-preview {
+  font-size: 0.82rem;
 }
 .decision-preview pre,
 .decision-result pre {

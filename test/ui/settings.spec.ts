@@ -99,6 +99,10 @@ test('settings are grouped and searchable, and Open in editor uses the chosen ed
   await nav.getByRole('button', { name: 'General' }).click();
   await nav.getByRole('button', { name: 'General' }).press('ArrowDown');
   await expect(nav.getByRole('button', { name: 'Editor' })).toBeFocused();
+  // The list is one tab stop: Tab leaves it for the section's own controls.
+  await page.keyboard.press('Tab');
+  await expect(nav.locator(':focus')).toHaveCount(0);
+  await expect(dialog.locator('.settings-section :focus')).toHaveCount(1);
   await expect(dialog.getByRole('radio', { name: 'Visual Studio Code' })).toBeVisible();
   await expect(dialog.getByRole('radio', { name: /Zed/ })).toBeDisabled();
   await dialog.getByRole('radio', { name: 'Visual Studio Code' }).check();

@@ -152,6 +152,7 @@ export function DecisionSettings({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Json>();
   const [remove, setRemove] = useState<string>();
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const reload = () =>
     request<Settings>('decision/status', sessionId ? { sessionId } : {}).then(setSettings);
   useEffect(() => {
@@ -206,7 +207,23 @@ export function DecisionSettings({
         Refresh settings and request history
       </button>
       {settings.providers.map((p) => (
-        <details key={`${p.id}:${settings.revision}`} className="decision-provider">
+        <details
+          key={`${p.id}:${settings.revision}`}
+          className="decision-provider"
+          // Fields reset with each saved revision, but the provider stays open so the next
+          // step (turning it on, or reading the result) is still in view.
+          open={expanded.has(p.id)}
+          onToggle={(event) => {
+            const isOpen = event.currentTarget.open;
+            setExpanded((current) => {
+              if (isOpen === current.has(p.id)) return current;
+              const next = new Set(current);
+              if (isOpen) next.add(p.id);
+              else next.delete(p.id);
+              return next;
+            });
+          }}
+        >
           <summary>
             {p.name} · {p.enabled ? 'Enabled' : 'Off'} · {p.keySaved ? 'Key saved' : 'No key saved'}
           </summary>
@@ -293,6 +310,7 @@ export function DecisionSettings({
                 Muse login is unaffected.
               </p>
               <button
+                className="danger"
                 disabled={busy}
                 onClick={() => {
                   setRemove(undefined);
@@ -678,7 +696,7 @@ function ModeSettings({
           </div>
         )}
         {current.provider && (
-          <label>
+          <label className="decision-limit">
             At most
             <select
               value={current.dailyLimit}
