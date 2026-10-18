@@ -2596,6 +2596,7 @@ export function App() {
                         <SkillPicker
                           key={`skills:${session.id}`}
                           sessionId={session.id}
+                          catalogKey={`${session.generation}:${String(session.state.skillsRevision ?? 0)}`}
                           text={drafts[session.id] ?? ''}
                           select={(text) =>
                             setDrafts((previous) => ({ ...previous, [session.id]: text }))

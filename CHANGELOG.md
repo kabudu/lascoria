@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The `/` shortcut picker opens instantly while you type: it reads a session's skills once and refreshes only when Muse reports a change. Lascoria's own commands are listed separately from Muse skills, each skill shows where it comes from, and a skill hidden by a Lascoria command is explained.
+
 - **Account & usage** (workspace menu, formerly Usage) shows your subscription allowance even with no session open, using the most recent report from any session. It shows when each window resets as a countdown and a local time, how old Muse's report is, and says when figures may be out of date or a window has reset since the last report, instead of showing old numbers as current.
 
 - Safer image staging: the composer refuses images over 5 MB before reading them even when the limits have not loaded, the 64 MB staging total now counts every upload from the moment it starts (across sessions and concurrent uploads), and Retry after a lost reply resumes the same upload instead of leaving a duplicate.

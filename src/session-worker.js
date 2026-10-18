@@ -58,6 +58,7 @@ export async function createSession(send, onDeath) {
   let runtime;
   let shutdown;
   let modelRoute;
+  let skillsRevision = 0;
   const diagnostics = { snapshots: 0, snapshotTotalMs: 0, snapshotMaxMs: 0 };
   const gaps = [];
   const itemProvenance = new Map();
@@ -116,6 +117,7 @@ export async function createSession(send, onDeath) {
       })(),
       reasoningEffort: runtime?.session?.fold.sessionState.get('session/reasoningEffortChanged')
         ?.reasoningEffort,
+      skillsRevision,
       diagnostics: {
         ...diagnostics,
         rssBytes: process.memoryUsage.rss(),
@@ -194,6 +196,8 @@ export async function createSession(send, onDeath) {
           stale = true;
           staleReason = 'Diagnostic event budget exhausted';
         }
+        // Advisory: the session's invocable skills changed, so cached catalogs are stale.
+        if (event.method === 'skill/changed') skillsRevision++;
         if (event.method === 'view/gap' && !gapRecovery) runtime.beginGap();
         const applied = !stale ? runtime.session.apply(event) : undefined;
         if (event.method === 'view/gap' && !stale) {
