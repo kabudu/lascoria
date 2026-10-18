@@ -125,6 +125,12 @@ impl Broker {
                             break;
                         }
                     }
+                    Some("usage") => {
+                        // A host's usage/changed notification: account data, not session state.
+                        if alive.load(Ordering::SeqCst) && target.is_some() {
+                            crate::usage::record(&frame["usage"], crate::db::now_ms() as u64);
+                        }
+                    }
                     Some("death") => {
                         if let Some((session, generation)) = target {
                             if let Err(error) = db.lock().unwrap().interrupt(

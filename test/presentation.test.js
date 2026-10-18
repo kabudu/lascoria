@@ -416,3 +416,26 @@ test('desktop notices follow preferences, mute sessions and never include task o
   assert.equal(many.keys.length, 20);
   assert.match(many.body, /and 27 more$/);
 });
+test('usage readings stay honest: readable durations, over-limit and reset-passed windows', async () => {
+  const { allowanceFacts, readableDuration, usageWindow, USAGE_STALE_MS } =
+    await import('../ui/model.ts');
+  assert.equal(readableDuration(30_000), 'under a minute');
+  assert.equal(readableDuration(61 * 60_000), '1 hour 1 minute');
+  assert.equal(readableDuration(125 * 60_000), '2 hours 5 minutes');
+  assert.equal(readableDuration((2 * 1440 + 180 + 7) * 60_000), '2 days 3 hours');
+  assert.equal(usageWindow(300), '5-hour window');
+  assert.equal(usageWindow(90), '1-hour 30-minute window');
+  const now = 1_000_000_000;
+  const over = allowanceFacts({ usedPercent: 125, resetsAtMs: now + 60 * 60_000 }, now, now);
+  assert.deepEqual(
+    [over.remaining, over.overLimit, over.reset, over.resetsIn, over.stale],
+    [0, true, false, '1 hour', false],
+  );
+  const passed = allowanceFacts({ usedPercent: 40, resetsAtMs: now - 1 }, now - 2, now);
+  assert.equal(passed.reset, true);
+  assert.equal(passed.resetsIn, null);
+  assert.equal(
+    allowanceFacts({ usedPercent: 0, resetsAtMs: now + 1 }, now - USAGE_STALE_MS - 1, now).stale,
+    true,
+  );
+});

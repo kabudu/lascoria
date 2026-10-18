@@ -408,3 +408,55 @@ export function composeNotice(
     body: lines.join('; '),
   };
 }
+
+/** One subscription allowance as Muse reported it (R8). Percentages are verbatim. */
+export interface AllowanceReading {
+  usedPercent: number;
+  resetsAtMs: number;
+  windowDurationMins?: number;
+}
+/** Muse's reading is older than this: say so rather than presenting it as current. */
+export const USAGE_STALE_MS = 30 * 60_000;
+
+/** "2 days 3 hours", "4 hours 5 minutes", "under a minute": coarse and readable. */
+export function readableDuration(ms: number, round: 'down' | 'up' = 'down'): string {
+  // Ages round down ("2 minutes ago"); countdowns round up, so a reset is never early.
+  const minutes = (round === 'up' ? Math.ceil : Math.floor)(ms / 60_000);
+  if (minutes < 1) return 'under a minute';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const rest = minutes % 60;
+  const part = (n: number, unit: string) => (n ? `${n} ${unit}${n === 1 ? '' : 's'}` : '');
+  const parts = days
+    ? [part(days, 'day'), part(hours, 'hour')]
+    : [part(hours, 'hour'), part(rest, 'minute')];
+  return parts.filter(Boolean).join(' ');
+}
+
+/** "5-hour window", "1-hour 30-minute window". */
+export function usageWindow(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return (
+    [hours ? `${hours}-hour` : '', remainder ? `${remainder}-minute` : '']
+      .filter(Boolean)
+      .join(' ') + ' window'
+  );
+}
+
+/**
+ * What can honestly be said about one allowance at `now`. Unknown is never 0% used: once the
+ * reported reset time has passed, the old figure no longer describes the current window.
+ */
+export function allowanceFacts(reading: AllowanceReading, observedAtMs: number, now: number) {
+  const reset = reading.resetsAtMs <= now;
+  const used = reading.usedPercent;
+  return {
+    reset,
+    used,
+    remaining: Math.max(0, 100 - used),
+    overLimit: used > 100,
+    resetsIn: reset ? null : readableDuration(reading.resetsAtMs - now, 'up'),
+    stale: now - observedAtMs > USAGE_STALE_MS,
+  };
+}

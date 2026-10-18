@@ -89,6 +89,8 @@ export async function spawnRuntime(options, onEvent, onDeath) {
   host.connection.onNotification((event) => {
     try {
       if (event.params?.sessionId) onEvent(event);
+      // Account-level subscription windows; the supervisor keeps the freshest per account.
+      else if (event.method === 'usage/changed') options.onUsage?.(event.params);
     } catch (error) {
       onDeath({ kind: 'projectionFailure', message: error.message });
       void close();

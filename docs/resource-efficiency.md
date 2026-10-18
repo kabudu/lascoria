@@ -110,9 +110,18 @@ The provisional target is under 300 MB combined UI/control memory and under 1% o
 | ID | Finding | State |
 | --- | --- | --- |
 | R11-1 | Idle window re-rendered on every account poll. | Fixed and measured above. |
-| R11-2 | Control + GUI RSS 327–329 MB exceeds the 300 MB target; footprint is 226 MB. | Open, needs a product decision: on today's macOS about 225 MB is fixed platform cost, and every remaining reduction found costs UX or streaming CPU (optimisation attempt above). Options: re-baseline the RSS target against the platform floor, accept one of the measured trade-offs, or reduce features. Attribution: the WebKit page process, which is most of the GUI footprint at ten sessions (page 146 MB, desktop 30 MB, GPU 16 MB, networking 6 MB; the page's footprint exceeds its 84 MB RSS because footprint includes compressed memory). The SDK broker is 23 MB of the 28 MB control footprint. |
+| R11-2 | Control + GUI RSS 327–329 MB exceeds the 300 MB target; footprint is 226 MB. | Accepted as a scoped product exception on 18 October (see below). Attribution: the WebKit page process, which is most of the GUI footprint at ten sessions (page 146 MB, desktop 30 MB, GPU 16 MB, networking 6 MB; the page's footprint exceeds its 84 MB RSS because footprint includes compressed memory). The SDK broker is 23 MB of the 28 MB control footprint. |
 | R11-3 | Status, task progress, interruptions and startup parsed the whole command journal (up to 20,000 rows); status p95 rose to about 12 ms over the soak and control RSS grew 12.6%. | Fixed: status cost is flat from 100 to 20,000 records (0.25 ms) and supervisor RSS at 20,000 records fell from 32 MB to 12 MB; soak status p95 5.1 ms, control RSS growth +8.5%. The remaining growth is small and bounded by the journal limit; recheck in the Windows and Linux soaks. |
 | R11-4 | Idle CPU is mostly Muse (about 0.67% of one core per idle session). | Recorded; outside Lascoria's control. |
 | R11-5 | The benchmark runs without account management, so it omits the account host that a signed-in subscription keeps running (one more Node process and one more Muse process). | Open: measure signed in during native acceptance (S1); merging the account connection into the SDK broker would remove one Node process (about 45–50 MB RSS) at the cost of sharing its fault boundary. |
 
 Not yet measured: Windows and Linux, hidden, minimised and closed window, active streaming and tool runs, waiting questions and approvals, long transcripts and diffs, sleep/wake and network recovery, energy impact, p99 interaction latency, and live providers. Raw reports stay in `.dev/benchmarks/r11/` (ignored).
+
+## Scoped exception: macOS resident memory (18 October)
+
+The user accepted the measured macOS overage: "I think I can live with the current memory situation, as the physical memory reported by Activity Monitor is below 300MB." What this covers, exactly:
+
+- macOS arm64, the documented ten-session idle workload, signed-out (no account host), release build with the window open: control + GUI **RSS 327–329 MB, above the 300 MB target**, while physical footprint (what Activity Monitor shows as Memory) is 226 MB. The RSS figure stays reported as measured; it is not relabelled as footprint, and the target itself is unchanged.
+- It does not cover Windows or Linux, the signed-in account host (R11-5), active streaming or tool workloads, other window states, or any future growth. Each still has to be measured against the target, and any regression above today's figures reopens the decision.
+- R11 stays open: signed-in host, active workloads, leak/soak with the window, and Windows/Linux baselines remain outstanding. No further RSS tuning is planned for macOS unless a new measurement shows growth.
+

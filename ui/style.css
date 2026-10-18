@@ -2008,6 +2008,9 @@ main {
 .usage-observed {
   font-size: 0.72rem;
 }
+.usage-observed.stale {
+  color: var(--attention);
+}
 .usage-actions {
   display: flex;
   align-items: center;

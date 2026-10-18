@@ -181,6 +181,9 @@ export async function createSession(send, onDeath) {
         provider: process.env.SCH_PROVIDER ?? 'echo',
         onHistory: rememberSource,
         capabilities: process.env.SCH_RELAY_HELPER ? ['sessionMcp'] : [],
+        onUsage: (usage) => {
+          if (!ended && usage && typeof usage === 'object') send({ kind: 'usage', usage });
+        },
       },
       (event) => {
         if (ended || event.params?.sessionId !== sessionId) return;
