@@ -10,8 +10,9 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 // R7: the real supervisor previews a support report and saves exactly that text, privately,
 // only outside its private state folder. No Muse session is needed.
 test('support report: preview, exact save and private-data boundaries', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'lascoria-support-'));
-  const directory = join(root, 'state-private-name');
+  const root = await mkdtemp(join(tmpdir(), 'lsc-sup-'));
+  // Short: macOS limits Unix socket paths to 104 bytes.
+  const directory = join(root, 'state');
   const out = join(root, 'out');
   await mkdir(out);
   const daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
@@ -46,7 +47,7 @@ test('support report: preview, exact save and private-data boundaries', async (t
   assert.equal(report.account.managed, false);
   assert.ok(report.features.includes('usageLatest'));
   assert.ok(!preview.text.includes(root), 'no local paths');
-  assert.ok(!preview.text.includes('state-private-name'));
+  assert.ok(!preview.text.includes('lsc-sup-'));
   await assert.rejects(
     request(directory, 'support/save', { reportId: 'support-1', path: join(directory, 'r.json') }),
     /outside Lascoria's private data folder/,
