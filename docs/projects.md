@@ -1,6 +1,6 @@
 # Sessions and multi-folder projects
 
-Status: R15 is partially implemented. The initial reusable Project flow saves up to eight named folder references, supports keyboard reordering/default selection and starts native multi-folder Muse sessions. Native Browse selection is implemented alongside editable paths. An edited Project can be applied to an existing session with its next task. Spatial folder cards, drag/drop, optional goals/notes and full platform acceptance remain open.
+Status: R15 is partially implemented. The initial reusable Project flow saves up to eight named folder references, supports keyboard reordering/default selection and starts native multi-folder Muse sessions. Native Browse selection is implemented alongside editable paths. An edited Project can be applied to an existing session with its next task. Optional goal and folder notes are implemented (18 October). Spatial folder cards, drag/drop and full platform acceptance remain open.
 
 ## Two clear starting points
 
@@ -77,3 +77,10 @@ Pinned SDK compatibility: Muse 1.4.9 refused a bash tool's direct `workdir` in t
 Session and Project setup offer Browse beside each editable path. The platform chooser selects one directory. Cancel preserves the existing entry, picker failure offers retry/manual entry, and pending selection blocks Save/Start and Project reordering/removal. Choosing does not save, start a session, read file contents, invoke a model or approve Muse tools. Explicit Project Save still canonicalizes and validates roots; Start uses the existing native session boundary. A selected Project path is an unsaved edit until Save succeeds.
 
 The desktop-only `pick_workspace_folder` command uses the pinned official Tauri dialog plugin through Rust, parented to the requesting window. It accepts no renderer-provided path/filter/permission arguments and permits one outstanding chooser per app. The permit remains held until native dismissal even if the requesting WebView disappears. Only an absolute UTF-8 path of at most 4096 bytes without control characters returns; extended Windows paths use ordinary form. The plugin's general open/save/message IPC permissions and filesystem plugin are not enabled. No filesystem grant or protocol/supervisor change is added. Native OS picker acceptance is separate from the Rust-backed UI's controlled chooser responses.
+
+## Goal and folder notes (implemented 18 October)
+
+A Project can carry an optional goal (up to 1,000 characters, line breaks allowed) and a short note per folder (up to 300 characters). Both are part of the revisioned Project, are trimmed, refuse control characters and count as absent when blank. Muse receives them once per applied revision: with the first plain task of a Project session, as a separate model-visible input part (the transcript and search keep the user's own words through `displayText`), and inside the folder-change note when an edited Project is applied. A shortcut skill cannot carry the note, so it waits for the next plain task. The note says the text is the user's description and grants no permissions; it does not read or summarise files. After save, the setup says that Muse will receive the goal and notes with the first task.
+
+Evidence: a Rust test covers bounds, trimming, line-break normalisation, absent values and the brief text; `test/project-context.test.js` (real Muse 1.4.10 with a controlled model) asserts the goal and note reach the model exactly once with the first task, are not repeated with the second and leave the transcript showing the user's words.
+

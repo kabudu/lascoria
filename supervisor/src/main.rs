@@ -742,7 +742,20 @@ impl Actor {
             }
             None => None,
         };
-        if replacement.is_none() && images.is_none() {
+        // R15: the Project goal and folder notes go to Muse once, with the first plain task
+        // of the session (or of a new applied revision). Shortcut skills cannot carry a note,
+        // so the brief waits for the next plain task.
+        let brief = if operation == "turn" && replacement.is_none() {
+            row.get("projectContext")
+                .filter(|context| {
+                    context["revision"] != row["projectBriefed"]
+                        && !params["text"].as_str().unwrap_or("").starts_with('/')
+                })
+                .and_then(projects::brief)
+        } else {
+            None
+        };
+        if replacement.is_none() && images.is_none() && brief.is_none() {
             return self
                 .dispatch(id, operation, params.clone(), session, None)
                 .await;
@@ -761,12 +774,25 @@ impl Actor {
             self.save(&row)?;
             wire["workspaceRoots"] = projects::root_paths(project);
             wire["projectNote"] = json!(projects::change_note(project));
+        } else if let Some(brief) = &brief {
+            wire["projectNote"] = json!(brief);
         }
         let result = self
             .dispatch(id, operation, params.clone(), session, Some(wire))
             .await;
         if replacement.is_some() {
             projects::settle_pending(&self.db.lock().unwrap(), session)?;
+        }
+        if let Ok(command) = &result
+            && ["applied", "accepted"].contains(&command["status"].as_str().unwrap_or(""))
+            && (brief.is_some() || replacement.is_some())
+        {
+            // The note for this revision reached Muse; do not repeat it with later tasks.
+            let database = self.db.lock().unwrap();
+            if let Some(mut current) = database.get("sessions", session)? {
+                current["projectBriefed"] = current["projectContext"]["revision"].clone();
+                database.put("sessions", session, &current)?;
+            }
         }
         if let Ok(command) = &result
             && ["applied", "accepted"].contains(&command["status"].as_str().unwrap_or(""))

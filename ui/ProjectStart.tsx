@@ -2,8 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import type { Json } from './types';
 import { FolderPath } from './FolderPath';
-type Folder = { id: string; name: string; path: string };
-type Project = { id: string; name: string; revision: number; folders: Folder[] };
+type Folder = { id: string; name: string; path: string; note?: string };
+type Project = {
+  id: string;
+  name: string;
+  revision: number;
+  folders: Folder[];
+  goal?: string;
+};
 const fresh = (): Project => ({
   id: crypto.randomUUID(),
   name: '',
@@ -155,6 +161,7 @@ export function ProjectStart({
             id: project.id,
             name: project.name,
             folders: project.folders,
+            goal: project.goal ?? null,
             expectedRevision: project.revision,
           });
         }}
@@ -167,6 +174,17 @@ export function ProjectStart({
             maxLength={100}
             disabled={locked}
             onChange={(e) => edit({ ...project, name: e.target.value })}
+          />
+        </label>
+        <label>
+          Goal (optional)
+          <textarea
+            value={project.goal ?? ''}
+            maxLength={1000}
+            rows={2}
+            disabled={locked}
+            placeholder="What this Project is for, in a sentence or two"
+            onChange={(e) => edit({ ...project, goal: e.target.value })}
           />
         </label>
         <p className="muted">
@@ -235,6 +253,23 @@ export function ProjectStart({
                   }
                 />
               </label>
+              <label>
+                Note (optional)
+                <input
+                  value={folder.note ?? ''}
+                  maxLength={300}
+                  disabled={locked}
+                  placeholder="How this folder fits in"
+                  onChange={(e) =>
+                    edit({
+                      ...project,
+                      folders: project.folders.map((f) =>
+                        f.id === folder.id ? { ...f, note: e.target.value } : f,
+                      ),
+                    })
+                  }
+                />
+              </label>
               <FolderPath
                 label="Full folder path"
                 browseLabel={`Browse for folder ${index + 1}`}
@@ -271,6 +306,8 @@ export function ProjectStart({
         <p role="status">
           Saved {saved.name} · {saved.folders.length} folders. Starts use revision {saved.revision}.
           Edits affect future sessions; existing sessions retain their original folders.
+          {(saved.goal || saved.folders.some((f) => f.note)) &&
+            ' Muse receives the goal and folder notes with the first task, as your description of the Project; they grant no permissions.'}
         </p>
       )}
       <p className="muted">

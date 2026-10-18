@@ -68,7 +68,13 @@ test(
       folder('API', api),
       folder('Docs', docs),
     ];
-    const input = { id: randomUUID(), name: 'Growing project', folders: [appFolder, apiFolder] };
+    appFolder.note = 'Web client';
+    const input = {
+      id: randomUUID(),
+      name: 'Growing project',
+      goal: 'Keep the public API stable',
+      folders: [appFolder, apiFolder],
+    };
     const save = (revision, folders, id) =>
       request(directory, 'project/save', { ...input, expectedRevision: revision, folders }, id);
     await save(0, [appFolder, apiFolder], 'save-1');
@@ -90,6 +96,12 @@ test(
     await request(directory, 'turn', { sessionId, text: 'First task' }, 'task-1');
     await finished(1);
     assert.ok(!model.requests.at(-1).includes(docs));
+    // R15: the goal and folder notes reach the model once, with the first plain task, while the
+    // transcript keeps the user's words.
+    const occurrences = (text) => text.split('Project goal: Keep the public API stable').length - 1;
+    assert.equal(occurrences(model.requests.at(-1)), 1, model.requests.at(-1));
+    assert.ok(model.requests.at(-1).includes('Note: Web client'));
+    assert.ok((await status()).sessions[0].state.items.some((i) => i.displayText === 'First task'));
 
     // Ordinary saves never touch the running session.
     await save(1, [apiFolder, appFolder], 'save-2');
@@ -117,6 +129,7 @@ test(
     );
     await finished(2);
     assert.equal((await status()).sessions[0].projectContextPending, undefined);
+    assert.equal(occurrences(model.requests.at(-1)), 1, 'the brief is not repeated');
 
     const applyText = 'Use the Docs folder too';
     const applied = await request(
