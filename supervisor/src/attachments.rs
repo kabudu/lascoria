@@ -96,19 +96,46 @@ fn manifests(dir: &Path) -> Result<Vec<Value>> {
     Ok(found)
 }
 
-fn total_bytes(root: &Path) -> u64 {
+/// Serialises admission so two concurrent begins cannot both fit under the global cap.
+static ADMISSION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Bytes reserved across every session: the announced size of each staged image, finished
+/// or still arriving, so a begin is counted before its chunks are written. Unfinished uploads
+/// past their expiry are removed here, in any session, so abandoned reservations are freed.
+/// Byte files without a manifest are counted by their length. Survives restart because it is
+/// derived from the manifests on disk.
+fn reserved_bytes(root: &Path, now: u128) -> u64 {
     let Ok(sessions) = fs::read_dir(root.join("attachments")) else {
         return 0;
     };
-    sessions
-        .flatten()
-        .take(256)
-        .filter_map(|session| fs::read_dir(session.path()).ok())
-        .flat_map(|files| files.flatten().take(4 * MAX_PER_SESSION + 16))
-        .filter(|f| f.path().extension().is_some_and(|e| e == "bin"))
-        .filter_map(|f| f.metadata().ok())
-        .map(|m| m.len())
-        .sum()
+    let mut total = 0;
+    for session in sessions.flatten().take(256) {
+        let dir = session.path();
+        let mut declared = std::collections::HashSet::new();
+        for manifest in manifests(&dir).unwrap_or_default() {
+            let id = manifest["id"].as_str().unwrap_or_default().to_owned();
+            if manifest["status"] == "uploading"
+                && now.saturating_sub(manifest["createdAtMillis"].as_u64().unwrap_or(0) as u128)
+                    > PARTIAL_TTL_MS
+            {
+                remove(&dir, &id);
+                continue;
+            }
+            let length = fs::metadata(bytes_path(&dir, &id)).map_or(0, |m| m.len());
+            total += manifest["bytes"].as_u64().unwrap_or(0).max(length);
+            declared.insert(format!("{id}.bin"));
+        }
+        let Ok(files) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for file in files.flatten().take(4 * MAX_PER_SESSION + 16) {
+            let name = file.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".bin") && !declared.contains(&name) {
+                total += file.metadata().map_or(0, |m| m.len());
+            }
+        }
+    }
+    total
 }
 
 fn remove(dir: &Path, id: &str) {
@@ -241,8 +268,11 @@ pub fn begin(root: &Path, params: &Value) -> Result<Value> {
         .take(MAX_NAME)
         .collect();
     let dir = session_dir(root, &session)?;
+    let _admission = ADMISSION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some(existing) = read_manifest(&dir, &id)? {
-        // A retried begin with the same identity is the same upload.
+        // A retried begin with the same identity is the same upload; resume from `received`.
         ensure!(
             existing["bytes"] == size && existing["sessionId"] == session,
             "Attachment ID reused for a different image"
@@ -250,24 +280,15 @@ pub fn begin(root: &Path, params: &Value) -> Result<Value> {
         return Ok(public(&existing));
     }
     let now = crate::db::now_ms();
-    let mut staged = manifests(&dir)?;
-    for stale in staged.iter().filter(|m| {
-        m["status"] == "uploading"
-            && now.saturating_sub(m["createdAtMillis"].as_u64().unwrap_or(0) as u128)
-                > PARTIAL_TTL_MS
-    }) {
-        remove(&dir, stale["id"].as_str().unwrap_or_default());
-    }
-    staged.retain(|m| {
-        dir.join(format!("{}.json", m["id"].as_str().unwrap_or("")))
-            .exists()
-    });
+    // Also removes expired unfinished uploads in every session, this one included.
+    let reserved = reserved_bytes(root, now);
+    let staged = manifests(&dir)?;
     ensure!(
         staged.len() < MAX_PER_SESSION,
         "A session can hold {MAX_PER_SESSION} images waiting to be sent; remove one first"
     );
     ensure!(
-        total_bytes(root) + size <= MAX_TOTAL_BYTES,
+        reserved + size <= MAX_TOTAL_BYTES,
         "Waiting images use the {} MB storage limit; send or remove some first",
         MAX_TOTAL_BYTES / 1024 / 1024
     );
@@ -650,6 +671,86 @@ mod tests {
         );
         remove_session(&root.0, &session);
         assert!(!root.0.join("attachments").join(&session).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn announced_bytes_are_reserved_across_sessions_before_any_chunk_arrives() -> Result<()> {
+        let root = root();
+        let sessions = [
+            uuid::Uuid::new_v4().to_string(),
+            uuid::Uuid::new_v4().to_string(),
+        ];
+        let begin_one = |session: &str| {
+            begin(
+                &root.0,
+                &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"bytes":MAX_IMAGE_BYTES}),
+            )
+        };
+        // Interleave begins across two sessions without sending a single chunk.
+        let mut admitted = Vec::new();
+        let mut refused = 0;
+        for n in 0..16 {
+            match begin_one(&sessions[n % 2]) {
+                Ok(manifest) => admitted.push((n % 2, manifest["id"].as_str().unwrap().to_owned())),
+                Err(error) => {
+                    assert!(error.to_string().contains("storage limit"), "{error}");
+                    refused += 1;
+                }
+            }
+        }
+        let fit = (MAX_TOTAL_BYTES / MAX_IMAGE_BYTES) as usize;
+        assert_eq!(
+            admitted.len(),
+            fit,
+            "12 announced 5 MiB uploads fit in 64 MiB"
+        );
+        assert_eq!(refused, 16 - fit);
+        assert!(reserved_bytes(&root.0, crate::db::now_ms()) <= MAX_TOTAL_BYTES);
+
+        // Discarding frees its reservation; the next begin fits again.
+        let (owner, id) = admitted.pop().unwrap();
+        discard(
+            &root.0,
+            &json!({"sessionId":sessions[owner],"attachmentId":id}),
+        )?;
+        begin_one(&sessions[0])?;
+        assert!(begin_one(&sessions[1]).is_err());
+
+        // Abandoned unfinished uploads in another session expire and free their bytes.
+        let dir = session_dir(&root.0, &sessions[1])?;
+        for mut manifest in manifests(&dir)? {
+            manifest["createdAtMillis"] = json!(0);
+            write_manifest(&dir, manifest["id"].as_str().unwrap(), &manifest)?;
+        }
+        begin_one(&sessions[0])?;
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_begins_cannot_overcommit_the_global_cap() -> Result<()> {
+        let root = std::sync::Arc::new(root());
+        let threads: Vec<_> = (0..16)
+            .map(|n| {
+                let root = root.clone();
+                std::thread::spawn(move || {
+                    let session = if n % 2 == 0 { "00000000-0000-4000-8000-000000000001" } else { "00000000-0000-4000-8000-000000000002" };
+                    begin(
+                        &root.0,
+                        &json!({"sessionId":session,"attachmentId":uuid::Uuid::new_v4().to_string(),"bytes":MAX_IMAGE_BYTES}),
+                    )
+                    .is_ok()
+                })
+            })
+            .collect();
+        let admitted = threads
+            .into_iter()
+            .filter(|_| true)
+            .map(|t| t.join().unwrap())
+            .filter(|ok| *ok)
+            .count();
+        assert_eq!(admitted, (MAX_TOTAL_BYTES / MAX_IMAGE_BYTES) as usize);
+        assert!(reserved_bytes(&root.0, crate::db::now_ms()) <= MAX_TOTAL_BYTES);
         Ok(())
     }
 }

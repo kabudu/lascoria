@@ -17,6 +17,14 @@ type Staged = {
   file?: File;
 };
 type Limits = { imageBytes: number; perTurn: number; perSession: number; chunkBase64: number };
+// Used until the supervisor reports its limits (or if that read fails), so a large file is
+// refused before any preview, read or hash, never only after it has been loaded into memory.
+const FALLBACK: Limits = {
+  imageBytes: 5 * 1024 * 1024,
+  perTurn: 4,
+  perSession: 8,
+  chunkBase64: 44 * 1024,
+};
 const ACCEPT = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const RAW_CHUNK = (base64: number) => Math.floor(base64 / 4) * 3;
 
@@ -97,28 +105,31 @@ export function ComposerImages({
     const ready = items.filter((i) => i.status === 'ready').map((i) => i.id);
     onChange(
       ready,
-      items.some((i) => i.status === 'preparing') || ready.length > (limits?.perTurn ?? 4),
+      items.some((i) => i.status === 'preparing') || ready.length > (limits ?? FALLBACK).perTurn,
     );
   }, [items, limits]);
   useEffect(() => {
     if (addRequest?.files.length && addRequest.at >= mountedAt.current) void add(addRequest.files);
   }, [addRequest?.at]);
 
+  // A retry reuses the item's upload ID, so an upload whose last reply was lost resumes (or is
+  // found already finished) instead of leaving a second, orphaned copy in the session.
   async function upload(item: Staged, file: File) {
-    const id = crypto.randomUUID();
+    const id = item.id || crypto.randomUUID();
     update(item.key, { id, status: 'preparing', progress: 0, error: undefined });
     try {
       const data = await file.arrayBuffer();
       const checksum = await sha256(data);
-      await request('attachment/begin', {
+      const started = await request<{ status: string; received?: number }>('attachment/begin', {
         sessionId,
         attachmentId: id,
         name: file.name || 'Pasted image',
         bytes: data.byteLength,
       });
-      const step = RAW_CHUNK(limits?.chunkBase64 ?? 45056);
+      const step = RAW_CHUNK((limits ?? FALLBACK).chunkBase64);
       const bytes = new Uint8Array(data);
-      for (let offset = 0; offset < bytes.length; offset += step) {
+      const resume = started.status === 'ready' ? bytes.length : (started.received ?? 0);
+      for (let offset = resume; offset < bytes.length; offset += step) {
         if (!live.current) return;
         await request('attachment/append', {
           sessionId,
@@ -152,15 +163,17 @@ export function ComposerImages({
         );
         continue;
       }
-      if (limits && file.size > limits.imageBytes) {
-        setNotice(`${file.name} is larger than ${size(limits.imageBytes)}.`);
+      const cap = (limits ?? FALLBACK).imageBytes;
+      if (file.size > cap) {
+        setNotice(`${file.name || 'That image'} is larger than ${size(cap)}.`);
         continue;
       }
       accepted.push(file);
     }
-    const room = (limits?.perSession ?? 8) - items.length;
+    const perSession = (limits ?? FALLBACK).perSession;
+    const room = perSession - items.length;
     if (accepted.length > room)
-      setNotice(`A session can hold ${limits?.perSession ?? 8} waiting images; remove one first.`);
+      setNotice(`A session can hold ${perSession} waiting images; remove one first.`);
     for (const file of accepted.slice(0, Math.max(0, room))) {
       const item: Staged = {
         key: crypto.randomUUID(),
