@@ -218,10 +218,21 @@ test('real Muse implementation, tests and review through React and the native Ru
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Recenter canvas', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Expand canvas controls', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'Canvas controls', exact: true })).toHaveCSS(
-      'top',
-      '12px',
-    );
+    // Position on screen is the contract; the toolbar now shares the heading's layout owner.
+    await expect
+      .poll(async () => {
+        const tools = await page
+          .getByRole('region', { name: 'Canvas controls', exact: true })
+          .boundingBox();
+        const header = await page.locator('.topbar').boundingBox();
+        return (
+          !!tools &&
+          !!header &&
+          tools.y >= header.y + header.height &&
+          tools.y <= header.y + header.height + 20
+        );
+      })
+      .toBe(true);
     await page.getByRole('button', { name: 'Collapse canvas controls', exact: true }).click();
     await expect
       .poll(
