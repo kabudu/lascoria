@@ -18,7 +18,14 @@ export const SETTINGS_GROUPS = [
   },
   {
     name: 'Muse',
-    sections: [['usage', 'Account & usage', 'subscription allowance weekly window toolbar plan']],
+    sections: [
+      ['usage', 'Account & usage', 'subscription allowance weekly window toolbar plan'],
+      [
+        'efficiency',
+        'Token efficiency',
+        'tokens budget cost effort economical compaction context repeat loop concurrent tasks',
+      ],
+    ],
   },
   {
     name: 'Data & privacy',
@@ -219,6 +226,129 @@ export function EditorSettings({
       >
         Choose another editor…
       </button>
+    </section>
+  );
+}
+
+const BUDGETS = [0, 50_000, 100_000, 250_000, 500_000, 1_000_000];
+
+/**
+ * T3/T4: budgets, warnings and economical defaults. Warnings only describe what Muse reported;
+ * anything that changes what Muse does (stopping a task, lower effort) is off until chosen.
+ */
+export function EfficiencySettings({
+  prefs,
+  update,
+}: {
+  prefs: Prefs;
+  update: (patch: Partial<Prefs>) => void;
+}) {
+  const current = prefs.efficiency ?? {};
+  const set = (patch: Partial<NonNullable<Prefs['efficiency']>>) =>
+    update({ efficiency: { ...current, ...patch } });
+  const budget = current.taskBudget ?? 0;
+  return (
+    <section className="settings-group" aria-label="Token efficiency settings">
+      <p>
+        Keep tasks economical without losing your instructions or history. Token figures come from
+        Muse after each model call; the inspector&apos;s Token use line shows them.
+      </p>
+      <fieldset>
+        <legend>Task budget</legend>
+        <label>
+          Warn when one task uses more than
+          <select
+            value={budget}
+            onChange={(event) => set({ taskBudget: Number(event.currentTarget.value) })}
+          >
+            {BUDGETS.map((value) => (
+              <option key={value} value={value}>
+                {value ? `${value.toLocaleString()} tokens` : 'No budget'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="settings-choice">
+          <input
+            type="checkbox"
+            disabled={!budget}
+            checked={Boolean(current.stopOverBudget) && budget > 0}
+            onChange={(event) => set({ stopOverBudget: event.currentTarget.checked })}
+          />
+          Stop a task when it goes over
+        </label>
+        <p className="hint">
+          A soft limit: Muse reports usage after each model call, so a task can go a little over
+          before it stops. Work done so far is kept.
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>Warnings</legend>
+        <label>
+          Ask before starting a task when
+          <select
+            value={current.concurrentTasks ?? 0}
+            onChange={(event) => set({ concurrentTasks: Number(event.currentTarget.value) })}
+          >
+            <option value={0}>never</option>
+            {[2, 3, 4, 5, 8].map((n) => (
+              <option key={n} value={n}>
+                {n} or more
+              </option>
+            ))}
+          </select>
+          tasks are already running
+        </label>
+        <label>
+          Warn when Muse repeats the same tool call
+          <select
+            value={current.repeatThreshold ?? 3}
+            onChange={(event) => set({ repeatThreshold: Number(event.currentTarget.value) })}
+          >
+            <option value={0}>never</option>
+            {[3, 5, 8].map((n) => (
+              <option key={n} value={n}>
+                {n} times
+              </option>
+            ))}
+          </select>
+          in one task
+        </label>
+        <label className="settings-choice">
+          <input
+            type="checkbox"
+            checked={current.suggestCompaction !== false}
+            onChange={(event) => set({ suggestCompaction: event.currentTarget.checked })}
+          />
+          Suggest compacting the conversation when it nears the model&apos;s context limit
+        </label>
+        <p className="hint">
+          Compacting is Muse&apos;s own summary of older messages, run only when you choose it;
+          Lascoria never shortens your transcript.
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>New sessions</legend>
+        {(
+          [
+            ['balanced', 'Balanced: the reasoning effort Muse recommends for the model'],
+            [
+              'economical',
+              'Economical: the lowest reasoning effort the model offers. Raise it for a session in Session model & effort.',
+            ],
+          ] as const
+        ).map(([value, label]) => (
+          <label key={value} className="settings-choice">
+            <input
+              type="radio"
+              name="effort-preset"
+              checked={(current.preset ?? 'balanced') === value}
+              onChange={() => set({ preset: value })}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
     </section>
   );
 }

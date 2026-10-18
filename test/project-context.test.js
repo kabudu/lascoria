@@ -81,7 +81,7 @@ test(
     const start = await request(
       directory,
       'start',
-      { projectId: input.id, projectRevision: 1 },
+      { projectId: input.id, projectRevision: 1, effortPreset: 'economical' },
       'context-start',
     );
     assert.equal(start.status, 'applied', JSON.stringify(start));
@@ -111,6 +111,12 @@ test(
     assert.ok(
       tokenState.sessionState['session/tokenUsage'].cumulative.totalTokens >= perTask.totalTokens,
     );
+
+    // T4: the economical preset is recorded, with the effort applied or why it was not.
+    const started = (await status()).sessions[0];
+    assert.equal(started.effortPreset?.preset, 'economical', JSON.stringify(started.effortPreset));
+    if (started.effortPreset.reasoningEffort)
+      assert.equal(started.state.reasoningEffort, started.effortPreset.reasoningEffort);
 
     // Only the supervisor attaches model-visible notes and roots; a caller cannot.
     for (const field of ['projectNote', 'workspaceRoots'])
@@ -210,5 +216,8 @@ test(
     );
     const turns = (await status()).commands.filter((c) => c.operation === 'turn');
     assert.equal(turns.length, 4);
+    // T4: user-requested native compaction between tasks is accepted (or a Muse no-op).
+    const compacted = await request(directory, 'compact', { sessionId }, 'compact-1');
+    assert.ok(['applied', 'accepted'].includes(compacted.status), JSON.stringify(compacted));
   },
 );

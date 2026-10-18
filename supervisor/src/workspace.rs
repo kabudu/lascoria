@@ -285,6 +285,53 @@ pub async fn discard(row: &Value, params: &Value) -> Result<Value> {
     Ok(json!({"removed":path,"retainedBranch":managed["branch"]}))
 }
 
+/// T2: the latest finished run of the same test command whose result still describes these
+/// files: the folder's content fingerprint did not change during that run and is identical
+/// now. Anything outside the folder (installed tools, services, network) is not covered, and
+/// the UI says so. Read-only; returns `{"run": null}` when nothing can be reused.
+pub async fn reusable(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> {
+    let command = params["command"]
+        .as_str()
+        .context("Test command required")?;
+    ensure!(
+        command.len() <= 4000,
+        "Command must contain at most 4000 bytes"
+    );
+    let session = row["id"].as_str().context("Session missing")?;
+    let candidate = db
+        .lock()
+        .unwrap()
+        .commands_matching(
+            "json_extract(value,'$.operation')='workspace/run' AND json_extract(value,'$.sessionId')=?1 \
+             AND json_extract(value,'$.status')='applied' AND json_extract(value,'$.params.command')=?2 \
+             AND json_extract(value,'$.result.contentUnchanged')=1 \
+             AND json_extract(value,'$.result.outcome') IN ('passed','failed')",
+            &[&session, &command],
+        )?
+        .into_iter()
+        .max_by_key(|c| c["result"]["completedAtMillis"].as_u64().unwrap_or(0));
+    let Some(run) = candidate else {
+        return Ok(json!({"run": null}));
+    };
+    let now = content_fingerprint(Path::new(
+        row["workspace"].as_str().context("Workspace missing")?,
+    ))
+    .await?;
+    if run["result"]["endFingerprint"] != json!(now) {
+        return Ok(json!({"run": null, "changedSince": run["result"]["completedAtMillis"]}));
+    }
+    Ok(json!({"run": {
+        "id": run["id"],
+        "command": command,
+        "outcome": run["result"]["outcome"],
+        "exitCode": run["result"]["exitCode"],
+        "completedAtMillis": run["result"]["completedAtMillis"],
+        "fingerprint": now,
+        "stdout": run["result"]["stdout"],
+        "stderr": run["result"]["stderr"],
+    }}))
+}
+
 pub async fn run(db: SharedDb, row: Value, id: String, params: Value) -> Result<Value> {
     let command = params["command"]
         .as_str()

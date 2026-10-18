@@ -493,3 +493,44 @@ test('token facts keep session totals, task figures, subagents and context apart
     null,
   );
 });
+test('efficiency alerts: budgets, repeated tool calls, context pressure and running tasks', async () => {
+  const { efficiencyAlerts, runningTasks } = await import('../ui/model.ts');
+  const call = (args) => ({ kind: 'toolCall', turnId: 't2', tool: 'bash', args });
+  const state = {
+    activeTurnId: 't2',
+    turns: [{ turnId: 't1' }, { turnId: 't2' }],
+    tokens: { byTurn: { t1: { totalTokens: 900_000 }, t2: { totalTokens: 120_000 } } },
+    items: [
+      call('{"cmd":"ls"}'),
+      call('{"cmd":"ls"}'),
+      call('{"cmd":"ls"}'),
+      call('{"cmd":"pwd"}'),
+    ],
+    sessionState: { 'session/contextUsage': { pressure: 'warning' } },
+  };
+  const kinds = (prefs) => efficiencyAlerts(state, prefs).map((a) => a.kind);
+  // Defaults: no budget; repeated calls and context pressure are warned about.
+  assert.deepEqual(kinds(undefined), ['repeat', 'context']);
+  assert.deepEqual(kinds({ taskBudget: 100_000, repeatThreshold: 0, suggestCompaction: false }), [
+    'budget',
+  ]);
+  // Only the current task counts against the budget.
+  assert.deepEqual(
+    kinds({ taskBudget: 500_000, repeatThreshold: 0, suggestCompaction: false }),
+    [],
+  );
+  assert.deepEqual(kinds({ repeatThreshold: 4, suggestCompaction: false }), []);
+  assert.match(efficiencyAlerts(state, {})[0].message, /same bash call 3 times/);
+  assert.deepEqual(efficiencyAlerts({}, { taskBudget: 1 }), []);
+  assert.equal(
+    runningTasks(
+      [
+        { id: 'a', state: { activeTurnId: 'x' } },
+        { id: 'b', state: {} },
+        { id: 'c', state: { activeTurnId: 'y' } },
+      ],
+      'a',
+    ),
+    1,
+  );
+});

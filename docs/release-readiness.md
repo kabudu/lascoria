@@ -230,10 +230,10 @@ Scope decided by the user on 18 October; later work is in the [roadmap](../ROADM
 The user decided on 18 October that T1–T5 ship in the first release. They remain opt-in policies where they change behaviour, and none may silently drop instructions, history or permissions.
 
 - [ ] **T1 - Measure first** (visibility implemented 18 October; validation open): per-task/session/model usage, cache/reasoning counters where reported, context pressure and correctly deduplicated child-agent totals. Keep token counts, estimated API cost and subscription usage windows distinct; missing data stays unknown.
-- [ ] **T2 - Reuse evidence:** reuse repository analysis, test results and reviews only while content/configuration fingerprints remain valid. Preserve provenance and invalidate on relevant changes.
-- [ ] **T3 - Bound work:** explicit delegation/concurrency budgets, duplicate-work/loop detection and warnings before admitting more work. Any spend limit based on post-call counters is a soft limit with in-flight overshoot, not guaranteed billing enforcement.
-- [ ] **T4 - Optional policies:** economical model/effort presets with user-visible escalation, focused context handoffs and deliberate use of Muse-native compaction. Preserve user instructions, correctness and permission boundaries; do not silently truncate history or rewrite transcripts.
-- [ ] **T5 - Benchmark savings:** compare tokens, correctness, retries and completion time on repeated identical tasks. Existing UI polling/paging and broker memory savings are not inference-token savings.
+- [ ] **T2 - Reuse evidence** (test-result reuse implemented 18 October; validation open): reuse repository analysis, test results and reviews only while content/configuration fingerprints remain valid. Preserve provenance and invalidate on relevant changes.
+- [ ] **T3 - Bound work** (budgets, repeat and concurrency warnings implemented 18 October; validation open): explicit delegation/concurrency budgets, duplicate-work/loop detection and warnings before admitting more work. Any spend limit based on post-call counters is a soft limit with in-flight overshoot, not guaranteed billing enforcement.
+- [ ] **T4 - Optional policies** (economical preset and native compaction implemented 18 October; validation open): economical model/effort presets with user-visible escalation, focused context handoffs and deliberate use of Muse-native compaction. Preserve user instructions, correctness and permission boundaries; do not silently truncate history or rewrite transcripts.
+- [ ] **T5 - Benchmark savings** (harness implemented 18 October; live run open): compare tokens, correctness, retries and completion time on repeated identical tasks. Existing UI polling/paging and broker memory savings are not inference-token savings.
 
 ## Optional research
 

@@ -98,6 +98,8 @@ export interface Prefs {
   /** D2: editor for Open in editor: 'system', a preset id or 'custom'. */
   editor?: string;
   /** R3: update preferences. Automatic checks are on unless turned off. */
+  /** T3/T4 token-efficiency preferences. */
+  efficiency?: import('./model').EfficiencyPrefs;
   updates?: { automatic?: boolean; channel?: 'stable' | 'beta'; lastCheckedAtMs?: number };
   collapsed?: string[];
   acknowledgedInterruptions?: string[];

@@ -16,6 +16,7 @@ import { TokenUse } from './TokenUse';
 import { UpdateSettings, type UpdateStatus } from './Updates';
 import {
   EditorSettings,
+  EfficiencySettings,
   GeneralSettings,
   SETTINGS_SECTIONS,
   SettingsShell,
@@ -50,6 +51,8 @@ import {
   fitConstellation,
   freeCanvasFrame,
   zoomAtPoint,
+  efficiencyAlerts,
+  runningTasks,
 } from './model';
 import type {
   Status,
@@ -142,6 +145,11 @@ export function App() {
   }, [prefs.usageIndicator, usageLatest, account?.mode]);
   // R3: this app's version, whether updates are configured, and any update found.
   const [appUpdate, setAppUpdate] = useState<UpdateStatus | null>(null);
+  // T3: the session whose task start is waiting for "start anyway", and the one confirmed.
+  const [concurrencyAsk, setConcurrencyAsk] = useState<string | null>(null);
+  const concurrencyOk = useRef<string | null>(null);
+  // T3: tasks already cancelled for going over budget, so each is stopped at most once.
+  const budgetStopped = useRef(new Set<string>());
   const [serviceRestart, setServiceRestart] = useState<'whenIdle' | 'restarting' | null>(null);
   useEffect(() => {
     if (!(window as any).__TAURI_INTERNALS__) return;
@@ -153,6 +161,24 @@ export function App() {
       (s.state.approvals?.length ?? 0) > 0 ||
       (s.state.userInputs?.length ?? 0) > 0,
   );
+  useEffect(() => {
+    const settings = prefs.efficiency;
+    if (!settings?.stopOverBudget || !(settings.taskBudget ?? 0)) return;
+    for (const row of status.sessions) {
+      const turnId = row.state.activeTurnId as string | undefined;
+      if (!turnId || budgetStopped.current.has(turnId) || !row.state.current) continue;
+      if (!efficiencyAlerts(row.state, settings).some((a) => a.kind === 'budget')) continue;
+      budgetStopped.current.add(turnId);
+      // A stable request ID makes this idempotent across reloads and retries.
+      void request('cancel', { sessionId: row.id, turnId }, `budget-stop-${turnId}`).then(
+        () =>
+          setNotice(
+            `Stopped a task in ${sessionName(row)} because it went over your token budget. It may have gone a little over, because Muse reports usage after each model call.`,
+          ),
+        (e) => setError(`Could not stop the task that went over budget: ${String(e)}`),
+      );
+    }
+  }, [status.sessions, prefs.efficiency]);
   const serviceOutdated = Boolean(
     connected &&
     status.appVersion &&
@@ -333,6 +359,7 @@ export function App() {
       | 'general'
       | 'editor'
       | 'updates'
+      | 'efficiency'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
@@ -2733,6 +2760,69 @@ export function App() {
                         </button>
                       )}
                     </details>
+                    {(() => {
+                      const alerts = efficiencyAlerts(session.state, prefs.efficiency);
+                      const asking = concurrencyAsk === session.id;
+                      if (!alerts.length && !asking) return null;
+                      const turnId = session.state.activeTurnId as string | undefined;
+                      return (
+                        <div
+                          className="efficiency-alerts"
+                          role="region"
+                          aria-label="Token efficiency"
+                        >
+                          {alerts.map((alert) => (
+                            <p key={alert.kind} className="efficiency-alert" role="status">
+                              {alert.message}
+                              {alert.kind !== 'context' && turnId && alert.turnId === turnId && (
+                                <button
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void mutate('cancel', { sessionId: session.id, turnId })
+                                  }
+                                >
+                                  Stop this task
+                                </button>
+                              )}
+                              {alert.kind === 'context' &&
+                                status.features?.includes('compaction') && (
+                                  <button
+                                    disabled={busy || Boolean(turnId)}
+                                    title={
+                                      turnId
+                                        ? 'Available when the current task finishes'
+                                        : undefined
+                                    }
+                                    onClick={() =>
+                                      void mutate('compact', { sessionId: session.id })
+                                    }
+                                  >
+                                    Compact conversation
+                                  </button>
+                                )}
+                            </p>
+                          ))}
+                          {asking && (
+                            <p className="efficiency-alert" role="status">
+                              {runningTasks(status.sessions, session.id)} tasks are already running.
+                              Start this one as well?
+                              <button
+                                onClick={() => {
+                                  concurrencyOk.current = session.id;
+                                  setConcurrencyAsk(null);
+                                  (
+                                    document.getElementById('message') as HTMLTextAreaElement | null
+                                  )?.form?.requestSubmit();
+                                }}
+                              >
+                                Start anyway
+                              </button>
+                              <button onClick={() => setConcurrencyAsk(null)}>Not now</button>
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <form
                       onDragOver={(event) => {
                         if (
@@ -2757,6 +2847,19 @@ export function App() {
                           return;
                         }
                         if (draftConflicts[session.id]) return;
+                        // T3: ask before adding to many running tasks (soft, user-set limit).
+                        const limit = prefs.efficiency?.concurrentTasks ?? 0;
+                        if (
+                          !session.state.activeTurnId &&
+                          limit > 0 &&
+                          runningTasks(status.sessions, session.id) >= limit &&
+                          concurrencyOk.current !== session.id
+                        ) {
+                          setConcurrencyAsk(session.id);
+                          return;
+                        }
+                        setConcurrencyAsk(null);
+                        concurrencyOk.current = null;
                         const projectRevision = session.state.activeTurnId
                           ? undefined
                           : projectChoice[session.id];
@@ -3110,6 +3213,7 @@ export function App() {
             </h3>
             {modal === 'general' && <GeneralSettings prefs={prefs} update={updatePrefs} />}
             {modal === 'editor' && <EditorSettings prefs={prefs} update={updatePrefs} />}
+            {modal === 'efficiency' && <EfficiencySettings prefs={prefs} update={updatePrefs} />}
             {modal === 'updates' && (
               <UpdateSettings
                 prefs={prefs}
@@ -3224,6 +3328,10 @@ export function App() {
         {modal === 'start' && startKind === 'project' && status.features?.includes('projects') && (
           <ProjectStart
             disabled={!runtimeReady || !!(account?.managed && !account.authenticated)}
+            economical={
+              prefs.efficiency?.preset === 'economical' &&
+              Boolean(status.features?.includes('effortPresets'))
+            }
             started={(sessionId) => {
               updatePrefs({ sessionId, selection: undefined });
               setModal(null);
@@ -3246,6 +3354,10 @@ export function App() {
                     : {}),
                   isolated: form.get('isolated') === 'on',
                   ...(modelId ? { modelId } : {}),
+                  ...(prefs.efficiency?.preset === 'economical' &&
+                  status.features?.includes('effortPresets')
+                    ? { effortPreset: 'economical' }
+                    : {}),
                 });
                 if (result && result.status === 'applied') {
                   updatePrefs({ sessionId: result.sessionId, selection: undefined });

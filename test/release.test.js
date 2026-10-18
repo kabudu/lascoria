@@ -40,7 +40,10 @@ test('release versions, changelog promotion and curated notes', () => {
   });
   assert.throws(() => curated('# Lascoria v0.2.1: x\n\nBody', '0.2.0'), /must start with/);
   assert.throws(() => curated('# Lascoria v0.2.0: x\n\nTODO', '0.2.0'), /Write the release notes/);
-  assert.throws(() => curated('# Lascoria v0.2.0: x\n\nA — B', '0.2.0'), /U\+2014/);
+  assert.throws(
+    () => curated(`# Lascoria v0.2.0: x\n\nA ${String.fromCharCode(0x2014)} B`, '0.2.0'),
+    /U\+2014/,
+  );
 });
 
 test('release artifacts get collision-free names and a signed updater manifest', async (t) => {
