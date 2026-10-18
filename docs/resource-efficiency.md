@@ -48,6 +48,20 @@ Fix: the window polls the account state every two seconds and replaced its accou
 
 `SCH_SOAK_MINUTES=30 node testing/soak.js` with the packaged runtime, no window: three background sessions stayed open while each cycle started a session, ran two tasks, read status, searched, exported the transcript, archived the session and removed it through Data & backups cleanup (which makes a backup); every fifth cycle restarted the supervisor. Result: 903 cycles, 180 restarts, 1,809 completed tasks, no errors. Muse hosts returned to the background count (mean 3.9 in the first fifth, 3.8 in the last), no processes accumulated (maximum 11), three sessions retained. Full-tree RSS 796 MB in the first fifth and 857 MB in the last; control RSS 79.6 MB and 89.6 MB (+12.6%). Status p50 5.7 ms, p95 11.7 ms, maximum 15.4 ms. CPU averaged 37% of one core because the cycle runs back to back; this is a stress and leak check, not an idle figure.
 
+### Command journal size (R11-3)
+
+`testing/status-scale.js` seeds a fresh journal with 100, 5,000 or 20,000 command records (one in ten full, the rest compacted, as cleanup leaves them) and measures 300 sequential status reads and supervisor RSS. Release supervisor on the same Mac, three runs each:
+
+| Records | Status p50 before | Status p50 after | Supervisor RSS before | Supervisor RSS after |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 0.26–0.29 ms | 0.26–0.27 ms | 9.6 MB | 9.5–9.7 MB |
+| 5,000 | 2.37–2.41 ms | 0.26 ms | 15.5–15.6 MB | 10.7–10.9 MB |
+| 20,000 | 9.80–9.95 ms | 0.25–0.27 ms | 31.6–32.3 MB | 12.1 MB |
+
+Cause: status, every task progress update, every Muse process interruption and supervisor startup each parsed the whole journal to find a handful of records, under the journal lock. Status now reads only the newest 100 records, and the other three paths ask SQLite for the matching records (same session, command or status), so their cost no longer grows with retained history. A Rust test fills the journal to its 20,000-row limit and checks the newest-first page; another checks that only the matching session's records change.
+
+The 30-minute soak was repeated with this build (single run each): 911 cycles, 182 restarts, 1,825 tasks, no errors; status p50 2.4 ms and p95 5.1 ms (5.7 and 11.7 ms before); control RSS 77.7 MB in the first fifth and 84.3 MB in the last (+8.5%, against +12.6% before). Full-tree RSS is dominated by Muse hosts, whose count at a sample instant varies with the cycle phase, so it is not compared.
+
 ## Against the targets
 
 The provisional target is under 300 MB combined UI/control memory and under 1% of one core at idle with ten sessions.
@@ -63,7 +77,7 @@ The provisional target is under 300 MB combined UI/control memory and under 1% o
 | --- | --- | --- |
 | R11-1 | Idle window re-rendered on every account poll. | Fixed and measured above. |
 | R11-2 | Control + GUI RSS 327–329 MB exceeds the 300 MB target; footprint is 226 MB. | Open: metric decision, then reduce the WebKit page process, which is most of the GUI footprint at ten sessions (page 146 MB, desktop 30 MB, GPU 16 MB, networking 6 MB; the page's footprint exceeds its 84 MB RSS because footprint includes compressed memory). The SDK broker is 23 MB of the 28 MB control footprint. |
-| R11-3 | Control RSS grew 12.6% over the soak while the command journal grew to 4,158 rows (tombstones are kept for retry safety), and status p95 rose from about 3 ms to 12 ms. `status` reads every command record before returning the latest 100. | Open: measure status cost against journal size and read only the latest records. |
+| R11-3 | Status, task progress, interruptions and startup parsed the whole command journal (up to 20,000 rows); status p95 rose to about 12 ms over the soak and control RSS grew 12.6%. | Fixed: status cost is flat from 100 to 20,000 records (0.25 ms) and supervisor RSS at 20,000 records fell from 32 MB to 12 MB; soak status p95 5.1 ms, control RSS growth +8.5%. The remaining growth is small and bounded by the journal limit; recheck in the Windows and Linux soaks. |
 | R11-4 | Idle CPU is mostly Muse (about 0.67% of one core per idle session). | Recorded; outside Lascoria's control. |
 
 Not yet measured: Windows and Linux, hidden, minimised and closed window, active streaming and tool runs, waiting questions and approvals, long transcripts and diffs, sleep/wake and network recovery, energy impact, p99 interaction latency, and live providers. Raw reports stay in `.dev/benchmarks/r11/` (ignored).

@@ -33,11 +33,7 @@ pub fn idle(db: &SharedDb, row: &Value) -> Result<()> {
     ensure!(
         !db.lock()
             .unwrap()
-            .all("commands")?
-            .iter()
-            .any(|c| c["sessionId"] == row["id"]
-                && c["operation"] == "workspace/run"
-                && c["status"] == "running"),
+            .test_running(row["id"].as_str().unwrap_or_default())?,
         "Wait for the test command to finish"
     );
     Ok(())

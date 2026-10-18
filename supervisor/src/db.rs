@@ -168,6 +168,38 @@ impl Db {
                 row.get::<_, i64>(0)
             })? as usize)
     }
+    /// The newest command records, newest first. Status runs about once a second and the
+    /// journal can hold up to `JOURNAL_ROW_LIMIT` rows, so only these rows are read and parsed.
+    pub fn recent_commands(&self, limit: usize) -> Result<Vec<Value>> {
+        let mut statement = self
+            .0
+            .prepare("SELECT value FROM commands ORDER BY rowid DESC LIMIT ?1")?;
+        let rows = statement.query_map([limit as i64], |row| row.get::<_, String>(0))?;
+        rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
+    }
+    /// Command records selected by SQLite, so callers on hot paths (every state update, every
+    /// worker interruption) never parse the whole journal, which can hold 20,000 rows.
+    pub fn commands_matching(
+        &self,
+        predicate: &str,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> Result<Vec<Value>> {
+        let mut statement = self.0.prepare(&format!(
+            "SELECT value FROM commands WHERE {predicate} ORDER BY rowid"
+        ))?;
+        let rows = statement.query_map(params, |row| row.get::<_, String>(0))?;
+        rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
+    }
+    /// Whether a developer test command is still running for this session.
+    pub fn test_running(&self, session: &str) -> Result<bool> {
+        Ok(self.0.query_row(
+            "SELECT EXISTS(SELECT 1 FROM commands WHERE json_extract(value,'$.sessionId')=?1
+               AND json_extract(value,'$.operation')='workspace/run'
+               AND json_extract(value,'$.status')='running')",
+            [session],
+            |row| row.get(0),
+        )?)
+    }
     pub fn artifact_metadata(&self, session: &str) -> Result<Vec<Value>> {
         let mut statement=self.0.prepare("SELECT json_remove(value,'$.patch','$.untracked') FROM artifacts WHERE json_extract(value,'$.sessionId')=?1 ORDER BY rowid")?;
         let mut values = Vec::new();
@@ -219,13 +251,12 @@ impl Db {
             history.remove(0);
         }
         self.put("sessions", id, &row)?;
-        for mut command in self.all("commands")? {
-            if command["sessionId"] == id
-                && matches!(command["status"].as_str(), Some("sending" | "accepted"))
-            {
-                command["status"] = json!("outcomeUnknown");
-                self.put("commands", command["id"].as_str().unwrap(), &command)?;
-            }
+        for mut command in self.commands_matching(
+            "json_extract(value,'$.sessionId')=?1 AND json_extract(value,'$.status') IN ('sending','accepted')",
+            &[&id],
+        )? {
+            command["status"] = json!("outcomeUnknown");
+            self.put("commands", command["id"].as_str().unwrap(), &command)?;
         }
         Ok(())
     }
@@ -262,15 +293,13 @@ impl Db {
             .filter_map(|fact| fact["commandId"].as_str())
             .collect();
         if !commands_applied.is_empty() {
-            for mut command in self.all("commands")? {
-                if command["sessionId"] == id
-                    && command["commandId"]
-                        .as_str()
-                        .is_some_and(|id| commands_applied.contains(id))
-                {
-                    command["status"] = json!("applied");
-                    self.put("commands", command["id"].as_str().unwrap(), &command)?;
-                }
+            let applied = json!(commands_applied).to_string();
+            for mut command in self.commands_matching(
+                "json_extract(value,'$.sessionId')=?1 AND json_extract(value,'$.commandId') IN (SELECT value FROM json_each(?2))",
+                &[&id, &applied.as_str()],
+            )? {
+                command["status"] = json!("applied");
+                self.put("commands", command["id"].as_str().unwrap(), &command)?;
             }
         }
         Ok(())
@@ -280,6 +309,41 @@ impl Db {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_reads_only_the_newest_commands_in_journal_order() -> Result<()> {
+        let db = Db::open(Path::new(":memory:"))?;
+        for n in 0..JOURNAL_ROW_LIMIT {
+            let record = if n % 10 == 0 {
+                json!({"id":format!("c{n}"),"operation":"turn","status":"applied","sessionId":"s"})
+            } else {
+                json!({"id":format!("c{n}"),"operation":"turn","compacted":true})
+            };
+            db.put("commands", &format!("c{n}"), &record)?;
+        }
+        // Updating a record in place (compaction, outcome) keeps its position.
+        db.put(
+            "commands",
+            "c19990",
+            &json!({"id":"c19990","compacted":true}),
+        )?;
+        let expected: Vec<Value> = db.all("commands")?.into_iter().rev().take(100).collect();
+        let recent = db.recent_commands(100)?;
+        assert_eq!(recent, expected);
+        assert_eq!(recent[0]["id"], "c19999");
+        assert_eq!(recent[9]["compacted"], true);
+        assert!(db.recent_commands(0)?.is_empty());
+
+        assert!(!db.test_running("s")?);
+        db.put(
+            "commands",
+            "run",
+            &json!({"id":"run","operation":"workspace/run","status":"running","sessionId":"s"}),
+        )?;
+        assert!(db.test_running("s")?);
+        assert!(!db.test_running("other")?);
+        Ok(())
+    }
 
     #[test]
     fn evidence_pages_filter_before_offset_and_omit_capture_bytes() -> Result<()> {
@@ -344,6 +408,23 @@ mod tests {
             "c",
             &json!({"id":"c","sessionId":"s","commandId":"wire","status":"accepted"}),
         )?;
+        // Neighbours the filtered journal queries must leave alone.
+        for (id, record) in [
+            (
+                "other-session",
+                json!({"id":"other-session","sessionId":"t","commandId":"wire","status":"accepted"}),
+            ),
+            (
+                "sending",
+                json!({"id":"sending","sessionId":"s","commandId":"w2","status":"sending"}),
+            ),
+            (
+                "settled",
+                json!({"id":"settled","sessionId":"s","commandId":"w3","status":"rejected"}),
+            ),
+        ] {
+            db.put("commands", id, &record)?;
+        }
         db.interrupt("s", 1, json!({"kind":"obsoleteEof"}))?;
         assert_eq!(db.get("sessions", "s")?.unwrap()["lifecycle"], "connected");
         assert_eq!(db.get("commands", "c")?.unwrap()["status"], "accepted");
@@ -362,6 +443,11 @@ mod tests {
             &json!([{"method":"turn/started","commandId":"wire"}]),
         )?;
         assert_eq!(db.get("commands", "c")?.unwrap()["status"], "applied");
+        let status =
+            |id| -> Result<Value> { Ok(db.get("commands", id)?.unwrap()["status"].clone()) };
+        assert_eq!(status("other-session")?, "accepted");
+        assert_eq!(status("sending")?, "outcomeUnknown");
+        assert_eq!(status("settled")?, "rejected");
         Ok(())
     }
 }

@@ -253,10 +253,10 @@ impl Actor {
             .context("Operation required")?;
         if operation == "status" {
             let db = self.db.lock().unwrap();
-            let commands = db.all("commands")?;
+            let commands = db.recent_commands(100)?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands.into_iter().rev().take(100).collect::<Vec<_>>()}),
+                json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -369,15 +369,7 @@ impl Actor {
                     "Cancel the active Muse turn before archiving"
                 );
                 ensure!(
-                    !self
-                        .db
-                        .lock()
-                        .unwrap()
-                        .all("commands")?
-                        .iter()
-                        .any(|c| c["sessionId"] == session
-                            && c["operation"] == "workspace/run"
-                            && c["status"] == "running"),
+                    !self.db.lock().unwrap().test_running(session)?,
                     "Wait for the test command to finish"
                 );
             } else if !(operation == "workspace/discard" && row["lifecycle"] == "archived") {
@@ -808,7 +800,7 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.all("commands")?.into_iter().rev().take(100).collect::<Vec<_>>()}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"features":["skills","usage","modelSelection","sessionSettings","diagnostics","taskWorkspaces","accounts","drafts","localRelay","relayDrafts","relayViews","relayUnread","relayMap","sessionNames","projects","dataLifecycle","search","continuation","projectContextUpdates","attachments","transcriptExport"],"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?}));
         }
         // Data lifecycle work is file I/O under the journal lock; keep it off async workers.
         if request["operation"].as_str().is_some_and(|op| op.starts_with("data/")) {
@@ -930,12 +922,13 @@ async fn supervisor_main() -> Result<()> {
     let db = Arc::new(Mutex::new(Db::open(&database_path)?));
     {
         let db = db.lock().unwrap();
-        for mut command in db.all("commands")? {
-            if command["operation"] == "workspace/run" && command["status"] == "running" {
-                command["status"] = json!("outcomeUnknown");
-                command["result"]["outcome"] = json!("interrupted");
-                db.put("commands", command["id"].as_str().unwrap(), &command)?;
-            }
+        for mut command in db.commands_matching(
+            "json_extract(value,'$.operation')='workspace/run' AND json_extract(value,'$.status')='running'",
+            &[],
+        )? {
+            command["status"] = json!("outcomeUnknown");
+            command["result"]["outcome"] = json!("interrupted");
+            db.put("commands", command["id"].as_str().unwrap(), &command)?;
         }
         for mut row in db.all("sessions")? {
             if row["lifecycle"] == "archived" {
