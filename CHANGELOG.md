@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Projects can have an optional goal and a short note for each folder. Muse receives them with the first task of a Project session, so it knows how the folders fit together; your transcript still shows only what you typed.
+
 - **Support report** (workspace menu) prepares a summary of versions, session states and data sizes to help diagnose problems. You read exactly what it contains before saving it; it never includes your tasks, conversations, file paths, names or keys, and is never sent anywhere.
 
 - Security hardening: file context is checked against the file actually opened, so a folder swapped for a link mid-read cannot expose files outside the repository, and the background service's access token is compared in constant time.

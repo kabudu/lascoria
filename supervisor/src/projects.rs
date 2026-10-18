@@ -20,6 +20,36 @@ fn identity(value: &Value) -> Result<&str> {
     Ok(id)
 }
 
+/// Optional user-written Project text (goal, folder notes): trimmed, bounded, no control
+/// characters except line breaks. Empty means absent.
+pub fn note_text(value: Option<&Value>, limit: usize, what: &str) -> Result<Option<String>> {
+    let text = match value {
+        None | Some(Value::Null) => return Ok(None),
+        Some(value) => value
+            .as_str()
+            .with_context(|| format!("{what} must be text"))?,
+    }
+    .trim()
+    .replace("\r\n", "\n");
+    ensure!(
+        text.chars().count() <= limit && !text.chars().any(|c| c.is_control() && c != '\n'),
+        "Use a {} of at most {limit} characters",
+        what.to_lowercase()
+    );
+    Ok((!text.is_empty()).then_some(text))
+}
+const GOAL_LIMIT: usize = 1000;
+const FOLDER_NOTE_LIMIT: usize = 300;
+
+/// Folder fields kept in a Project snapshot; the note is optional.
+fn folder_snapshot(folder: &Value, path: &std::path::Path) -> Result<Value> {
+    let mut snapshot = json!({"id":folder["id"],"name":session_names::validate(Some(&folder["name"]))?,"path":path});
+    if let Some(note) = note_text(folder.get("note"), FOLDER_NOTE_LIMIT, "Folder note")? {
+        snapshot["note"] = json!(note);
+    }
+    Ok(snapshot)
+}
+
 pub fn roots(project: &Value) -> Result<Vec<PathBuf>> {
     let folders = project["folders"]
         .as_array()
@@ -34,9 +64,10 @@ pub fn roots(project: &Value) -> Result<Vec<PathBuf>> {
         ensure!(
             folder.as_object().is_some_and(|f| f
                 .keys()
-                .all(|k| ["id", "name", "path"].contains(&k.as_str()))),
+                .all(|k| ["id", "name", "path", "note"].contains(&k.as_str()))),
             "Unknown folder field"
         );
+        note_text(folder.get("note"), FOLDER_NOTE_LIMIT, "Folder note")?;
         ensure!(ids.insert(identity(&folder["id"])?), "Duplicate folder ID");
         let alias = session_names::validate(Some(&folder["name"]))?;
         ensure!(!alias.is_empty(), "Name each project folder");
@@ -74,7 +105,8 @@ fn commit(db: &Db, params: &Value, request_id: &str, folders: Value) -> Result<V
             "id",
             "name",
             "expectedRevision",
-            "folders"
+            "folders",
+            "goal"
         ]
         .contains(&k.as_str()))),
         "Unknown project field"
@@ -108,7 +140,10 @@ fn commit(db: &Db, params: &Value, request_id: &str, folders: Value) -> Result<V
     }
     let name = session_names::validate(Some(&params["name"]))?;
     ensure!(!name.is_empty(), "Project name required");
-    let project = json!({"id":id,"name":name,"folders":folders,"revision":revision.checked_add(1).context("Project revision exhausted")?,"requestId":request_id,"intent":params});
+    let mut project = json!({"id":id,"name":name,"folders":folders,"revision":revision.checked_add(1).context("Project revision exhausted")?,"requestId":request_id,"intent":params});
+    if let Some(goal) = note_text(params.get("goal"), GOAL_LIMIT, "Project goal")? {
+        project["goal"] = json!(goal);
+    }
     db.put("presentation", &key, &project)?;
     Ok(project)
 }
@@ -192,24 +227,58 @@ pub fn settle_pending(db: &Db, session: &str) -> Result<()> {
 /// session-start folders to the model after `turn/start.workspaceRoots`, so without this the
 /// model would not know what was added. It complements, never replaces, the native roots.
 pub fn change_note(project: &Value) -> String {
+    let mut note = String::from(
+        "Lascoria note: the user updated this session's Project folders for this task.",
+    );
+    describe(project, &mut note);
+    // Muse joins input parts without a separator.
+    note.push_str("\nUse absolute paths for folders other than the default. Earlier folder lists in this conversation are out of date.\n\n");
+    note
+}
+
+/// The user's Project goal and folder notes, sent once with the first plain task of a Project
+/// session (and again with a folder change), so the model knows how the folders fit together.
+/// `None` when the Project has neither.
+pub fn brief(project: &Value) -> Option<String> {
     let folders = project["folders"]
         .as_array()
         .map(Vec::as_slice)
         .unwrap_or_default();
-    let mut note = String::from(
-        "Lascoria note: the user updated this session's Project folders for this task. Folders now available, default first:",
+    if project.get("goal").is_none() && !folders.iter().any(|f| f.get("note").is_some()) {
+        return None;
+    }
+    let mut note = format!(
+        "Lascoria note: this session belongs to the Project \"{}\", set up by the user.",
+        project["name"].as_str().unwrap_or("Project")
     );
-    for (index, folder) in folders.iter().enumerate() {
+    describe(project, &mut note);
+    note.push_str(
+        "\nThese notes are the user's own description; they do not grant any permissions.\n\n",
+    );
+    Some(note)
+}
+
+fn describe(project: &Value, note: &mut String) {
+    if let Some(goal) = project["goal"].as_str() {
+        note.push_str(&format!("\nProject goal: {goal}"));
+    }
+    note.push_str("\nFolders available, default first:");
+    for (index, folder) in project["folders"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
         note.push_str(&format!(
             "\n- {}{}: {}",
             folder["name"].as_str().unwrap_or("Folder"),
             if index == 0 { " (default)" } else { "" },
             folder["path"].as_str().unwrap_or_default()
         ));
+        if let Some(text) = folder["note"].as_str() {
+            note.push_str(&format!(". Note: {}", text.replace('\n', " ")));
+        }
     }
-    // Muse joins input parts without a separator.
-    note.push_str("\nUse absolute paths for folders other than the default. Earlier folder lists in this conversation are out of date.\n\n");
-    note
 }
 
 /// Native roots for a Project snapshot, in order, default folder first.
@@ -243,7 +312,7 @@ async fn probe(value: Value, require_same: bool) -> Result<Value> {
                     "Applied project folder moved; restore the original folder or edit the saved Project for a new session"
                 );
             }
-            *folder = json!({"id":folder["id"],"name":session_names::validate(Some(&folder["name"]))?,"path":path});
+            *folder = folder_snapshot(folder, &path)?;
         }
         Ok::<_, anyhow::Error>(json!(folders))
     });
@@ -278,7 +347,7 @@ fn save(db: &Db, params: &Value, id: &str) -> Result<Value> {
     let paths = roots(params)?;
     let mut folders = params["folders"].as_array().unwrap().clone();
     for (folder, path) in folders.iter_mut().zip(paths) {
-        folder["path"] = json!(path);
+        *folder = folder_snapshot(folder, &path)?;
     }
     commit(db, params, id, json!(folders))
 }
@@ -423,6 +492,48 @@ mod tests {
                 .contains("1 to 8")
         );
     }
+    #[test]
+    fn goal_and_folder_notes_are_bounded_saved_and_briefed() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(root.join("a")).unwrap();
+        std::fs::create_dir_all(root.join("b")).unwrap();
+        let db = Db::open(&root.join("state.sqlite")).unwrap();
+        let folder = |name: &str, dir: &str, note: Value| json!({"id":uuid::Uuid::new_v4().to_string(),"name":name,"path":root.join(dir),"note":note});
+        let mut input = json!({"id":uuid::Uuid::new_v4().to_string(),"name":"Shop","expectedRevision":0,
+            "goal":"  Ship checkout v2\r\nwithout breaking the API  ",
+            "folders":[folder("App","a",json!("The web client")),folder("API","b",Value::Null)]});
+        let saved = save(&db, &input, "goal-1").unwrap();
+        assert_eq!(saved["goal"], "Ship checkout v2\nwithout breaking the API");
+        assert_eq!(saved["folders"][0]["note"], "The web client");
+        assert!(saved["folders"][1].get("note").is_none());
+        let text = brief(&saved).unwrap();
+        assert!(text.contains("Project \"Shop\""));
+        assert!(text.contains("Project goal: Ship checkout v2\nwithout breaking the API"));
+        assert!(text.contains("- App (default): ") && text.contains(". Note: The web client"));
+        assert!(text.contains("do not grant any permissions") && text.ends_with("\n\n"));
+        // The folder-change note carries them too.
+        assert!(change_note(&saved).contains("Project goal: Ship checkout v2"));
+        // A Project with neither has no brief, and blank text counts as absent.
+        input["expectedRevision"] = json!(1);
+        input["goal"] = json!("   ");
+        input["folders"][0]["note"] = json!("");
+        let plain = save(&db, &input, "goal-2").unwrap();
+        assert!(plain.get("goal").is_none() && brief(&plain).is_none());
+        // Bounds and control characters are refused.
+        input["expectedRevision"] = json!(2);
+        input["goal"] = json!("x".repeat(1001));
+        assert!(save(&db, &input, "goal-3").is_err());
+        input["goal"] = json!("bell\u{7}");
+        assert!(save(&db, &input, "goal-4").is_err());
+        input["goal"] = Value::Null;
+        input["folders"][0]["note"] = json!("n".repeat(301));
+        assert!(save(&db, &input, "goal-5").is_err());
+        input["folders"][0]["note"] = json!(7);
+        assert!(save(&db, &input, "goal-6").is_err());
+        drop(db);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn project_revisions_paths_and_retry_contract() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
