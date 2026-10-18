@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Settings…** in the workspace menu brings every app setting into one dialog, grouped and searchable.
+
+- **Open in editor** opens a session's folder, or a file from it, in your editor of choice (set in Settings, Editor).
+
 - **Token use** in the task inspector shows how many tokens a session and the selected task used, how full the model's context is, subagent use and Muse's API price estimate. It is collapsed by default and separate from your subscription allowance.
 
 - Projects can have an optional goal and a short note for each folder. Muse receives them with the first task of a Project session, so it knows how the folders fit together; your transcript still shows only what you typed.
