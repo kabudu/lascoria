@@ -91,6 +91,8 @@ export interface Prefs {
   closeBehavior?: 'keepRunning' | 'pause';
   /** Desktop notifications (D4). Off until the user turns them on. */
   notifications?: NotificationPrefs;
+  /** R8: optional compact weekly-allowance figure in the toolbar. Off by default. */
+  usageIndicator?: boolean;
   collapsed?: string[];
   acknowledgedInterruptions?: string[];
   acknowledgedTaskFacts?: string[];

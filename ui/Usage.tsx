@@ -29,6 +29,8 @@ export function Usage({
   latestEnabled,
   mode,
   signedIn,
+  indicator,
+  setIndicator,
 }: {
   /** A connected session whose Muse host can be asked for its latest observation. */
   sessionId?: string;
@@ -37,6 +39,9 @@ export function Usage({
   /** Account route: subscription allowance does not apply to API-key billing. */
   mode?: string;
   signedIn?: boolean;
+  /** The optional toolbar figure, when the supervisor can serve it without asking Muse. */
+  indicator?: boolean;
+  setIndicator?: (on: boolean) => void;
 }) {
   const [reading, setReading] = useState<UsageReading>();
   const [loading, setLoading] = useState(true);
@@ -166,6 +171,16 @@ export function Usage({
           </button>
           <span className="hint">No model request</span>
         </div>
+      )}
+      {!apiKey && setIndicator && (
+        <label className="usage-indicator-setting">
+          <input
+            type="checkbox"
+            checked={Boolean(indicator)}
+            onChange={(event) => setIndicator(event.currentTarget.checked)}
+          />
+          Show the weekly allowance in the toolbar
+        </label>
       )}
       <details className="usage-details">
         <summary>About these numbers</summary>
