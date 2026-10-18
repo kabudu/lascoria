@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Optional decision assistance can review a selected diff snapshot using your Jev, SubQ or OpenAI API key. Configure it per workspace, inspect exactly what will be sent, and explicitly request separately billed advice. Results cannot accept evidence or change Muse permissions; lost replies are retrieved without repeating a paid call. Background triage and Muse tools are still pending.
+- Optional decision assistance can review a selected diff snapshot using your Jev, SubQ or OpenAI API key. Configure it per workspace, inspect exactly what will be sent, and explicitly request separately billed advice. Results cannot accept evidence or change Muse permissions; lost replies are retrieved without repeating a paid call. Optional background triage notes when a session likely needs you, and an optional tool lets Muse ask your decision model a question; both are off until you turn them on for a workspace. A usage summary and Seems right / Seems wrong marks help you judge the advice.
 
 - Settings radio controls stay beside their labels, and session actions wrap so Project folders remain accessible alongside editor handoff.
 

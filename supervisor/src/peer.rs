@@ -24,8 +24,14 @@ pub enum Peer {
     Unbound,
 }
 
-const RELAY_HELPER_OPERATIONS: [&str; 3] =
-    ["relay/agentPeers", "relay/agentRead", "relay/agentSend"];
+/// The session helper's whole authority: relay messages and Muse's advisory decision tool,
+/// which the supervisor refuses unless the user enabled it for that session's workspace.
+const RELAY_HELPER_OPERATIONS: [&str; 4] = [
+    "relay/agentPeers",
+    "relay/agentRead",
+    "relay/agentSend",
+    "decision/tool",
+];
 const CACHE_LIMIT: usize = 16;
 
 /// Size, modification time and SHA-256 of a previously hashed executable.
@@ -165,6 +171,16 @@ mod tests {
         ] {
             assert!(authorise(Peer::RelayHelper, operation).is_err());
             assert!(authorise(Peer::Desktop, operation).is_ok());
+        }
+        // Only the advisory tool, scoped by the supervisor to the helper's own session.
+        assert!(authorise(Peer::RelayHelper, "decision/tool").is_ok());
+        for operation in [
+            "decision/configureMode",
+            "decision/feedback",
+            "decision/metrics",
+            "decision/forgetKey",
+        ] {
+            assert!(authorise(Peer::RelayHelper, operation).is_err());
         }
     }
 

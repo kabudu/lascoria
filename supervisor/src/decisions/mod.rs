@@ -1,4 +1,5 @@
 //! R10: explicitly requested, separately billed advice. No Muse authority or automatic actions.
+mod modes;
 mod providers;
 use crate::{
     db::{Db, now_ms},
@@ -345,7 +346,7 @@ impl Service {
                 .map(|s| workspace(&database, s).map(|v| v.0))
                 .transpose()?;
             return Ok(
-                json!({"revision":cfg["revision"],"admissionEpoch":self.epoch,"providers":providers,"workspace":workspace,"recent":recent_runs(&database)?.into_iter().map(|mut r| { if r["status"] == "sending" && !self.active.lock().unwrap().contains_key(r["id"].as_str().unwrap_or_default()) {r["status"] = json!("unknown");} r }).collect::<Vec<_>>(),"limits":{"concurrency":2,"inputBytes":INPUT_LIMIT,"responseBytes":RESPONSE_LIMIT,"requestSeconds":20,"retainedResults":FULL_RESULTS,"requestIdentities":RUN_LIMIT}}),
+                json!({"revision":cfg["revision"],"admissionEpoch":self.epoch,"providers":providers,"modes":{"triage":modes::mode(&cfg,"triage"),"tool":modes::mode(&cfg,"tool")},"workspace":workspace,"recent":recent_runs(&database)?.into_iter().map(|mut r| { if r["status"] == "sending" && !self.active.lock().unwrap().contains_key(r["id"].as_str().unwrap_or_default()) {r["status"] = json!("unknown");} r }).collect::<Vec<_>>(),"limits":{"concurrency":2,"inputBytes":INPUT_LIMIT,"responseBytes":RESPONSE_LIMIT,"requestSeconds":20,"retainedResults":FULL_RESULTS,"requestIdentities":RUN_LIMIT}}),
             );
         }
         if operation == "decision/result" {
@@ -365,6 +366,16 @@ impl Service {
                 token.cancel();
             }
             return Ok(json!({"requested":found.is_some(),"mayHaveBeenBilled":true}));
+        }
+        if [
+            "decision/configureMode",
+            "decision/feedback",
+            "decision/metrics",
+            "decision/tool",
+        ]
+        .contains(&operation)
+        {
+            return self.handle_mode(db, operation, params, request_id).await;
         }
         let provider_id = id(params, "provider")?;
         let (_, _, default_model, _) = provider(&provider_id)?;
@@ -403,6 +414,7 @@ impl Service {
                 saved["workspaces"] = json!([]);
                 saved["keySaved"] = json!(false);
                 cfg["providers"][&provider_id] = saved.clone();
+                modes::revoke(&mut cfg, &provider_id);
                 cfg["revision"] = json!(cfg["revision"].as_u64().unwrap() + 1);
                 db.lock().unwrap().put("presentation", CONFIG, &cfg)?;
                 self.set_key(&provider_id, Some(key.as_bytes().to_vec()))
@@ -414,6 +426,7 @@ impl Service {
                 saved["workspaces"] = json!([]);
                 saved["keySaved"] = json!(false);
                 cfg["providers"][&provider_id] = saved.clone();
+                modes::revoke(&mut cfg, &provider_id);
                 cfg["revision"] = json!(cfg["revision"].as_u64().unwrap() + 1);
                 db.lock().unwrap().put("presentation", CONFIG, &cfg)?;
                 self.set_key(&provider_id, None).await?;
@@ -439,6 +452,9 @@ impl Service {
                 }
                 saved["model"] = json!(model);
                 saved["enabled"] = json!(enabled);
+                if !enabled {
+                    modes::revoke(&mut cfg, &provider_id);
+                }
                 if let Some(allowed) = params["workspaceEnabled"].as_bool() {
                     let session = id(params, "sessionId")?;
                     let (scope, _) = workspace(&db.lock().unwrap(), &session)?;
@@ -520,24 +536,8 @@ impl Service {
             );
         }
         // Retrying an identity returns its outcome, never re-sends. This survives supervisor death.
-        {
-            let database = db.lock().unwrap();
-            if let Some(mut prior) = read_run(&database, request_id)? {
-                ensure!(
-                    prior["fingerprint"] == fingerprint,
-                    "Decision request ID reused with changed input"
-                );
-                if prior["status"] == "sending"
-                    && !self.active.lock().unwrap().contains_key(request_id)
-                {
-                    prior["status"] = json!("unknown");
-                    prior["message"] = json!(
-                        "The app stopped before the outcome was recorded. This request may have been billed and will not be resent"
-                    );
-                }
-                prior["reused"] = json!(true);
-                return Ok(prior);
-            }
+        if let Some(prior) = self.prior(&db, request_id, &fingerprint)? {
+            return Ok(prior);
         }
         if operation == "decision/evaluate" {
             ensure!(
@@ -551,6 +551,69 @@ impl Service {
                 "The background service restarted; reload integration settings before testing the connection"
             );
         }
+        self.spend(
+            db,
+            Spend {
+                request_id,
+                purpose: if operation == "decision/test" {
+                    "connectionTest"
+                } else {
+                    "manual"
+                },
+                rubric: RUBRIC,
+                provider_id: &provider_id,
+                model: &model,
+                input: &input,
+                q: &q,
+                source,
+                scope,
+                root,
+                revision: cfg["revision"].clone(),
+                fingerprint,
+            },
+        )
+        .await
+    }
+
+    /// The recorded outcome for an identity, if any. A request that was running when the
+    /// supervisor stopped is reported as unknown and is never resent.
+    fn prior(&self, db: &SharedDb, request_id: &str, fingerprint: &str) -> Result<Option<Value>> {
+        let database = db.lock().unwrap();
+        let Some(mut prior) = read_run(&database, request_id)? else {
+            return Ok(None);
+        };
+        ensure!(
+            prior["fingerprint"] == fingerprint,
+            "Decision request ID reused with changed input"
+        );
+        if prior["status"] == "sending" && !self.active.lock().unwrap().contains_key(request_id) {
+            prior["status"] = json!("unknown");
+            prior["message"] = json!(
+                "The app stopped before the outcome was recorded. This request may have been billed and will not be resent"
+            );
+        }
+        prior["reused"] = json!(true);
+        Ok(Some(prior))
+    }
+
+    /// The one path that spends: bounded admission, identity persisted before egress,
+    /// preflight checks, the provider call and the recorded outcome. Every interaction model
+    /// goes through here.
+    async fn spend(&self, db: SharedDb, call: Spend<'_>) -> Result<Value> {
+        let Spend {
+            request_id,
+            purpose,
+            rubric,
+            provider_id,
+            model,
+            input,
+            q,
+            source,
+            scope,
+            root,
+            revision,
+            fingerprint,
+        } = call;
         let _permit = self
             .admission
             .try_acquire()
@@ -569,7 +632,7 @@ impl Service {
             id: request_id.to_owned(),
         };
         let key = self
-            .key(&provider_id)
+            .key(provider_id)
             .await?
             .context("Provider key unavailable; save it again in Settings")?;
         // Check the exact capture before any data leaves this machine.
@@ -584,14 +647,14 @@ impl Service {
             );
         }
         ensure!(
-            config(&db.lock().unwrap())?["revision"] == cfg["revision"],
+            config(&db.lock().unwrap())?["revision"] == revision,
             "Integration changed; nothing was sent"
         );
         ensure!(
             !cancellation.is_cancelled(),
             "Cancelled before sending; nothing was sent"
         );
-        let mut row = json!({"id":request_id,"provider":provider_id,"model":model,"fingerprint":fingerprint,"source":source,"workspace":scope,"configRevision":cfg["revision"],"rubricVersion":RUBRIC,"question":q,"status":"sending","createdAtMillis":now_ms(),"inputBytes":input.len(),"mayHaveBeenBilled":true});
+        let mut row = json!({"id":request_id,"purpose":purpose,"provider":provider_id,"model":model,"fingerprint":fingerprint,"source":source,"workspace":scope,"configRevision":revision,"rubricVersion":rubric,"question":q,"status":"sending","createdAtMillis":now_ms(),"inputBytes":input.len(),"mayHaveBeenBilled":true});
         // Reserve both the identity and active token while holding the DB lock. A concurrent retry
         // can observe either the running request or its persisted outcome, never another send.
         {
@@ -606,14 +669,14 @@ impl Service {
         let result = tokio::select! {
             biased;
             _ = cancellation.cancelled() => Err(anyhow::anyhow!("Request cancelled. It may have been billed; no retry was sent")),
-            result = self.send(&provider_id,&model,&input,&q,key) => result,
+            result = self.send(provider_id,model,input,q,key) => result,
         };
         row["latencyMs"] = json!(began.elapsed().as_millis() as u64);
         row["finishedAtMillis"] = json!(now_ms());
         match result {
             Ok(result) => {
                 row["result"] = result;
-                let unchanged = config(&db.lock().unwrap())?["revision"] == cfg["revision"];
+                let unchanged = config(&db.lock().unwrap())?["revision"] == revision;
                 let fresh = if let Some(root) = &root {
                     tokio::time::timeout(Duration::from_secs(10), review::capture(Path::new(root)))
                         .await
@@ -642,7 +705,7 @@ impl Service {
         }
         let database = db.lock().unwrap();
         if row["status"] == "completed"
-            && (config(&database)?["revision"] != cfg["revision"] || cancellation.is_cancelled())
+            && (config(&database)?["revision"] != revision || cancellation.is_cancelled())
         {
             row["status"] = json!("stale");
         }
@@ -653,20 +716,40 @@ impl Service {
     }
 }
 
+struct Spend<'a> {
+    request_id: &'a str,
+    purpose: &'static str,
+    rubric: &'static str,
+    provider_id: &'a str,
+    model: &'a str,
+    input: &'a str,
+    q: &'a Value,
+    source: Value,
+    scope: String,
+    root: Option<String>,
+    revision: Value,
+    fingerprint: String,
+}
+
+fn service() -> Result<&'static Service> {
+    static SERVICE: OnceLock<std::result::Result<Service, String>> = OnceLock::new();
+    SERVICE
+        .get_or_init(|| {
+            Service::new()
+                .map_err(|_| "Decision networking is unavailable; Muse remains usable".to_owned())
+        })
+        .as_ref()
+        .map_err(|e| anyhow::anyhow!(e.clone()))
+}
+pub use modes::triage_loop;
+
 pub async fn handle(
     db: SharedDb,
     operation: &str,
     params: &Value,
     request_id: &str,
 ) -> Result<Value> {
-    static SERVICE: OnceLock<std::result::Result<Service, String>> = OnceLock::new();
-    let service = SERVICE
-        .get_or_init(|| {
-            Service::new()
-                .map_err(|_| "Decision networking is unavailable; Muse remains usable".to_owned())
-        })
-        .as_ref()
-        .map_err(|e| anyhow::anyhow!(e.clone()))?;
+    let service = service()?;
     id(&json!({"id":request_id}), "id")?;
     service.handle(db, operation, params, request_id).await
 }

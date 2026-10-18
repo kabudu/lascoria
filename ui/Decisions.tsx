@@ -13,15 +13,23 @@ type Provider = {
   keySaved: boolean;
   workspaces: string[];
 };
+type Mode = { provider: string | null; workspaces: string[]; share?: string[]; dailyLimit: number };
 type Settings = {
   revision: number;
   admissionEpoch: string;
   providers: Provider[];
+  modes?: { triage: Mode; tool: Mode };
   workspace?: string;
   recent: Json[];
 };
+const SHARE_LABELS: Record<string, string> = {
+  request: 'What you asked for (your own words)',
+  reply: "Muse's latest reply and the task outcome",
+  question: 'That Muse is waiting for you, and its question',
+};
 
-export function DecisionResult({ row }: { row: Json }) {
+export function DecisionResult({ row, onFeedback }: { row: Json; onFeedback?: () => void }) {
+  const [verdict, setVerdict] = useState<string | undefined>(row.userVerdict);
   const result = row.result;
   const usable = row.status === 'completed' && Boolean(result);
   const answer = result?.answer;
@@ -66,6 +74,34 @@ export function DecisionResult({ row }: { row: Json }) {
             </p>
           )}
           <p>Advice only. It has not approved a permission, accepted evidence or changed Muse.</p>
+          {usable &&
+            (verdict ? (
+              <p className="hint">
+                You marked this answer as {verdict === 'agree' ? 'right' : 'wrong'}.
+              </p>
+            ) : (
+              <div className="settings-actions" role="group" aria-label="Was this answer right?">
+                {(['agree', 'disagree'] as const).map((choice) => (
+                  <button
+                    key={choice}
+                    onClick={() =>
+                      void request('decision/feedback', {
+                        requestId: row.id,
+                        verdict: choice,
+                      }).then(
+                        () => {
+                          setVerdict(choice);
+                          onFeedback?.();
+                        },
+                        () => {},
+                      )
+                    }
+                  >
+                    {choice === 'agree' ? 'Seems right' : 'Seems wrong'}
+                  </button>
+                ))}
+              </div>
+            ))}
           <details>
             <summary>Source, rubric and reported metrics</summary>
             <p>
@@ -143,8 +179,9 @@ export function DecisionSettings({
       aria-busy={busy}
     >
       <p>
-        Optional, separately billed advice about a saved diff snapshot. Muse keeps running
-        independently. Nothing is sent in the background.
+        Optional, separately billed advice from a decision model, with your own API key. Muse keeps
+        running independently. Nothing is sent in the background unless you turn on Background
+        triage below for a workspace.
       </p>
       <p>
         Review the destination and provider policy before enabling a key. Lascoria does not change
@@ -314,6 +351,8 @@ export function DecisionSettings({
         </details>
       ))}
       {result && <DecisionResult row={result} />}
+      <ModeSettings settings={settings} sessionId={sessionId} busy={busy} change={change} />
+      <DecisionMetrics revision={settings.revision} />
       <details>
         <summary>Recent requests and metrics</summary>
         <p>
@@ -328,7 +367,7 @@ export function DecisionSettings({
               <summary>
                 {row.provider} · {row.status} · {new Date(row.createdAtMillis).toLocaleString()}
               </summary>
-              <DecisionResult row={row} />
+              <DecisionResult row={row} onFeedback={() => void reload()} />
             </details>
           ))
         )}
@@ -557,5 +596,241 @@ export function DecisionReview({
         </>
       )}
     </details>
+  );
+}
+
+/** Background triage (b) and the Muse tool (c): each has its own provider and workspace consent. */
+function ModeSettings({
+  settings,
+  sessionId,
+  busy,
+  change,
+}: {
+  settings: Settings;
+  sessionId?: string;
+  busy: boolean;
+  change: (operation: string, params: Json) => Promise<void>;
+}) {
+  const usable = settings.providers.filter((p) => p.enabled && p.keySaved);
+  const modes = settings.modes;
+  if (!modes) return null;
+  const save = (mode: 'triage' | 'tool', params: Json) =>
+    change('decision/configureMode', { mode, expectedRevision: settings.revision, ...params });
+  const section = (mode: 'triage' | 'tool', title: string, explain: string) => {
+    const current = modes[mode];
+    const here = Boolean(settings.workspace && current.workspaces.includes(settings.workspace));
+    return (
+      <fieldset key={mode} className="decision-mode" aria-label={title}>
+        <legend>{title}</legend>
+        <p className="hint">{explain}</p>
+        <label>
+          Provider
+          <select
+            value={current.provider ?? ''}
+            disabled={busy || usable.length === 0}
+            onChange={(event) => void save(mode, { provider: event.currentTarget.value || null })}
+          >
+            <option value="">Off</option>
+            {usable.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {usable.length === 0 && (
+          <p className="hint">Enable a provider with a saved key above first.</p>
+        )}
+        {current.provider &&
+          (sessionId ? (
+            <label className="settings-choice">
+              <input
+                type="checkbox"
+                checked={here}
+                disabled={busy}
+                onChange={(event) =>
+                  void save(mode, { sessionId, workspaceEnabled: event.currentTarget.checked })
+                }
+              />
+              Use it for this session&apos;s workspace
+            </label>
+          ) : (
+            <p className="hint">Open a session to turn it on for its workspace.</p>
+          ))}
+        {current.provider && mode === 'triage' && (
+          <div role="group" aria-label="What triage shares">
+            {Object.entries(SHARE_LABELS).map(([part, label]) => (
+              <label key={part} className="settings-choice">
+                <input
+                  type="checkbox"
+                  checked={current.share?.includes(part) ?? false}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const next = event.currentTarget.checked
+                      ? [...(current.share ?? []), part]
+                      : (current.share ?? []).filter((s) => s !== part);
+                    if (next.length) void save(mode, { share: next });
+                  }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        )}
+        {current.provider && (
+          <label>
+            At most
+            <select
+              value={current.dailyLimit}
+              disabled={busy}
+              onChange={(event) =>
+                void save(mode, { dailyLimit: Number(event.currentTarget.value) })
+              }
+            >
+              {[10, 25, 50, 100, 250].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            requests a day
+          </label>
+        )}
+      </fieldset>
+    );
+  };
+  return (
+    <>
+      {section(
+        'triage',
+        'Background triage',
+        'When a task finishes or Muse waits for you in a workspace you turn on, Lascoria sends the parts you choose to estimate whether it needs you soon, at most once per update. A quiet note appears beside the session name. This sends data without asking each time.',
+      )}
+      {section(
+        'tool',
+        'Muse can ask',
+        'In workspaces you turn on, Muse gets a tool to ask your decision model one question about text Muse chooses (up to 16,000 characters). Muse sees the advice; it never approves anything.',
+      )}
+    </>
+  );
+}
+
+/** Aggregate metrics over the retained request history (optional, read-only). */
+function DecisionMetrics({ revision }: { revision: number }) {
+  const [metrics, setMetrics] = useState<Json>();
+  useEffect(() => {
+    void request('decision/metrics').then(setMetrics, () => {});
+  }, [revision]);
+  const rows = Object.entries((metrics?.providers ?? {}) as Record<string, Json>);
+  if (!rows.length) return null;
+  const purposes: Record<string, string> = {
+    manual: 'reviews',
+    triage: 'triage',
+    museTool: 'Muse',
+    connectionTest: 'tests',
+  };
+  return (
+    <details className="decision-metrics">
+      <summary>Usage summary</summary>
+      <table>
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>Requests (24 h)</th>
+            <th>By use</th>
+            <th>Input tokens</th>
+            <th>Typical time</th>
+            <th>You disagreed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([id, m]) => (
+            <tr key={id}>
+              <td>{id}</td>
+              <td>
+                {m.requests} ({m.last24h})
+              </td>
+              <td>
+                {Object.entries(m.byPurpose as Record<string, number>)
+                  .map(([k, v]) => `${v} ${purposes[k] ?? k}`)
+                  .join(', ')}
+              </td>
+              <td>{m.tokensReported ? m.inputTokens.toLocaleString() : 'not reported'}</td>
+              <td>
+                {typeof m.latencyP50Ms === 'number'
+                  ? `${(m.latencyP50Ms / 1000).toFixed(1)} s (95%: ${(m.latencyP95Ms / 1000).toFixed(1)} s)`
+                  : 'n/a'}
+              </td>
+              <td>
+                {m.disagreed} of {m.agreed + m.disagreed} marked
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="hint">
+        Billed by each provider to your own account, separately from Muse. Cost is unknown because
+        these APIs do not report a billed amount.
+      </p>
+    </details>
+  );
+}
+
+/** Background triage (b): a quiet note beside the session name when it likely needs you. */
+export function TriageNote({
+  sessionId,
+  latestTurn,
+  trigger,
+}: {
+  sessionId: string;
+  latestTurn?: string;
+  /** Changes when the latest task finishes or starts waiting, the moments triage runs. */
+  trigger: string;
+}) {
+  const [row, setRow] = useState<Json>();
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    // Triage answers arrive within seconds of an update; check twice a minute, not on every
+    // status change, so a streaming session does not re-read history continuously.
+    const timer = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void request<Settings>('decision/status', { sessionId }).then(
+      (settings) => {
+        if (cancelled) return;
+        const enabled =
+          settings.modes?.triage.provider &&
+          settings.workspace &&
+          settings.modes.triage.workspaces.includes(settings.workspace);
+        setRow(
+          enabled
+            ? settings.recent.find(
+                (r) =>
+                  r.purpose === 'triage' &&
+                  r.status === 'completed' &&
+                  r.source?.sessionId === sessionId &&
+                  r.source?.turnId === latestTurn,
+              )
+            : undefined,
+        );
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, latestTurn, trigger, tick]);
+  const answer = row?.result?.answer;
+  const probability = answer?.probability ?? answer?.noul;
+  if (typeof probability !== 'number' || probability < 0.5) return null;
+  return (
+    <span
+      className="triage-note"
+      title={`Estimated by ${row?.provider} at ${new Date(row?.createdAtMillis).toLocaleString()}; advice only`}
+    >
+      Likely needs you ({Math.round(probability * 100)}%)
+    </span>
   );
 }

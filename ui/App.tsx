@@ -1,4 +1,4 @@
-import { DecisionSettings, DecisionReview } from './Decisions';
+import { DecisionSettings, DecisionReview, TriageNote } from './Decisions';
 import { ProjectStart } from './ProjectStart';
 import { FolderPath } from './FolderPath';
 import { Help } from './Help';
@@ -1435,6 +1435,13 @@ export function App() {
             <div>
               <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
               <h1 title={sessionName(session)}>{sessionName(session)}</h1>
+              {status.features?.includes('decisionTriage') && (
+                <TriageNote
+                  sessionId={session.id}
+                  latestTurn={session.state.turns?.at(-1)?.turnId as string | undefined}
+                  trigger={`${session.state.turns?.at(-1)?.turnId}:${String(session.state.turns?.at(-1)?.terminal)}:${(session.state.userInputs?.length ?? 0) + (session.state.approvals?.length ?? 0)}`}
+                />
+              )}
               <div className="session-identity-actions">
                 {status.features?.includes('sessionNames') && (
                   <button className="session-settings-trigger" onClick={() => setModal('rename')}>
