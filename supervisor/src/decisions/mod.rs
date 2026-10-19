@@ -347,6 +347,9 @@ impl Service {
                 .as_str()
                 .map(|s| workspace(&database, s).map(|v| v.0))
                 .transpose()?;
+            // A triage note is current while its update is (the shared text is part of that
+            // identity) and the same provider still triages; saving unrelated settings, such
+            // as another provider's model, does not hide it.
             let current_triage = params["sessionId"]
                 .as_str()
                 .map(|session| modes::current_source(&database, &cfg, session))
@@ -354,7 +357,7 @@ impl Service {
                 .flatten();
             return Ok(
                 json!({"revision":cfg["revision"],"admissionEpoch":self.epoch,"providers":providers,"modes":{"triage":modes::mode(&cfg,"triage"),"tool":modes::mode(&cfg,"tool")},"workspace":workspace,"recent":recent_runs(&database)?.into_iter().map(|mut r| { if r["status"] == "sending" && !self.active.lock().unwrap().contains_key(r["id"].as_str().unwrap_or_default()) {r["status"] = json!("unknown");}
-                    if params["sessionId"].is_string() && r["purpose"] == "triage" && r["source"]["sessionId"] == params["sessionId"] && r["status"] == "completed" && (current_triage.as_ref() != Some(&r["source"]) || r["configRevision"] != cfg["revision"]) {r["status"] = json!("stale");} r }).collect::<Vec<_>>(),"limits":{"concurrency":2,"inputBytes":INPUT_LIMIT,"responseBytes":RESPONSE_LIMIT,"requestSeconds":20,"retainedResults":FULL_RESULTS,"requestIdentities":RUN_LIMIT}}),
+                    if params["sessionId"].is_string() && r["purpose"] == "triage" && r["source"]["sessionId"] == params["sessionId"] && r["status"] == "completed" && (current_triage.as_ref() != Some(&r["source"]) || modes::mode(&cfg, "triage")["provider"] != r["provider"]) {r["status"] = json!("stale");} r }).collect::<Vec<_>>(),"limits":{"concurrency":2,"inputBytes":INPUT_LIMIT,"responseBytes":RESPONSE_LIMIT,"requestSeconds":20,"retainedResults":FULL_RESULTS,"requestIdentities":RUN_LIMIT}}),
             );
         }
         if operation == "decision/result" {
