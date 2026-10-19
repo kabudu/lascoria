@@ -51,6 +51,14 @@ jobs:
           result=$(node scripts/release.js verify "$GITHUB_REF_NAME")
           echo "version=$(jq -r .version <<<"$result")" >> "$GITHUB_OUTPUT"
           echo "prerelease=$(jq -r .prerelease <<<"$result")" >> "$GITHUB_OUTPUT"
+      - name: Refuse known vulnerabilities and unreviewed licences or advisories
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          rustup toolchain install 1.97 --profile minimal
+          cargo install cargo-audit --locked --version 0.22.2
+          node scripts/check-supply-chain.js
       - name: Require release signing configuration
         shell: bash
         env:
