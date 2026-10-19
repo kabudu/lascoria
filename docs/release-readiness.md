@@ -235,7 +235,7 @@ The user decided on 18 October that T1–T5 ship in the first release. They rema
 - [ ] **T2 - Reuse evidence** (test-result reuse implemented 18 October; validation open): reuse repository analysis, test results and reviews only while content/configuration fingerprints remain valid. Preserve provenance and invalidate on relevant changes.
 - [ ] **T3 - Bound work** (budgets, repeat and concurrency warnings implemented 18 October; validation open): explicit delegation/concurrency budgets, duplicate-work/loop detection and warnings before admitting more work. Any spend limit based on post-call counters is a soft limit with in-flight overshoot, not guaranteed billing enforcement.
 - [ ] **T4 - Optional policies** (economical preset and native compaction implemented 18 October; validation open): economical model/effort presets with user-visible escalation, focused context handoffs and deliberate use of Muse-native compaction. Preserve user instructions, correctness and permission boundaries; do not silently truncate history or rewrite transcripts.
-- [ ] **T5 - Benchmark savings** (harness implemented 18 October; live run open): compare tokens, correctness, retries and completion time on repeated identical tasks. Existing UI polling/paging and broker memory savings are not inference-token savings.
+- [ ] **T5 - Benchmark savings** (harness implemented 18 October; initial six-task subscription comparison passed 19 October, broader gate open): compare tokens, correctness, retries and completion time on repeated identical tasks. Existing UI polling/paging and broker memory savings are not inference-token savings.
 
 ## Optional research
 
