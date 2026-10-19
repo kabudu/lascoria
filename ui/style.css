@@ -3086,3 +3086,71 @@ dialog.settings-dialog[open] {
     width: 220px;
   }
 }
+
+/* R15 Project map: folder cards around the goal, a picture of the Project only. */
+.project-map-area {
+  position: relative;
+  height: 240px;
+  margin: 8px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.project-map-area svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.project-map-area line {
+  stroke: var(--line);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+.project-map-goal,
+.project-map-card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 34%;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  border-radius: 8px;
+}
+.project-map-goal {
+  left: 50%;
+  top: 50%;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  font-size: 0.78rem;
+}
+.project-map-goal span {
+  color: var(--muted);
+}
+.project-map-card {
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  touch-action: none;
+  cursor: grab;
+}
+.project-map-card.is-default {
+  border-color: var(--accent);
+}
+.project-map-card small,
+.project-map-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-map-card small {
+  color: var(--muted);
+}
+button.link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+}

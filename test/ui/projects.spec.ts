@@ -130,6 +130,19 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
     expect((await request(directory, 'project/list')).projects).toHaveLength(0);
     await dialog.getByRole('button', { name: 'Move API up', exact: true }).click();
     await expect(dialog.getByLabel('Folder name', { exact: true }).first()).toHaveValue('API');
+    // The map mirrors the list; moving a card is a picture only and never reorders folders.
+    const map = dialog.getByRole('group', { name: 'Project map' });
+    const apiCard = map.getByRole('button', { name: /^API, default folder/ });
+    await expect(map.getByRole('button')).toHaveCount(2);
+    const before = await apiCard.boundingBox();
+    await apiCard.focus();
+    await page.keyboard.press('Shift+ArrowRight');
+    await expect.poll(async () => (await apiCard.boundingBox())!.x).toBeGreaterThan(before!.x);
+    await expect(dialog.getByLabel('Folder name', { exact: true }).first()).toHaveValue('API');
+    await page.keyboard.press('Enter');
+    await expect(dialog.getByLabel('Folder name', { exact: true }).first()).toBeFocused();
+    await expect(map.getByRole('button', { name: 'Reset arrangement' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Reset arrangement' })).toBeVisible();
     await dialog.getByRole('button', { name: 'Save project', exact: true }).click();
     await expect(dialog.getByText('Saving project…', { exact: true })).toBeVisible();
     await expect(

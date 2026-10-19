@@ -3385,6 +3385,17 @@ export function App() {
           <ProjectStart
             disabled={!runtimeReady || !!(account?.managed && !account.authenticated)}
             worktrees={Boolean(status.features?.includes('projectWorktrees'))}
+            maps={prefs.projectMaps}
+            onMap={(projectId, layout) => {
+              // Keep the most recent dozen Projects' arrangements; older ones fall back to
+              // the default circle.
+              const others = Object.entries(latestPrefs.current.projectMaps ?? {}).filter(
+                ([id]) => id !== projectId,
+              );
+              updatePrefs({
+                projectMaps: Object.fromEntries([...others.slice(-11), [projectId, layout]]),
+              });
+            }}
             economical={
               prefs.efficiency?.preset === 'economical' &&
               Boolean(status.features?.includes('effortPresets'))
