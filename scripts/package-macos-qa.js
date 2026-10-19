@@ -17,35 +17,36 @@ execFileSync(
     'app',
     '--config',
     JSON.stringify({
-      identifier: 'dev.lascoria.qa',
-      productName: 'Lascoria QA',
+      identifier: 'dev.lascoria.acceptance',
+      productName: 'Lascoria Acceptance',
       app: { windows: config.app.windows.map((window) => ({ ...window, title: 'Lascoria QA' })) },
       bundle: { active: true },
     }),
   ],
   { cwd: root, stdio: 'inherit' },
 );
-const built = join(root, 'src-tauri/target/release/bundle/macos/Lascoria QA.app');
+const built = join(root, 'src-tauri/target/release/bundle/macos/Lascoria Acceptance.app');
 const output = join(root, '.dev/macos-qa');
-const app = join(output, 'Lascoria QA.app');
+const app = join(output, 'Lascoria Acceptance.app');
 await rm(app, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-// One QA bundle and a distinct executable prevent automation/Launch Services selecting
-// the user's normal app or a second build-directory copy with the same identity.
+// A dedicated acceptance identifier plus one bundle and a distinct executable prevent
+// automation/Launch Services from selecting the user's normal app or a second
+// build-directory copy with the same identity.
 await rename(built, app);
 await rename(
   join(app, 'Contents/MacOS/spatial-constellation-desktop'),
-  join(app, 'Contents/MacOS/LascoriaQA'),
+  join(app, 'Contents/MacOS/LascoriaAcceptance'),
 );
 execFileSync('plutil', [
   '-replace',
   'CFBundleExecutable',
   '-string',
-  'LascoriaQA',
+  'LascoriaAcceptance',
   join(app, 'Contents/Info.plist'),
 ]);
 execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' });
-const binary = join(app, 'Contents/MacOS/LascoriaQA');
+const binary = join(app, 'Contents/MacOS/LascoriaAcceptance');
 const runtime = join(app, 'Contents/Resources/runtime');
 const hash = async (file) =>
   createHash('sha256')
