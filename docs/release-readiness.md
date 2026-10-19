@@ -171,7 +171,7 @@ Requested 15 October. See [attachment capabilities and proposed UX](attachments.
 - [ ] Add a narrow private staging boundary with content/size/decode/count/storage limits, validated formats/paths and explicit cleanup. Preserve the general IPC size limit; keep large/private bytes out of command journals, logs and diagnostics. No automatic external conversion/upload on selection.
 - [ ] Validate native pick/drop/paste, long names, duplicate/corrupt/oversized/unsupported files, mixed text/skills/images, model changes, active turns, questions/approvals, cancellation, offline/recovery and close/reopen across all three operating systems. Complete R11 resource and R12 privacy/security checks for this boundary.
 
-19 October native evidence: macOS physical composer text/image drop, folder refusal and Project folder intake/file refusal passed with user assistance; Windows native picker, physical composer file drops/folder refusal, owned-UI attachment restoration and installed-resource image lifecycle passed. Windows Project/Linux physical drops and the complete matrix remain open. See [native acceptance](native-acceptance.md).
+19 October native evidence: macOS physical composer text/image drop, folder refusal and Project folder intake/file refusal passed with user assistance; Windows native picker, physical composer file drops/folder refusal, owned-UI attachment restoration and installed-resource image lifecycle passed. Windows Project folder drops/file refusal also passed with user assistance. Linux physical drops and the complete matrix remain open. See [native acceptance](native-acceptance.md).
 
 ### R15 - Simple sessions and reusable multi-folder projects
 
