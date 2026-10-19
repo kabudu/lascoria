@@ -6,11 +6,20 @@ import { promisify } from 'node:util';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import readline from 'node:readline';
-import { request } from '../src/client.js';
-import { bounded } from '../src/runtime.js';
+import { pathToFileURL } from 'node:url';
 import { provider } from '../testing/provider.js';
+// LASCORIA_RELAY_APP runs this against an installed QA package (as relay-agent.test.js does).
+const app = process.env.LASCORIA_RELAY_APP;
+const workers = app ? join(app, 'runtime', 'workers') : resolve('src');
+const { request } = await import(pathToFileURL(join(workers, 'client.js')).href);
+const { bounded } = await import(pathToFileURL(join(workers, 'runtime.js')).href);
 const exec = promisify(execFile);
-const supervisor = resolve('supervisor/target/debug/constellation-supervisor');
+const supervisor = app
+  ? join(app, 'runtime', `constellation-supervisor${process.platform === 'win32' ? '.exe' : ''}`)
+  : resolve('supervisor/target/debug/constellation-supervisor');
+// Windows offers no same-user read of another process's environment through ps or /proc, so
+// there the stolen-capability case is replaced by the missing and guessed ones.
+const canSteal = process.platform !== 'win32';
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(action, predicate, label) {
   let last;
@@ -90,7 +99,7 @@ async function filesContaining(root, needle) {
 // real helper's environment.
 test(
   'only the Muse-started helper can use a session’s relay tools when peer binding is on',
-  { timeout: 150000, skip: process.platform === 'win32' && 'Windows is checked natively' },
+  { timeout: 150000 },
   async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'lascoria-relay-identity-'));
     const directory = join(root, 'state'),
@@ -99,6 +108,7 @@ test(
     const model = await provider(root, { relay: true });
     const env = {
       ...process.env,
+      ...(app ? { SCH_RESOURCES: join(app, 'runtime'), SCH_NODE: process.execPath } : {}),
       SCH_STATE_DIR: directory,
       SCH_PROVIDER: 'meta',
       // This test's Node is the "desktop", so it keeps full control while helpers are bound.
@@ -172,8 +182,8 @@ test(
     // A script running the same binary for session A: no capability, a guessed one, or the
     // real one copied from the helper's environment. Its parent is not A's Muse host.
     const refusedBecause = /not started by Lascoria for that session/;
-    const stolen = await stolenCapability(a);
-    for (const capability of [undefined, 'f'.repeat(64), stolen]) {
+    const stolen = canSteal ? await stolenCapability(a) : undefined;
+    for (const capability of [undefined, 'f'.repeat(64), ...(stolen ? [stolen] : [])]) {
       const impersonator = await helper(a, {
         ...env,
         ...(capability ? { SCH_RELAY_CAPABILITY: capability } : {}),
@@ -194,13 +204,15 @@ test(
     assert.equal((await api('relay/get', { sessionId: b })).messages.length, 1, 'nothing spoofed');
 
     // The capability is never stored, journalled or reported.
-    assert.ok(!JSON.stringify(await api('status')).includes(stolen), 'not in status');
-    assert.deepEqual(await filesContaining(directory, stolen), [], 'not in Lascoria state');
-    assert.deepEqual(await filesContaining(join(root, 'data'), stolen), [], 'not in Muse data');
+    if (stolen) {
+      assert.ok(!JSON.stringify(await api('status')).includes(stolen), 'not in status');
+      assert.deepEqual(await filesContaining(directory, stolen), [], 'not in Lascoria state');
+      assert.deepEqual(await filesContaining(join(root, 'data'), stolen), [], 'not in Muse data');
+    }
 
     // Linux: the desktop program itself, started with an injected library, is refused.
     if (process.platform === 'linux') {
-      const script = `import { request } from ${JSON.stringify(resolve('src/client.js'))};
+      const script = `import { request } from ${JSON.stringify(pathToFileURL(join(workers, 'client.js')).href)};
         await request(${JSON.stringify(directory)}, 'status').then(
           () => console.log('accepted'),
           (e) => console.log(e.message),
@@ -236,6 +248,7 @@ test(
       (await api('relay/get', { sessionId: b })).messages.at(-1)?.body,
       'Selected evidence from after-restart',
     );
-    assert.notEqual(await stolenCapability(a), stolen, 'a new host generation, a new capability');
+    if (canSteal)
+      assert.notEqual(await stolenCapability(a), stolen, 'a new host generation, a new capability');
   },
 );

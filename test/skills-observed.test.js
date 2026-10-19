@@ -5,9 +5,16 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { request } from '../src/client.js';
-import { bounded } from '../src/runtime.js';
+import { pathToFileURL } from 'node:url';
 import { provider } from '../testing/provider.js';
+// LASCORIA_RELAY_APP runs this against an installed QA package.
+const app = process.env.LASCORIA_RELAY_APP;
+const workers = app ? join(app, 'runtime', 'workers') : resolve('src');
+const { request } = await import(pathToFileURL(join(workers, 'client.js')).href);
+const { bounded } = await import(pathToFileURL(join(workers, 'runtime.js')).href);
+const supervisor = app
+  ? join(app, 'runtime', `constellation-supervisor${process.platform === 'win32' ? '.exe' : ''}`)
+  : resolve('supervisor/target/debug/constellation-supervisor');
 const exec = promisify(execFile);
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(action, predicate, label) {
@@ -51,8 +58,14 @@ test(
     await mkdir(workspace);
     const model = await provider(root, {});
     const directory = join(root, 'state');
-    const daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
-      env: { ...env, ...model.env, SCH_STATE_DIR: directory, SCH_PROVIDER: 'meta' },
+    const daemon = spawn(supervisor, [], {
+      env: {
+        ...env,
+        ...model.env,
+        ...(app ? { SCH_RESOURCES: join(app, 'runtime'), SCH_NODE: process.execPath } : {}),
+        SCH_STATE_DIR: directory,
+        SCH_PROVIDER: 'meta',
+      },
       stdio: 'ignore',
     });
     t.after(async () => {
