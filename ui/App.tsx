@@ -2904,6 +2904,7 @@ export function App() {
                     })()}
                     <form
                       data-drop-target="composer"
+                      data-drop-label="Drop to attach"
                       onDragOver={(event) => {
                         if (
                           status.features?.includes('attachments') &&

@@ -158,6 +158,7 @@ export function ProjectStart({
       className="project-setup"
       aria-label="Project setup"
       data-drop-target="project-folders"
+      data-drop-label="Drop folders to add"
     >
       {projects.length > 0 && (
         <label>
