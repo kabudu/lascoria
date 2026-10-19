@@ -129,6 +129,66 @@ impl Policy {
     }
 }
 
+/// macOS release builds name the Developer ID team whose signature the desktop must carry
+/// (F1 residual: code injection). The hardened runtime of a signed app refuses injected
+/// libraries and debugger attachment; checking the running peer's signature against the team
+/// stops a re-signed or modified copy. Unsigned QA and development builds have no team and
+/// rely on the path and content binding alone.
+#[cfg(target_os = "macos")]
+const RELEASE_TEAM: Option<&str> = option_env!("LASCORIA_APPLE_TEAM_ID");
+
+/// The code requirement a desktop signed by `team` satisfies.
+#[cfg(any(target_os = "macos", test))]
+pub fn team_requirement(team: &str) -> Result<String> {
+    ensure!(
+        team.len() == 10
+            && team
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()),
+        "Invalid Apple team identifier"
+    );
+    Ok(format!(
+        "anchor apple generic and certificate leaf[subject.OU] = \"{team}\""
+    ))
+}
+
+/// Whether the running process `pid` satisfies a code-signing requirement, checked by the
+/// system against the code it is running now rather than the file on disk.
+#[cfg(target_os = "macos")]
+pub fn satisfies(pid: u32, requirement: &str) -> Result<bool> {
+    use security_framework::os::macos::code_signing::{
+        Flags, GuestAttributes, SecCode, SecRequirement,
+    };
+    let requirement: SecRequirement = requirement
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid code requirement"))?;
+    let mut attributes = GuestAttributes::new();
+    attributes.set_pid(pid as libc::pid_t);
+    let Ok(code) = SecCode::copy_guest_with_attribues(None, &attributes, Flags::NONE) else {
+        return Ok(false);
+    };
+    Ok(code.check_validity(Flags::NONE, &requirement).is_ok())
+}
+
+/// Refuses a desktop peer whose running code is not signed by the release team, on macOS
+/// release builds. Elsewhere, and in unsigned builds, there is nothing to check.
+pub fn check_desktop_signature(pid: Option<u32>) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    if let Some(team) = RELEASE_TEAM {
+        let signed = match pid {
+            Some(pid) => satisfies(pid, &team_requirement(team)?)?,
+            None => false,
+        };
+        ensure!(
+            signed,
+            "Only the Lascoria app can control its background service; this copy is not signed by Lascoria"
+        );
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = pid;
+    Ok(())
+}
+
 /// Compares a presented control token with the expected one in time that depends only on the
 /// lengths, so response timing does not reveal how many leading bytes matched (F4).
 pub fn same_secret(presented: &str, expected: &str) -> bool {
@@ -184,6 +244,40 @@ mod tests {
         ] {
             assert!(authorise(Peer::RelayHelper, operation).is_err());
         }
+    }
+
+    #[test]
+    fn team_requirements_name_only_a_well_formed_team() {
+        assert_eq!(
+            team_requirement("ABCDE12345").unwrap(),
+            "anchor apple generic and certificate leaf[subject.OU] = \"ABCDE12345\""
+        );
+        for bad in [
+            "",
+            "abcde12345",
+            "ABCDE1234",
+            "ABCDE12345\" or anchor apple",
+        ] {
+            assert!(team_requirement(bad).is_err(), "{bad}");
+        }
+    }
+
+    // The system checks the running code: an Apple platform binary satisfies "anchor apple",
+    // and neither it nor an unknown process satisfies a Developer ID team requirement.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn running_code_is_checked_against_a_signing_requirement() -> Result<()> {
+        let mut sleeper = std::process::Command::new("/bin/sleep").arg("5").spawn()?;
+        let pid = sleeper.id();
+        let platform = satisfies(pid, "anchor apple");
+        let team = satisfies(pid, &team_requirement("ABCDE12345")?);
+        let _ = sleeper.kill();
+        let _ = sleeper.wait();
+        assert!(platform?);
+        assert!(!team?);
+        assert!(!satisfies(u32::MAX >> 1, "anchor apple")?);
+        assert!(satisfies(pid, "not a requirement").is_err());
+        Ok(())
     }
 
     #[test]
