@@ -873,7 +873,8 @@ impl Actor {
                     context["revision"] != row["projectBriefed"]
                         && !params["text"].as_str().unwrap_or("").starts_with('/')
                 })
-                .and_then(projects::brief)
+                .and_then(|_| projects::working_context(&row))
+                .and_then(|context| projects::brief(&context))
         } else {
             None
         };
