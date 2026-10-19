@@ -187,6 +187,7 @@ Ubuntu 24.04 x64 container, WebKitGTK 2.52.6 under Xvfb (no GPU; software render
 
 - Notifications: with a D-Bus session and the dunst notification daemon, **Send a test notification** and a background task completing while no Lascoria window had focus each produced one `Notify` call; the task notice named the kind of update and the session, not the task text. A focused window got none.
 - Installed package: `npx tauri build --bundles deb` produced `Lascoria_0.1.0_amd64.deb` (57 MiB; depends on `libwebkit2gtk-4.1-0` and `libgtk-3-0`). `dpkg -i` installed `/usr/bin/lascoria` with its runtime in `/usr/lib/Lascoria/runtime`; the installed app started that supervisor, refused a CLI client, and sent notifications as `lascoria`. `dpkg -r` removed the program and kept the user's state folder; reinstalling and relaunching used it again.
+- AppImage: `npx tauri build --bundles appimage` produced `Lascoria_0.1.0_amd64.AppImage` (126 MiB). Run with `APPIMAGE_EXTRACT_AND_RUN=1` (no FUSE in the container), it started its bundled supervisor and refused a CLI client; after the window was closed the service kept running, and reopening the AppImage connected to that same service.
 - Finding fixed: Linux notifications and the window class used the build name `spatial-constellation-desktop`. `src-tauri/tauri.linux.conf.json` now names the Linux program `lascoria`, matching its icon, and the desktop entry gets the Development category.
 
-Not covered: a physical Linux desktop session (Wayland or X11 with a file manager), so native file drops and the folder chooser stay open for Linux; AppImage was not built here.
+Not covered: a physical Linux desktop session (Wayland or X11 with a file manager), so native file drops and the folder chooser stay open for Linux.
