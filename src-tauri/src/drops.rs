@@ -24,9 +24,23 @@ pub struct Drops {
     last: Mutex<Option<(u64, Vec<PathBuf>)>>,
 }
 
+/// Whether this platform's drop positions are device pixels. Tauri labels every drop
+/// position physical, but wry passes on what the system gives it: client pixels from
+/// WebView2 on Windows, and view points (already CSS pixels) from WKWebView and WebKitGTK.
+/// Dividing points by the scale factor put every Retina drop at half its real position.
+const POSITIONS_ARE_PIXELS: bool = cfg!(windows);
+
+fn to_css(position: (f64, f64), scale: f64, pixels: bool) -> (f64, f64) {
+    let scale = if pixels && scale > 0.0 { scale } else { 1.0 };
+    (position.0 / scale, position.1 / scale)
+}
+
 fn logical(window: &Window, position: tauri::PhysicalPosition<f64>) -> (f64, f64) {
-    let scale = window.scale_factor().unwrap_or(1.0);
-    (position.x / scale, position.y / scale)
+    to_css(
+        (position.x, position.y),
+        window.scale_factor().unwrap_or(1.0),
+        POSITIONS_ARE_PIXELS,
+    )
 }
 
 /// Called for every window drag-and-drop event.
@@ -101,4 +115,18 @@ pub async fn read_dropped(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::to_css;
+
+    #[test]
+    fn drop_positions_become_css_pixels_on_every_platform() {
+        // macOS and Linux report points: a Retina scale must not move the drop.
+        assert_eq!(to_css((1150.0, 800.0), 2.0, false), (1150.0, 800.0));
+        // Windows reports pixels: 150% scaling divides back to CSS pixels.
+        assert_eq!(to_css((1500.0, 900.0), 1.5, true), (1000.0, 600.0));
+        assert_eq!(to_css((10.0, 20.0), 0.0, true), (10.0, 20.0));
+    }
 }
