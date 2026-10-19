@@ -47,6 +47,11 @@ export function SessionRelay({
   const [error, setError] = useState('');
   const [receipts, setReceipts] = useState<Record<string, Json>>({});
   const name = (id: string) => labels[id] || `Session ${id.slice(-8)}`;
+  // What the other session can see: its Project and folder count, or its one folder.
+  const scope = (s: SessionRow) =>
+    s.projectContext
+      ? `Project ${s.projectContext.name}, ${s.projectContext.folders.length} ${s.projectContext.folders.length === 1 ? 'folder' : 'folders'}`
+      : s.workspace;
   const refresh = async () =>
     setInbox(await request<Inbox>('relay/get', { sessionId: session.id }));
   useEffect(() => {
@@ -121,7 +126,7 @@ export function SessionRelay({
                 {viewsEnabled && inbox
                   ? ` · ${inbox.messages.filter((m) => m.from === s.id && m.to === session.id && !m.viewedAtMillis).length} new`
                   : ''}{' '}
-                · {s.workspace}
+                · {scope(s)}
               </option>
             ))}
         </select>
