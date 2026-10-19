@@ -50,9 +50,12 @@ const UNREADABLE_NAME =
   /\.(pdf|zip|gz|tgz|tar|7z|rar|docx?|xlsx?|pptx?|key|pages|numbers|mp3|wav|m4a|aac|flac|ogg|avi|mkv|webm|heic|tiff?|bmp|exe|dmg|pkg|app|so|dylib|dll|wasm|bin|sqlite|db)$/i;
 
 /** What a chosen file will be staged as, or why it cannot be attached. */
-export function kindOf(file: { name: string; type: string }): Kind | string {
+export function kindOf(file: { name: string; type: string }, videos = true): Kind | string {
   if (IMAGES.includes(file.type)) return 'image';
-  if (VIDEOS.includes(file.type) || (!file.type && VIDEO_NAME.test(file.name))) return 'video';
+  if (VIDEOS.includes(file.type) || (!file.type && VIDEO_NAME.test(file.name)))
+    return videos
+      ? 'video'
+      : `${file.name || 'That video'} can't be attached: this session's model cannot read videos. Muse supports video only with Meta models.`;
   if (UNREADABLE.test(file.type) || UNREADABLE_NAME.test(file.name))
     return `${file.name || 'That file'} can't be attached: Lascoria attaches PNG, JPEG, GIF or WebP images, MP4 or QuickTime videos and text files.`;
   return 'text';
@@ -96,7 +99,10 @@ export function ComposerImages({
   steering,
   onChange,
   addRequest,
+  videos = true,
 }: {
+  /** False when the session's model provider cannot read video (Muse: Meta models only). */
+  videos?: boolean;
   sessionId: string;
   disabled: boolean;
   steering: boolean;
@@ -190,7 +196,7 @@ export function ComposerImages({
     const accepted: [File, Kind][] = [];
     const current = limits ?? FALLBACK;
     for (const file of files) {
-      const kind = kindOf(file);
+      const kind = kindOf(file, videos);
       if (kind !== 'image' && kind !== 'video' && kind !== 'text') {
         setNotice(kind);
         continue;

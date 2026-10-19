@@ -87,6 +87,15 @@ test('composer images: choose, paste, refuse, survive reload, remove and send wi
     await expect(
       page.getByRole('status').filter({ hasText: "report.pdf can't be attached" }),
     ).toBeVisible();
+    // The echo model is not a Meta model, so a video is refused before any upload.
+    await page
+      .getByLabel('Choose files to attach')
+      .setInputFiles([
+        { name: 'clip.mp4', mimeType: 'video/mp4', buffer: Buffer.from('not read') },
+      ]);
+    await expect(
+      page.getByRole('status').filter({ hasText: "this session's model cannot read videos" }),
+    ).toBeVisible();
     expect((await status()).commands.filter((c: any) => c.operation === 'turn')).toHaveLength(0);
 
     // Pasting an image adds it to the same strip.

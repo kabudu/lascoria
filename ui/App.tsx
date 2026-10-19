@@ -2988,6 +2988,10 @@ export function App() {
                           disabled={!available || busy}
                           steering={Boolean(session.state.activeTurnId)}
                           addRequest={imageDrop}
+                          videos={
+                            !session.state.modelRoute?.providerId ||
+                            session.state.modelRoute.providerId === 'meta'
+                          }
                           onChange={(ready, preparing) =>
                             setImages((previous) => ({
                               ...previous,
