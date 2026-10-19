@@ -3,6 +3,7 @@ import { request } from './api';
 import type { Json } from './types';
 import { FolderPath } from './FolderPath';
 import { ProjectMap, type MapLayout } from './ProjectMap';
+import { DROP_EVENT, type NativeDrop } from './drops';
 type Folder = { id: string; name: string; path: string; note?: string };
 type Project = {
   id: string;
@@ -113,8 +114,51 @@ export function ProjectStart({
     }
   }
   const locked = busy || picking || !!attempt;
+  // R15: folders dropped from the file manager fill empty folder rows, then add rows (up to
+  // eight). Nothing is saved until Save project, like Browse.
+  const setup = useRef<HTMLElement>(null);
+  const latest = useRef({ project, locked: false });
+  latest.current = { project, locked: busy || picking || !!attempt };
+  useEffect(() => {
+    const element = setup.current;
+    if (!element) return;
+    const take = (event: Event) => {
+      const drop = (event as CustomEvent<NativeDrop>).detail;
+      const { project: current, locked: blocked } = latest.current;
+      if (blocked) return;
+      const dirs = drop.entries.filter((e) => e.directory && e.path);
+      if (!dirs.length) {
+        setError('Drop folders here; files cannot be Project folders.');
+        return;
+      }
+      const folders = [...current.folders];
+      let skipped = drop.more;
+      for (const dir of dirs) {
+        if (folders.some((f) => f.path === dir.path)) continue;
+        const empty = folders.findIndex((f) => !f.path.trim());
+        if (empty >= 0)
+          folders[empty] = {
+            ...folders[empty],
+            path: dir.path!,
+            name: folders[empty].name.trim() || dir.name,
+          };
+        else if (folders.length < 8)
+          folders.push({ id: crypto.randomUUID(), name: dir.name, path: dir.path! });
+        else skipped++;
+      }
+      setError(skipped ? `A Project holds at most eight folders; ${skipped} not added.` : '');
+      edit({ ...current, folders });
+    };
+    element.addEventListener(DROP_EVENT, take);
+    return () => element.removeEventListener(DROP_EVENT, take);
+  }, []);
   return (
-    <section className="project-setup" aria-label="Project setup">
+    <section
+      ref={setup}
+      className="project-setup"
+      aria-label="Project setup"
+      data-drop-target="project-folders"
+    >
       {projects.length > 0 && (
         <label>
           Saved project
@@ -216,8 +260,9 @@ export function ProjectStart({
           />
         )}
         <p className="muted">
-          Your first folder is the default working folder. Muse receives every folder through its
-          native workspace context. Adding folders does not approve tool permissions.
+          Your first folder is the default working folder. Add folders with Browse, by typing a
+          path, or by dropping them here from your file manager. Muse receives every folder through
+          its native workspace context. Adding folders does not approve tool permissions.
         </p>
         <ol className="project-folders">
           {project.folders.map((folder, index) => (

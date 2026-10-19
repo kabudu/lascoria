@@ -56,6 +56,10 @@ Peer binding stops a script that only reads the token. It does not yet stop same
 - **Identity read at connection time.** The executable is resolved from the peer PID once per connection. PID reuse between connect and lookup is not exploitable without the token, and the token stays a second factor.
 - Hashing an unfamiliar executable runs on a blocking thread and is cached for 16 paths, so a hostile peer cannot stall other connections.
 
+## Native drops (19 October)
+
+`read_dropped` returns the bytes of one regular file from the most recent native drop, selected by drop token and position; the page cannot name a path, an older drop or a folder, and files over 100 MB are refused. The user chose every path by dropping it. Bytes then pass the same staging checks as chosen files.
+
 ## Supply chain (19 October)
 
 `node scripts/check-supply-chain.js` (also `npm run supply-chain`, and a required step of the release workflow's plan job) runs `npm audit` over the whole npm graph, `cargo audit` over the supervisor, desktop and runtime-support lockfiles, and a licence check of the shipped npm packages and every third-party crate. It fails on any known vulnerability, on an advisory warning not reviewed in the script (each reviewed one carries its reason), and on a licence outside the allowed permissive set (MPL-2.0 allowed as file-level copyleft). It needs the npm registry and the RustSec database, so it is a release and dependency-change gate rather than part of offline local CI.

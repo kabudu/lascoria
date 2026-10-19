@@ -80,7 +80,7 @@ Audited against the code at `e9d55d7` plus the R8 increment below, at the user's
 | R12 Security | Partial | Threat model, F1 peer binding (residual risks), F3 handle-checked reads and F4 constant-time token check (18 October), F7 notifications, supply-chain gate and S1 fix (19 October). | F1 residuals, signing/notarisation, adversarial OS tests, independent review. |
 | R13 UX / DX review | Partial | Per-increment language fixes. | Full journey review and findings register. |
 | R14 Attachments | Partial | Images, MP4/QuickTime videos and UTF-8 text files end to end; other formats refused with the reason. | Native pick/paste/drop on three OSes, real-provider video, R11/R12 checks. |
-| R15 Sessions / projects | Partial | Naming, saved Projects, workspaceRoots start, next-task folder changes, Browse, goal and folder notes (18 October), per-folder snapshots and evidence, isolated Project sessions with per-repository worktrees and commits (19 October). | Folder drop from the file manager, native and platform validation. |
+| R15 Sessions / projects | Partial | Naming, saved Projects, workspaceRoots start, next-task folder changes, Browse, goal and folder notes (18 October), per-folder snapshots and evidence, isolated Project sessions with per-repository worktrees and commits (19 October). | Native drop checks (DR1 to DR3), native and platform validation. |
 | R16 Session communication | Partial | Local inbox, agent tools, drafts, viewed state, links view; macOS/Windows/Linux runtime proofs. | Connect-sessions flow, budgets/identity work, full target matrix. |
 | R17 Account menu / Help | Awaiting validation | Identity label, Log out dialog, Help library. | Native runs on three OSes; plan name stays hidden (opaque tier, by design). |
 | D1 Git delivery | Scope decided: guarded commit only | Guarded commit of all Git-visible changes. | Plain UI and Help wording of the limits; native validation. The rest is on the roadmap. |
@@ -509,3 +509,7 @@ Added `scripts/check-supply-chain.js` (npm audit, cargo audit for all three lock
 ### R14 and R15 native rechecks (19 October, `c6aa4f9`)
 
 PW2 recheck passed natively: in an isolated Project session started against the QA build's release supervisor, Muse's echo of the Project note named both worktrees and neither original folder. R14 native attachment run: chooser, staging, PDF refusal, video disclosure and transcript naming passed; sending a video to a non-Meta model failed inside Muse ("video input is supported only by Meta"), now refused up front by the supervisor and the composer (see [attachments](attachments.md#videos-and-text-files-implemented-19-october)). Text-file sizes under 1 KB display as "1 KB"; acceptable for now.
+
+### R14/R15 native drops (19 October)
+
+The window now handles drops natively, so folders dropped on Project setup arrive with their paths and files dropped on the composer are read through a narrow command limited to the latest drop ([attachments](attachments.md#native-drops-19-october)). The Projects UI test covers folder and file drops on Project setup through the app's drop routing event; native DR1 to DR3 checks are pending.

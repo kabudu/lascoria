@@ -143,6 +143,21 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
     await expect(dialog.getByLabel('Folder name', { exact: true }).first()).toBeFocused();
     await expect(map.getByRole('button', { name: 'Reset arrangement' })).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: 'Reset arrangement' })).toBeVisible();
+    // A native folder drop (routed by the app to Project setup) adds a folder row; a file
+    // drop is refused. Nothing is saved until Save project.
+    const drop = (entries: object[]) =>
+      dialog.locator('[data-drop-target="project-folders"]').evaluate((el, entries) => {
+        el.dispatchEvent(
+          new CustomEvent('lascoria-native-drop', { detail: { token: 1, entries, more: 0 } }),
+        );
+      }, entries);
+    await drop([{ name: 'notes.txt', path: '/tmp/notes.txt', directory: false, bytes: 3 }]);
+    await expect(dialog.getByRole('alert')).toContainText('Drop folders here');
+    await drop([{ name: 'docs', path: '/tmp/dropped-docs', directory: true, bytes: null }]);
+    await expect(dialog.getByLabel('Full folder path').nth(2)).toHaveValue('/tmp/dropped-docs');
+    await expect(dialog.getByLabel('Folder name', { exact: true }).nth(2)).toHaveValue('docs');
+    await dialog.getByRole('button', { name: 'Remove docs', exact: true }).click();
+    await expect(dialog.getByLabel('Full folder path')).toHaveCount(2);
     await dialog.getByRole('button', { name: 'Save project', exact: true }).click();
     await expect(dialog.getByText('Saving project…', { exact: true })).toBeVisible();
     await expect(
