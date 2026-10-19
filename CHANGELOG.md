@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The shortcut picker now shows skills installed while a session is open: a list older than 30 seconds is refreshed each time the picker opens.
+
 - When connecting sessions, a Project session is listed by its Project name and folder count instead of only its first folder.
 
 - When a task runs a skill, the transcript shows the skill you requested and, separately, whether Muse reported loading it and from where. If Muse sends no report, Lascoria says so rather than guessing.

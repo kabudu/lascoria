@@ -7,8 +7,12 @@ export const LOCAL_COMMANDS = ['usage'];
 
 // Session-scoped catalog cache (R9). A catalog is reused until the session's Muse host restarts
 // (generation) or Muse reports that its invocable skills changed (skillsRevision), so typing
-// filters locally instead of asking Muse on every keystroke.
-const catalogs = new Map<string, { key: string; skills: SkillCatalogEntry[] }>();
+// filters locally instead of asking Muse on every keystroke. Muse 1.4.10 sends no skill/changed
+// for skills installed outside the session (for example with `muse skills install`), though its
+// skill/list already includes them, so a catalog older than this is shown and quietly re-read
+// once when the picker next opens.
+export const CATALOG_FRESH_MS = 30_000;
+const catalogs = new Map<string, { key: string; skills: SkillCatalogEntry[]; at: number }>();
 
 export function SkillPicker({
   sessionId,
@@ -37,24 +41,29 @@ export function SkillPicker({
   useEffect(() => {
     if (!open) return;
     const hit = catalogs.get(sessionId);
-    if (hit?.key === catalogKey) {
+    const known = hit?.key === catalogKey;
+    if (known) {
       setSkills(hit.skills);
       setState('');
-      return;
+      if (Date.now() - hit.at < CATALOG_FRESH_MS) return;
     }
     let cancelled = false;
-    setSkills([]);
-    setState('Reading Muse skills…');
+    if (!known) {
+      setSkills([]);
+      setState('Reading Muse skills…');
+    }
     const timer = setTimeout(() => {
       void request<{ skills: SkillCatalogEntry[] }>('skills', { sessionId }).then(
         (result) => {
           if (cancelled) return;
-          catalogs.set(sessionId, { key: catalogKey, skills: result.skills });
+          catalogs.set(sessionId, { key: catalogKey, skills: result.skills, at: Date.now() });
           setSkills(result.skills);
           setState('');
         },
         () => {
-          if (!cancelled) setState('Muse skills are unavailable. Retry by reopening the picker.');
+          // A failed background re-read keeps the catalog already shown.
+          if (!cancelled && !known)
+            setState('Muse skills are unavailable. Retry by reopening the picker.');
         },
       );
     }, 200);

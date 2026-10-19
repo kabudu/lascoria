@@ -99,6 +99,10 @@ test(
     await exec(process.env.MUSE_BIN ?? 'muse', ['skills', 'install', skill, '--scope', 'user'], {
       env,
     });
+    // A session already open lists a skill installed outside it on its next skill/list, though
+    // Muse 1.4.10 sends it no skill/changed; the picker re-reads older catalogs for this reason.
+    const probeList = await api('skills', { sessionId: probe.id });
+    assert.ok(probeList.skills.some((x) => x.selector === 'release-notes'));
     const [sessionId, ready] = await started('start');
     assert.equal(ready.handshake.experimentalApi, true, 'session host opted in');
     const catalog = await api('skills', { sessionId });
