@@ -28,6 +28,7 @@
   },
   "bundle": {
     "active": false,
+    "category": "DeveloperTool",
     "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
     "resources": {
       "../.dev/bundle-runtime/": "runtime/"
