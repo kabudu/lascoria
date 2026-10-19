@@ -196,3 +196,79 @@ test('transcript separates the requested skill from observed skill loading', asy
   );
   await expect(page.locator('.transcript-item[data-kind="skillRead"]')).toHaveCount(0);
 });
+
+// Muse 1.4.10 sends no skill/changed for a skill installed outside the session, although its
+// skill/list includes it; a catalog older than 30 seconds is re-read when the picker opens.
+test('an older skill catalog is re-read on opening, showing skills added outside Muse', async ({
+  page,
+}) => {
+  await page.clock.install();
+  const session = {
+    id: 'session-a',
+    workspace: '/repo',
+    generation: 1,
+    lifecycle: 'connected',
+    interruptions: [],
+    state: {
+      current: true,
+      skillsRevision: 0,
+      items: [],
+      turns: [],
+      approvals: [],
+      userInputs: [],
+    },
+  };
+  const status = { pid: 1, version: 'v1', features: ['skills'], commands: [], sessions: [session] };
+  let reads = 0;
+  let catalog = [
+    { selector: 'review', displayName: 'Review', description: 'Review', source: 'user' },
+  ];
+  await page.exposeFunction('freshBridge', async (command: string, args: any) => {
+    if (command === 'connect_supervisor') return status;
+    if (args.operation === 'status')
+      return args.params?.since === status.version
+        ? { unchanged: true, version: status.version, pid: 1 }
+        : status;
+    if (args.operation === 'presentation/get')
+      return { revision: 0, value: { sessionId: 'session-a' } };
+    if (args.operation === 'review/list') return { artifacts: [], evidence: [] };
+    if (args.operation === 'skills') {
+      reads++;
+      return { skills: catalog };
+    }
+    return {};
+  });
+  await page.addInitScript(() => {
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => (window as any).freshBridge(command, args),
+    };
+  });
+  await page.goto('/');
+  const composer = page.getByRole('textbox', { name: 'New task for this session', exact: true });
+  const skills = page.getByRole('region', { name: 'Muse shortcuts' }).getByRole('group', {
+    name: 'Muse skills',
+  });
+  await composer.fill('/');
+  await page.clock.runFor(500);
+  await expect(skills.getByRole('button', { name: /\/review/ })).toBeVisible();
+  expect(reads).toBe(1);
+  // Within 30 seconds, reopening reuses the catalog.
+  await composer.fill('');
+  catalog = [
+    ...catalog,
+    { selector: 'deploy', displayName: 'Deploy', description: 'Ship', source: 'user' },
+  ];
+  await page.clock.runFor(5000);
+  await composer.fill('/');
+  await page.clock.runFor(500);
+  expect(reads).toBe(1);
+  await expect(skills.getByRole('button', { name: /\/deploy/ })).toHaveCount(0);
+  // Later, the cached list shows at once and the re-read adds the new skill.
+  await composer.fill('');
+  await page.clock.runFor(31_000);
+  await composer.fill('/');
+  await expect(skills.getByRole('button', { name: /\/review/ })).toBeVisible();
+  await page.clock.runFor(500);
+  await expect(skills.getByRole('button', { name: /\/deploy/ })).toBeVisible();
+  expect(reads).toBe(2);
+});
