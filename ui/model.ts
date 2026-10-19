@@ -657,7 +657,12 @@ export function skillRequest(
   const selector = /^\/(\S+)/.exec(item.text)?.[1];
   if (!selector || selector === 'usage') return null;
   const read = items.find(
-    (i) => i.kind === 'skillRead' && i.turnId === item.turnId && i.selector === selector,
+    (i) =>
+      typeof item.turnId === 'string' &&
+      item.turnId.length > 0 &&
+      i.kind === 'skillRead' &&
+      i.turnId === item.turnId &&
+      i.selector === selector,
   );
   const from = typeof read?.source === 'string' && read.source ? ` from ${read.source}` : '';
   const observed = read

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skill-load attribution requires a matching native turn identity; missing IDs cannot associate unrelated transcript entries.
+
 - On Linux the program is now called `lascoria`, so notifications and window lists show Lascoria's name and icon, and the app is listed under Development.
 
 - The shortcut picker now shows skills installed while a session is open: a list older than 30 seconds is refreshed each time the picker opens.

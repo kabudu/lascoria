@@ -588,6 +588,12 @@ test('a requested skill is shown apart from what Muse reported about loading it'
     skillRequest(ask, [], { reported: false, settled: true }).observed,
     'This Muse host does not report skill loading',
   );
+  // Missing native turn identities must not associate unrelated historical items.
+  assert.equal(
+    skillRequest({ ...ask, turnId: undefined }, [read('completed', { turnId: undefined })], settled)
+      .reported,
+    false,
+  );
   // Plain text, the local /usage command and Muse's own messages are not skill requests.
   for (const item of [
     { kind: 'userMessage', text: 'Write notes', turnId: 't1' },
