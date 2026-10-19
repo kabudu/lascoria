@@ -252,6 +252,8 @@ enum Backend {
 pub struct Worker {
     backend: Backend,
     pub ready: Value,
+    session: String,
+    generation: u64,
 }
 impl Worker {
     pub async fn spawn(
@@ -265,10 +267,12 @@ impl Worker {
         if std::env::var_os("SCH_WORKER").is_some()
             || std::env::var_os("SCH_DEDICATED_WORKERS").is_some()
         {
-            let worker = Dedicated::spawn(node, script, db, session, generation).await?;
+            let worker = Dedicated::spawn(node, script, db, session.clone(), generation).await?;
             return Ok(Self {
                 ready: worker.ready.clone(),
                 backend: Backend::Dedicated(Box::new(worker)),
+                session,
+                generation,
             });
         }
         let mut pool = pool.lock().await;
@@ -294,6 +298,8 @@ impl Worker {
                 session: session.clone(),
                 generation,
             },
+            session: session.clone(),
+            generation,
         };
         let result = broker
             .call(
@@ -315,7 +321,14 @@ impl Worker {
             }
         }
     }
-    pub async fn call(&mut self, request: Value) -> Result<Value> {
+    pub async fn call(&mut self, mut request: Value) -> Result<Value> {
+        // The helper capability goes only to the worker that configures the host's MCP
+        // server; it is added after journalling and never stored (F1).
+        if ["start", "resume"].contains(&request["operation"].as_str().unwrap_or(""))
+            && let Some(capability) = crate::relay_identity::current(&self.session)
+        {
+            request["params"]["relayCapability"] = json!(capability);
+        }
         match &mut self.backend {
             Backend::Dedicated(worker) => worker.call(request).await,
             Backend::Shared {
@@ -335,6 +348,7 @@ impl Worker {
         }
     }
     pub async fn stop(&mut self) {
+        crate::relay_identity::revoke(&self.session, self.generation);
         match &mut self.backend {
             Backend::Dedicated(worker) => worker.stop().await,
             Backend::Shared {
