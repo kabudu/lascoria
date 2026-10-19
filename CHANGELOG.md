@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- When connecting sessions, a Project session is listed by its Project name and folder count instead of only its first folder.
+
 - When a task runs a skill, the transcript shows the skill you requested and, separately, whether Muse reported loading it and from where. If Muse sends no report, Lascoria says so rather than guessing.
 
 - Muse sessions' message and decision tools now work only through the helper Muse started for that session. Another program running the same helper, or a debugged or library-injected copy of the app on Linux, is refused.
