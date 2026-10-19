@@ -56,11 +56,23 @@ Peer binding stops a script that only reads the token. It does not yet stop same
 - **Identity read at connection time.** The executable is resolved from the peer PID once per connection. PID reuse between connect and lookup is not exploitable without the token, and the token stays a second factor.
 - Hashing an unfamiliar executable runs on a blocking thread and is cached for 16 paths, so a hostile peer cannot stall other connections.
 
+## Supply chain (19 October)
+
+`node scripts/check-supply-chain.js` (also `npm run supply-chain`, and a required step of the release workflow's plan job) runs `npm audit` over the whole npm graph, `cargo audit` over the supervisor, desktop and runtime-support lockfiles, and a licence check of the shipped npm packages and every third-party crate. It fails on any known vulnerability, on an advisory warning not reviewed in the script (each reviewed one carries its reason), and on a licence outside the allowed permissive set (MPL-2.0 allowed as file-level copyleft). It needs the npm registry and the RustSec database, so it is a release and dependency-change gate rather than part of offline local CI.
+
+First run, 19 October: npm 0 vulnerabilities; 843 crates checked, all licences allowed. One finding, fixed:
+
+| ID  | Severity | Finding                                                                                                                                                                                                                                                                                                                                        | Fix                                                                                                                                                                                                                         |
+| --- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | Medium   | `tauri-plugin-updater` 2.13.1 pulled in `zip` 4.6.1 with RUSTSEC-2026-0367, -0368 and -0369 (symlink targets, Unix permissions and SUID bits applied on extraction). Its Windows updater extracts a `.zip` update into a temporary folder. Exploiting it needed an update signed with Lascoria's key, but the extractor was not needed at all. | The plugin's default `zip` feature is disabled: Lascoria's updates are signed installers and `.app.tar.gz`/AppImage files, never zip archives (`scripts/release-artifacts.js`). `zip` is no longer in the dependency graph. |
+
+Reviewed warnings (not vulnerabilities): unmaintained `zvariant`, `zvariant_derive`, `zbus_names` (Linux D-Bus through Tauri and the keyring), unmaintained `proc-macro-error` (build time, Linux GTK bindings) and an iterator unsoundness in `glib` 0.18 that Lascoria code does not reach. They are re-reviewed when Tauri moves to newer Linux bindings.
+
 ## Remaining review scope
 
 These parts of R12 have not been reviewed yet and must be completed before release:
 
-- Supply chain: dependency audit (`cargo audit`/`npm audit` equivalents run offline against a pinned advisory database), licence inventory, CI action pinning when Actions are enabled, signing and notarisation, updater signatures (R3).
+- Supply chain, remaining: signing and notarisation with real release credentials, updater signature checks on each target OS (R3), and CI action pinning review once Actions are enabled (the release workflow already pins actions by commit).
 - Adversarial testing on all three operating systems: malformed or fuzzed IPC frames, cross-user connection attempts, endpoint replacement, hostile repositories, filenames, links and hooks, interrupted install/update, and resource exhaustion.
 - Muse skills, plugins and MCP configuration from repositories, and cross-workspace access through Project roots.
 - Full-history privacy review of the Git repository (PL03).
