@@ -3384,6 +3384,7 @@ export function App() {
         {modal === 'start' && startKind === 'project' && status.features?.includes('projects') && (
           <ProjectStart
             disabled={!runtimeReady || !!(account?.managed && !account.authenticated)}
+            worktrees={Boolean(status.features?.includes('projectWorktrees'))}
             economical={
               prefs.efficiency?.preset === 'economical' &&
               Boolean(status.features?.includes('effortPresets'))

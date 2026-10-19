@@ -308,15 +308,13 @@ pub async fn handle(
         // snapshot belongs to, from the folders the session has confirmed. Its path is
         // recorded with the snapshot, so every later check reads that same repository.
         let folder = match session.get("projectContext") {
-            Some(project) => {
+            Some(_) => {
                 let id = params["folderId"]
                     .as_str()
                     .context("Choose which Project folder to snapshot")?;
-                let folder = project["folders"]
-                    .as_array()
-                    .and_then(|folders| folders.iter().find(|f| f["id"] == id))
-                    .context("That folder is no longer part of this session's Project")?;
-                Some(json!({"id":folder["id"],"name":folder["name"],"path":folder["path"]}))
+                // The folder's own worktree in an isolated session, otherwise the folder.
+                let view = crate::workspace::scoped(&session, Some(id))?;
+                Some(json!({"id":id,"name":view["folder"]["name"],"path":view["workspace"]}))
             }
             None => None,
         };

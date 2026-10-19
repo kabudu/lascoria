@@ -164,6 +164,12 @@ test('Projects: reorder, save, concurrent edits, native start and narrow layout'
     const axe = await new AxeBuilder({ page }).include('dialog').analyze();
     expect(axe.violations).toEqual([]);
     await dialog.getByLabel('Project task', { exact: true }).fill('Confirm both roots');
+    // Isolation is offered, off by default, and explains its requirements when chosen.
+    const isolate = dialog.getByRole('checkbox', { name: /own isolated worktree/ });
+    await expect(isolate).not.toBeChecked();
+    await isolate.check();
+    await expect(dialog).toContainText('must be a Git repository root');
+    await isolate.uncheck();
     await dialog.getByRole('button', { name: 'Start project session', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('lost start reply');
     await dialog.getByRole('button', { name: 'Retry exact request', exact: true }).click();

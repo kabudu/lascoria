@@ -707,10 +707,12 @@ pub fn remove_archived(
             !relay.contains(id),
             "Disconnect and clear local messages before removing a session that has them"
         );
-        if row["workspaceDiscarded"] != true
-            && let Some(path) = row["managedWorkspace"]["path"].as_str()
-        {
-            retained.push(json!({"sessionId":id,"path":path}));
+        if row["workspaceDiscarded"] != true {
+            for managed in crate::workspace::owned(&row) {
+                if let Some(path) = managed["path"].as_str() {
+                    retained.push(json!({"sessionId":id,"path":path}));
+                }
+            }
         }
     }
     let backup = create(
