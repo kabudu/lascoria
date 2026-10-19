@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import type { Json } from './types';
 import { FolderPath } from './FolderPath';
+import { ProjectMap, type MapLayout } from './ProjectMap';
 type Folder = { id: string; name: string; path: string; note?: string };
 type Project = {
   id: string;
@@ -22,11 +23,16 @@ export function ProjectStart({
   disabled,
   economical,
   worktrees,
+  maps,
+  onMap,
 }: {
   started: (id: string) => void;
   disabled: boolean;
   /** R15: the supervisor can give each folder its own isolated worktree. */
   worktrees?: boolean;
+  /** Per-user card positions for each Project's map, by Project and folder ID. */
+  maps?: Record<string, MapLayout>;
+  onMap?: (projectId: string, layout: MapLayout) => void;
   /** T4: start with the lowest reasoning effort the model offers. */
   economical?: boolean;
 }) {
@@ -194,6 +200,21 @@ export function ProjectStart({
             onChange={(e) => edit({ ...project, goal: e.target.value })}
           />
         </label>
+        {onMap && (
+          <ProjectMap
+            name={project.name}
+            goal={project.goal ?? undefined}
+            folders={project.folders}
+            layout={Object.fromEntries(
+              Object.entries(maps?.[project.id] ?? {}).filter(([id]) =>
+                project.folders.some((f) => f.id === id),
+              ),
+            )}
+            disabled={locked}
+            onLayout={(layout) => onMap(project.id, layout)}
+            onOpen={(id) => document.getElementById(`project-folder-name-${id}`)?.focus()}
+          />
+        )}
         <p className="muted">
           Your first folder is the default working folder. Muse receives every folder through its
           native workspace context. Adding folders does not approve tool permissions.
@@ -246,6 +267,7 @@ export function ProjectStart({
               <label>
                 Folder name
                 <input
+                  id={`project-folder-name-${folder.id}`}
                   value={folder.name}
                   maxLength={100}
                   required

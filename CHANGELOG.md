@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Project setup shows a map of the Project's folders around its goal. Arrange the cards by dragging or with the arrow keys; it is only a picture and never changes the folder order or what Muse receives.
+
 - Project sessions can be isolated: each folder gets its own worktree and task branch. In the Workspace tab, choose a folder to preview, test or commit its changes; Discard removes every folder's worktree and keeps the branches.
 
 - Collapsed Attention panels avoid rendering hidden request rows while keeping their counts and notifications current.

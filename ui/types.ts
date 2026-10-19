@@ -116,6 +116,8 @@ export interface Prefs {
   labels?: Record<string, string>;
   annotations?: Record<string, string>;
   positions?: Record<string, { x: number; y: number }>;
+  /** R15: card positions on each Project's map; a view preference only. */
+  projectMaps?: Record<string, Record<string, { x: number; y: number }>>;
   viewport?: { x: number; y: number };
   edges?: {
     id: string;
