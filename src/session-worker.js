@@ -3,6 +3,7 @@ import { Session } from '@muse-code/sdk';
 import { isDeepStrictEqual } from 'node:util';
 import { open, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { toNamespacedPath } from 'node:path';
 import { bounded, spawnRuntime } from './runtime.js';
 
 export async function createSession(send, onDeath) {
@@ -429,7 +430,10 @@ export async function createSession(send, onDeath) {
           ? {
               sessionId,
               workspaceRoot: params.workspace,
-              ...(params.workspaceRoots ? { workspaceRoots: params.workspaceRoots } : {}),
+              // Muse requires native canonical roots, including the Windows namespace prefix.
+              ...(params.workspaceRoots
+                ? { workspaceRoots: params.workspaceRoots.map(toNamespacedPath) }
+                : {}),
               ...initialRoute,
               ...relayConfig,
             }
@@ -564,7 +568,7 @@ export async function createSession(send, onDeath) {
           throw new ValidationError(
             'Finish or stop the current task before applying Project folder changes',
           );
-        wire.workspaceRoots = params.workspaceRoots;
+        wire.workspaceRoots = params.workspaceRoots.map(toNamespacedPath);
       }
       // Model-visible Project context the supervisor attached: a folder change (Muse 1.4.10
       // applies the replacement but keeps describing the session-start folders) or the Project

@@ -23,7 +23,7 @@ Run from the repository (macOS, Linux) or the copied package (Windows), with Mus
 
 | ID | Command | Expected |
 | --- | --- | --- |
-| A1 | `node testing/lifecycle-smoke.js <app folder> <muse 1.4.10> [app binary]` | One JSON line with `"result":"PASS"`. It covers a real echo task, image staging and sending, transcript export (private file), case-insensitive search, continuation without a model turn, backup/export/import, archived-session removal, staged restore applied on restart with a safety backup, and peer binding in both directions. On macOS the app folder is `.dev/native-qa` (after `package-native-qa.js`) and the app binary is `.dev/macos-qa/Lascoria QA.app/Contents/MacOS/spatial-constellation-desktop`; on Windows use `.` and `Lascoria.exe`. Anything in `notExercised` is recorded as not run. |
+| A1 | `node testing/lifecycle-smoke.js <app folder> <muse 1.4.10> [app binary]` | One JSON line with `"result":"PASS"`. It covers a real echo task, image staging and sending, transcript export (private file), case-insensitive search, continuation without a model turn, backup/export/import, archived-session removal, staged restore applied on restart with a safety backup, and peer binding in both directions. On macOS the app folder is `.dev/native-qa` (after `package-native-qa.js`) and the app binary is `.dev/macos-qa/Lascoria QA.app/Contents/MacOS/LascoriaQA`; on Windows use `.` and `Lascoria.exe`. Anything in `notExercised` is recorded as not run. |
 | A2 | Windows only: `runtime\node.exe testing\windows-smoke.js . <muse.exe>` | `"result":"PASS"`, including job-object process-tree cleanup and Credential Manager. |
 | A3 | `node --test testing/relay-agent.test.js` with `LASCORIA_RELAY_APP` set to the package | All tests pass (local session messages, restart, drafts). |
 
@@ -123,3 +123,29 @@ Use two disposable Git repositories with one commit each.
 A signed-in Muse task in isolated QA state invoked Jev once through the decision tool, recorded a completed `jev-1.13.0` answer (0.98) and replied 0.98. The public general-knowledge statement was the only decision context; the key was forgotten. This is prompted tool use, not spontaneous delegation or a coding-quality assessment. OpenAI was not retried.
 
 The separate subscription token benchmark completed three baseline and three economical/reused-result repairs of the same tiny addition fixture; every independent test passed. Mean reported tokens: 179,069 versus 140,057 (21.8% lower); mean elapsed 26.44 versus 21.64 seconds. These working-tree observations on Muse 1.4.10/macOS arm64 do not establish general savings, provider billing savings or full T5 acceptance. Physical DR1-DR3 and Windows/Linux acceptance remain open. QA bundles now use a distinct identifier/window title; computer-use still returned the original pending-question window during this run, which was not modified. No native drop pass is claimed.
+
+
+### Native continuation evidence, 19 October
+
+Based on `68f0e2b` plus the reviewed working-tree changes in the accompanying PR receipt:
+
+- macOS arm64 DR1/DR2: the user physically dragged the synthetic text/image pair into the isolated QA composer and confirmed highlight/staging and folder refusal. The native view showed both files and the named refusal; `attachment/list` independently returned exactly the two ready, session-owned attachments (text 34 bytes, PNG 70 bytes). DR3 Project folder drops and physical Windows/Linux drops remain pending.
+- QA selection: a unique macOS executable, in addition to the bundle identifier and title, selected the isolated window correctly. The macOS QA packager now uses `LascoriaQA`, re-signs after renaming it and retains one QA bundle. The rebuilt package passed; the physical trial used the disposable uniquely named clone. Original user windows and supervisors were preserved.
+- Windows x64 installed-resource checks with official Muse 1.4.10-R6427.1: `windows-smoke.js` passed all eleven checks, including native turn, unauthenticated IPC rejection, draft restart, command execution, detached-descendant cleanup on normal completion and supervisor crash, fingerprinting, and Credential Manager save/read/delete without a journal secret. `lifecycle-smoke.js` passed all ten checks with no unexercised entries: image staging/send/clear, transcript export, history search, continuation without a model turn, backup/import and removal/restore, and peer-process refusal/desktop acceptance. Both used controlled/echo providers, not paid model requests.
+- The Windows Project worktree regression first failed at Muse `session/start`: additional roots lacked the native Windows namespace prefix. The SDK worker now applies Node's platform path conversion at start and next-task replacement; Unix paths remain unchanged. The same installed-resource test then passed: both worktree roots reached the real Muse host with a controlled provider, scoped preview/commit stayed in the selected repository, stale discard was refused, and all-folder discard kept the commits and original checkouts intact. The portable test is packaged for repeatable platform acceptance. A second installed-resource Windows regression passed next-task folder replacement, retained user transcript/context, compaction and supervisor recovery.
+- Windows native Attach file selected a synthetic text/image pair through the OS chooser and displayed both staged items, including the PNG thumbnail/dimensions. This proves native picking, not native drag/drop. Automation did not establish an OS drag session through the remote viewer, so no Windows physical drop pass is claimed.
+
+The transferred Windows archive and official vendor Muse binary were SHA-256 verified before execution. These were unsigned private QA artifacts, not published distributions. Automatic antivirus scans completed without exceptions or disabled protection. Result logs remain local to the laptop; copying them back through the redirected share was refused, so the passing exit codes and summaries were verified in its console. Full R14/R15, Linux, interruption and public-release gates remain open.
+
+
+Repeat the installed-resource Project checks from a private unpacked QA package with its pinned Node and Muse binaries (no provider key is needed):
+
+```bat
+set "LASCORIA_PROJECT_APP=C:\path\to\private-qa-package"
+set "MUSE_BIN=C:\path\to\verified-muse.exe"
+rem Put Git for Windows and the package's runtime folder on PATH first.
+"%LASCORIA_PROJECT_APP%\runtime\node.exe" --test "%LASCORIA_PROJECT_APP%\testing\project-worktrees.test.js"
+"%LASCORIA_PROJECT_APP%\runtime\node.exe" --test "%LASCORIA_PROJECT_APP%\testing\project-context.test.js"
+```
+
+Each test starts its own disposable supervisor/state and local controlled model provider, then cleans up. It never uses the user's running supervisor. These checks exercise the real Muse protocol but are not live-model quality trials.
