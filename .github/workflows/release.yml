@@ -94,6 +94,8 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
       # Baked into the desktop binary: the updater accepts only bundles signed by this key.
       LASCORIA_UPDATER_PUBKEY: ${{ vars.LASCORIA_UPDATER_PUBKEY }}
+      # Baked into the macOS supervisor: it accepts only a desktop signed by this team (F1).
+      LASCORIA_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || secrets.APPLE_TEAM_ID }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}

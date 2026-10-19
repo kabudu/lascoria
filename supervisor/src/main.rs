@@ -1017,6 +1017,9 @@ async fn connection(
     let enforced = policy.enforced();
     let peer_class = tokio::task::spawn_blocking(move || {
         let class = policy.classify(executable)?;
+        if class == peer::Peer::Desktop {
+            peer::check_desktop_signature(peer_pid)?;
+        }
         if class == peer::Peer::Desktop
             && let Some(pid) = peer_pid
             && let Some(reason) = lascoria_runtime::platform::process_interference(pid)
