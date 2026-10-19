@@ -183,4 +183,6 @@ Ubuntu 24.04 x64 container, WebKitGTK 2.52.6 under Xvfb (no GPU; software render
 - Echo mode (script-started supervisor): the window connected ("Background service connected"), showed the session, and a task typed into the composer with **Start turn** completed (`echo: Say hello from Linux`) with the transcript and the Attention entry. The echo provider also leaves failed background reminder items, as it does on every platform with that provider.
 - Bound mode (the desktop starts its own supervisor from `runtime/`): Muse 1.4.10 was found ready and the account screen appeared; a Node CLI client was refused with "Only the Lascoria app can control its background service", so F1 peer binding holds with the real Linux desktop. The API key status showed as unavailable because the container has no Secret Service.
 
-Not covered: a physical Linux desktop session (Wayland or X11 with a file manager), so native file drops, the folder chooser, notifications and the Secret Service vault stay open for Linux.
+- Secret Service: under a D-Bus session with an unlocked GNOME Keyring, a synthetic decision key saved through `decision/setKey` was reported saved, was found in the Secret Service under `dev.lascoria.decision-credentials`, and was gone after `decision/forgetKey`.
+
+Not covered: a physical Linux desktop session (Wayland or X11 with a file manager), so native file drops, the folder chooser and notifications stay open for Linux.
