@@ -104,3 +104,95 @@ test('skill picker caches per session, invalidates on skill changes and explains
   expect(skillReads).toBe(2);
   await expect(skills.getByRole('button', { name: / · Review / })).toHaveCount(0);
 });
+
+// R9: the transcript names the skill a task asked for and, separately, what Muse reported
+// about loading it; without a `skillRead` report the outcome is shown as unknown.
+test('transcript separates the requested skill from observed skill loading', async ({ page }) => {
+  const turn = (turnId: string) => ({
+    turnId,
+    commandId: `c-${turnId}`,
+    state: 'settled',
+    terminal: 'completed',
+  });
+  const items = (turnId: string, selector: string, loaded: boolean) => [
+    {
+      itemId: `${turnId}-ask`,
+      kind: 'userMessage',
+      status: 'completed',
+      revision: 1,
+      turnId,
+      text: `/${selector} for 1.0`,
+    },
+    ...(loaded
+      ? [
+          {
+            itemId: `${turnId}-read`,
+            kind: 'skillRead',
+            status: 'completed',
+            revision: 1,
+            turnId,
+            selector,
+            source: 'user',
+          },
+        ]
+      : []),
+    {
+      itemId: `${turnId}-reply`,
+      kind: 'agentMessage',
+      status: 'completed',
+      revision: 1,
+      turnId,
+      text: 'Notes written.',
+    },
+  ];
+  const session = {
+    id: 'session-a',
+    workspace: '/repo',
+    generation: 1,
+    lifecycle: 'connected',
+    interruptions: [],
+    handshake: { experimentalApi: true },
+    state: {
+      current: true,
+      items: items('t1', 'release-notes', true),
+      totalItems: 3,
+      turns: [turn('t1')],
+      approvals: [],
+      userInputs: [],
+    },
+  };
+  const status = { pid: 1, version: 'v1', features: ['skills'], commands: [], sessions: [session] };
+  await page.exposeFunction('skillAttributionBridge', async (command: string, args: any) => {
+    if (command === 'connect_supervisor') return status;
+    if (args.operation === 'status')
+      return args.params?.since === status.version
+        ? { unchanged: true, version: status.version, pid: 1 }
+        : status;
+    if (args.operation === 'presentation/get')
+      return { revision: 0, value: { sessionId: 'session-a' } };
+    if (args.operation === 'review/list') return { artifacts: [], evidence: [] };
+    return {};
+  });
+  await page.addInitScript(() => {
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => (window as any).skillAttributionBridge(command, args),
+    };
+  });
+  await page.goto('/');
+  const label = page.locator('.transcript-skill');
+  await expect(label).toHaveText(
+    'Requested skill /release-notes · Muse reported loading it from user',
+  );
+  await expect(page.locator('.transcript-item[data-kind="skillRead"] pre').first()).toHaveText(
+    'release-notes (user) · loaded',
+  );
+
+  // The same request with no load report: unknown, not "skipped".
+  session.state.items = items('t1', 'release-notes', false);
+  status.version = 'v2';
+  await expect(label).toHaveText(
+    'Requested skill /release-notes · Muse did not report loading it; that does not show whether it ran',
+    { timeout: 6000 },
+  );
+  await expect(page.locator('.transcript-item[data-kind="skillRead"]')).toHaveCount(0);
+});

@@ -15,6 +15,22 @@ export async function bounded(promise, ms = 10000) {
   }
 }
 
+/**
+ * Muse 1.4.10's experimental surface adds these notifications over the stable one. Session
+ * hosts opt into the experimental API only for the `skillRead` item (R9 observed skill use),
+ * so they decline all of them; its one extra server request, `admission/request`, is refused
+ * below like any request Lascoria does not handle.
+ */
+export const EXPERIMENTAL_NOTIFICATIONS = [
+  'account/changed',
+  'account/loginCompleted',
+  'admission/requested',
+  'admission/resolved',
+  'log/gap',
+  'log/record',
+  'mcpServer/oauthLoginCompleted',
+  'session/permissionProfileChanged',
+];
 export async function spawnRuntime(options, onEvent, onDeath) {
   const handshake = spawnMspConnection({
     command: options.binary ?? process.env.MUSE_BIN ?? 'muse',
@@ -27,7 +43,12 @@ export async function spawnRuntime(options, onEvent, onDeath) {
     host = await bounded(
       handshake.initialize({
         clientInfo: { name: 'spatial_constellation', version: '0.1.0' },
-        capabilities: { requestedCapabilities: options.capabilities ?? [] },
+        capabilities: {
+          requestedCapabilities: options.capabilities ?? [],
+          ...(options.experimentalApi
+            ? { experimentalApi: true, optOutNotificationMethods: EXPERIMENTAL_NOTIFICATIONS }
+            : {}),
+        },
       }),
     );
     if (host.fingerprintWarning)

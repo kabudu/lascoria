@@ -548,3 +548,51 @@ test('action notices are plain sentences and never hide an unknown outcome', asy
       /workspace\/|applied|accepted|outcomeUnknown/,
     );
 });
+
+test('a requested skill is shown apart from what Muse reported about loading it', async () => {
+  const { skillRequest } = await import('../ui/model.ts');
+  const ask = { kind: 'userMessage', text: '/release-notes for 1.0', turnId: 't1' };
+  const read = (status, extra = {}) => ({
+    kind: 'skillRead',
+    turnId: 't1',
+    selector: 'release-notes',
+    source: 'user',
+    status,
+    ...extra,
+  });
+  const settled = { reported: true, settled: true };
+  assert.deepEqual(skillRequest(ask, [read('completed')], settled), {
+    selector: 'release-notes',
+    observed: 'Muse reported loading it from user',
+    reported: true,
+  });
+  assert.match(
+    skillRequest(ask, [read('inProgress')], { reported: true, settled: false }).observed,
+    /is loading it/,
+  );
+  // No evidence is unknown, not a claim that the skill was skipped.
+  for (const items of [
+    [],
+    [read('completed', { turnId: 'other' })],
+    [read('completed', { selector: 'x' })],
+  ])
+    assert.equal(
+      skillRequest(ask, items, settled).observed,
+      'Muse did not report loading it; that does not show whether it ran',
+    );
+  assert.equal(
+    skillRequest(ask, [], { reported: true, settled: false }).observed,
+    'Not reported as loaded yet',
+  );
+  assert.equal(
+    skillRequest(ask, [], { reported: false, settled: true }).observed,
+    'This Muse host does not report skill loading',
+  );
+  // Plain text, the local /usage command and Muse's own messages are not skill requests.
+  for (const item of [
+    { kind: 'userMessage', text: 'Write notes', turnId: 't1' },
+    { kind: 'userMessage', text: '/usage', turnId: 't1' },
+    { kind: 'agentMessage', text: '/release-notes', turnId: 't1' },
+  ])
+    assert.equal(skillRequest(item, [read('completed')], settled), null);
+});

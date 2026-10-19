@@ -636,3 +636,40 @@ export function outcomeNotice(operation: string, status?: string) {
       return `${what} saved.`;
   }
 }
+
+/**
+ * R9: the skill a task asked for, kept apart from what Muse reported about loading it. Muse
+ * reports a load only as a `skillRead` item (hosts that opted into its experimental API);
+ * anything else stays unknown, never "skipped".
+ */
+export function skillRequest(
+  item: { kind?: string; text?: unknown; turnId?: unknown },
+  items: {
+    kind?: string;
+    turnId?: unknown;
+    selector?: unknown;
+    source?: unknown;
+    status?: unknown;
+  }[],
+  context: { reported: boolean; settled: boolean },
+) {
+  if (item.kind !== 'userMessage' || typeof item.text !== 'string') return null;
+  const selector = /^\/(\S+)/.exec(item.text)?.[1];
+  if (!selector || selector === 'usage') return null;
+  const read = items.find(
+    (i) => i.kind === 'skillRead' && i.turnId === item.turnId && i.selector === selector,
+  );
+  const from = typeof read?.source === 'string' && read.source ? ` from ${read.source}` : '';
+  const observed = read
+    ? read.status === 'completed'
+      ? `Muse reported loading it${from}`
+      : read.status === 'inProgress'
+        ? `Muse is loading it${from}`
+        : `Muse reported that loading it ended as ${String(read.status)}`
+    : !context.reported
+      ? 'This Muse host does not report skill loading'
+      : !context.settled
+        ? 'Not reported as loaded yet'
+        : 'Muse did not report loading it; that does not show whether it ran';
+  return { selector, observed, reported: Boolean(read) };
+}

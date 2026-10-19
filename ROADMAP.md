@@ -24,7 +24,6 @@ The first release opens a session's folder or a changed file in the user's own e
 - Turn skills on or off for the user, a project or a plugin through Muse's native activation controls.
 - Browse, install and update plugins and marketplaces, and show which hooks and MCP servers they add.
 - Show and change Muse settings that affect sessions, with the same revision and conflict handling as the rest of Settings.
-- Show observed skill use (Muse's `skillRead` notices) once session hosts opt into the parts of Muse's experimental API it needs, with their own review.
 
 ## Other candidates
 

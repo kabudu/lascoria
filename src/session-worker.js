@@ -227,6 +227,8 @@ export async function createSession(send, onDeath) {
         provider: process.env.SCH_PROVIDER ?? 'echo',
         onHistory: rememberSource,
         capabilities: process.env.SCH_RELAY_HELPER ? ['sessionMcp'] : [],
+        // R9: only so Muse reports `skillRead` items (observed skill loading).
+        experimentalApi: true,
         onUsage: (usage) => {
           if (!ended && usage && typeof usage === 'object') send({ kind: 'usage', usage });
         },
