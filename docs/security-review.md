@@ -56,6 +56,10 @@ Peer binding stops a script that only reads the token. It does not yet stop same
 - **Identity read at connection time.** The executable is resolved from the peer PID once per connection. PID reuse between connect and lookup is not exploitable without the token, and the token stays a second factor.
 - Hashing an unfamiliar executable runs on a blocking thread and is cached for 16 paths, so a hostile peer cannot stall other connections.
 
+## Adversarial local clients (19 October)
+
+`test/ipc-adversarial.test.js` (runs in local CI on macOS and Linux) sends hostile requests straight to the supervisor's socket: not JSON, truncated JSON, invalid UTF-8, no token, a wrong or 60,000-character token, a wrong protocol version, an unknown or non-string operation, 20,000 levels of nested JSON, a line over the 64 KiB frame limit, a start request with an impossible workspace, an empty line, a connection that never sends, and 24 slow connections at once (more than the 16 admission permits). Each is refused or closed; afterwards the same supervisor answers, with no session or journalled command created. Accepted residual: a same-user program can keep the 16 permits busy by reconnecting every five seconds, delaying the app; such a program can equally stop the supervisor, so this adds no capability. Named pipes on Windows need the same run natively.
+
 ## Native drops (19 October)
 
 `read_dropped` returns the bytes of one regular file from the most recent native drop, selected by drop token and position; the page cannot name a path, an older drop or a folder, and files over 100 MB are refused. The user chose every path by dropping it. Bytes then pass the same staging checks as chosen files.
@@ -77,7 +81,7 @@ Reviewed warnings (not vulnerabilities): unmaintained `zvariant`, `zvariant_deri
 These parts of R12 have not been reviewed yet and must be completed before release:
 
 - Supply chain, remaining: signing and notarisation with real release credentials, updater signature checks on each target OS (R3), and CI action pinning review once Actions are enabled (the release workflow already pins actions by commit).
-- Adversarial testing on all three operating systems: malformed or fuzzed IPC frames, cross-user connection attempts, endpoint replacement, hostile repositories, filenames, links and hooks, interrupted install/update, and resource exhaustion.
+- Adversarial testing, remaining: the hostile-client run on Windows named pipes, cross-user connection attempts, endpoint replacement, hostile repositories, filenames, links and hooks, and interrupted install/update.
 - Muse skills, plugins and MCP configuration from repositories, and cross-workspace access through Project roots.
 - Full-history privacy review of the Git repository (PL03).
 - A separate reviewer, vulnerability reporting guidance, and rerunning affected checks after each fix.
