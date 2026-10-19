@@ -896,6 +896,14 @@ impl Actor {
                     .collect::<Vec<_>>()
             };
             let (pictures, videos, texts) = (of("image"), of("video"), of("text"));
+            // Muse 1.4.10 accepts a video only for Meta models; anything else fails the task
+            // after the upload, so refuse before handing Muse any bytes.
+            if let Some(provider) = row["state"]["modelRoute"]["providerId"].as_str() {
+                ensure!(
+                    videos.is_empty() || provider == "meta",
+                    "This session's model cannot read videos: Muse supports video only with Meta models. Remove the video, or start a session with a Meta model."
+                );
+            }
             // A video reaches Muse's own session store before the task that refers to it.
             // Each chunk is its own bounded worker call with a stable identity, so a resent
             // task finds the chunks Muse already holds instead of storing them twice.
