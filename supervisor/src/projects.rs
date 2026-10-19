@@ -177,6 +177,12 @@ pub fn replacement(db: &Db, row: &Value, params: &Value) -> Result<Option<Value>
     let applied = row
         .get("projectContext")
         .context("Only Project sessions can take Project folder changes")?;
+    // Isolated Project sessions own one worktree per folder, created at start; a later
+    // folder change would need new worktrees, so it belongs to a new session.
+    ensure!(
+        row["managedWorkspaces"].is_null(),
+        "An isolated Project session keeps the folders it started with; start a new session to use the updated Project"
+    );
     let wanted = revision.as_u64().context("Invalid Project revision")?;
     ensure!(
         wanted > applied["revision"].as_u64().unwrap_or(0),

@@ -82,7 +82,7 @@ test(
         { projectId: project.id, projectRevision: 1, isolated: true },
         'bad-isolation',
       ),
-      /isolated project worktrees/,
+      /App must be a Git repository root to be isolated/,
     );
     const start = await request(
       directory,

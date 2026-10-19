@@ -35,6 +35,7 @@ const FEATURES: &[&str] = &[
     "relayMap",
     "sessionNames",
     "projects",
+    "projectWorktrees",
     "dataLifecycle",
     "search",
     "continuation",
@@ -418,7 +419,13 @@ impl Actor {
         }
         if operation.starts_with("workspace/") || operation == "session/archive" {
             let session = params["sessionId"].as_str().context("Session required")?;
-            let row = self.row(session)?;
+            let full = self.row(session)?;
+            // Project sessions choose a folder; others act on their one workspace.
+            let row = if ["workspace/discard", "session/archive"].contains(&operation) {
+                full.clone()
+            } else {
+                workspace::scoped(&full, params["folderId"].as_str())?
+            };
             if operation == "workspace/files" || operation == "workspace/file" {
                 return workspace::files(&row, &params).await;
             }
@@ -480,13 +487,7 @@ impl Actor {
             }
             if operation == "workspace/discard" {
                 // Validate the exact content before stopping the worker, then check again before removal.
-                let current = workspace::inspect(&row).await?;
-                ensure!(
-                    row["managedWorkspace"].is_object()
-                        && params["confirmation"] == row["id"]
-                        && current["fingerprint"] == params["fingerprint"],
-                    "Confirm the current isolated workspace before discarding"
-                );
+                workspace::confirm_discard(&row, &params).await?;
             }
             if let Some(mut worker) = self.workers.remove(session) {
                 worker.stop().await;
@@ -600,10 +601,6 @@ impl Actor {
         self.db.lock().unwrap().journal_admits()?;
         if operation == "start" {
             let project = projects::selected(&self.db.lock().unwrap(), &params)?;
-            ensure!(
-                project.is_none() || params["isolated"] != true,
-                "Project sessions use their existing folders; isolated project worktrees are not supported"
-            );
             if let Some(project) = &project {
                 projects::check_session(&json!({"projectContext":project})).await?;
             }
@@ -666,7 +663,37 @@ impl Actor {
             );
             let session = Uuid::now_v7().to_string();
             let mut managed = Value::Null;
-            let workspace = if params["isolated"] == true {
+            let mut managed_all: Option<Vec<Value>> = None;
+            let workspace = if let Some(project) =
+                project.as_ref().filter(|_| params["isolated"] == true)
+            {
+                workspace::check_roots(
+                    project["folders"].as_array().map_or(&[][..], Vec::as_slice),
+                )
+                .await?;
+                // Persist intent before filesystem effects. An uncertain retry never creates more worktrees.
+                workspace::begin(&self.db, id, operation, &params, &session)?;
+                let parent = lascoria_runtime::state_dir().join("worktrees");
+                fs::create_dir_all(&parent)?;
+                let parent = dunce::canonicalize(&parent)?;
+                let folders = project["folders"].as_array().cloned().unwrap_or_default();
+                let planned_all: Vec<Value> = folders.iter().enumerate().map(|(i, f)| json!({"folderId":f["id"],"name":f["name"],"source":f["path"],"path":parent.join(format!("{session}-{}", i + 1)),"branch":format!("lascoria/{session}")})).collect();
+                let mut planned = json!({"id":session,"initialName":initial_name,"workspace":planned_all[0]["path"],"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false},"managedWorkspace":planned_all[0],"managedWorkspaces":planned_all});
+                self.save(&planned)?;
+                match workspace::create_project(&folders, &parent, &session).await {
+                    Ok(made) => {
+                        managed = made[0].clone();
+                        managed_all = Some(made);
+                    }
+                    Err(error) => {
+                        planned["lifecycle"] = json!("failed");
+                        planned["recoveryError"] = json!(error.to_string());
+                        self.save(&planned)?;
+                        return workspace::finish(&self.db, id, Err(error));
+                    }
+                }
+                PathBuf::from(managed["path"].as_str().context("Worktree path missing")?)
+            } else if params["isolated"] == true {
                 // Persist intent before filesystem effects. An uncertain retry never creates another worktree.
                 workspace::begin(&self.db, id, operation, &params, &session)?;
                 let parent = lascoria_runtime::state_dir().join("worktrees");
@@ -689,6 +716,9 @@ impl Actor {
             };
             let mut row = json!({"id":session,"initialName":initial_name,"workspace":workspace,"generation":0,"lifecycle":"starting","attempts":0,"interruptions":[],"state":{"current":false}});
             row["managedWorkspace"] = managed;
+            if let Some(all) = &managed_all {
+                row["managedWorkspaces"] = json!(all);
+            }
             if let Some(from) = &continued_from {
                 row["continuedFrom"] = json!(from);
             }
@@ -707,7 +737,11 @@ impl Actor {
                 return Err(error);
             }
             let mut wire = json!({"sessionId":session,"workspace":workspace});
-            if let Some(project) = &project {
+            if let Some(all) = &managed_all {
+                // Muse works in the session's own worktrees, never the original checkouts.
+                wire["workspaceRoots"] =
+                    json!(all.iter().map(|m| m["path"].clone()).collect::<Vec<_>>());
+            } else if let Some(project) = &project {
                 wire["workspaceRoots"] = json!(
                     project["folders"]
                         .as_array()

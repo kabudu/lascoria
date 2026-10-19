@@ -24,6 +24,15 @@ export interface SessionRow {
   workspace: string;
   workspaceDiscarded?: boolean;
   managedWorkspace?: { source: string; path: string; branch: string; base: string };
+  /** R15: one isolated worktree per folder in an isolated Project session. */
+  managedWorkspaces?: {
+    folderId: string;
+    name: string;
+    source: string;
+    path: string;
+    branch: string;
+    base: string;
+  }[];
   generation: number;
   lifecycle: string;
   durability?: string;

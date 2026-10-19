@@ -47,6 +47,17 @@ export function Workspace({
   const [file, setFile] = useState<Json>(null);
   const [confirmation, setConfirmation] = useState('');
   const [action, setAction] = useState<'commit' | 'discard' | 'archive' | null>(null);
+  // R15: a Project session's tab works on one folder at a time; each isolated folder has
+  // its own worktree and task branch. The supervisor resolves the folder ID itself.
+  const folders = session.projectContext?.folders;
+  const [chosen, setChosen] = useState<string>();
+  const folderId = folders ? (folders.find((f) => f.id === chosen) ?? folders[0])?.id : undefined;
+  const scope = folderId ? { folderId } : {};
+  const managed = session.managedWorkspaces
+    ? session.managedWorkspaces.find((m) => m.folderId === folderId)
+    : session.managedWorkspace;
+  const folderName = (id?: string) => folders?.find((f) => f.id === id)?.name;
+  const [discarding, setDiscarding] = useState<Json[] | null>(null);
   const generation = useRef(0);
   const runs = commands.filter(
     (c) => c.sessionId === session.id && c.operation === 'workspace/run',
@@ -66,7 +77,7 @@ export function Workspace({
     setAction(null);
     setError('');
     const timer = setTimeout(() => {
-      void request('workspace/files', { sessionId: session.id, query })
+      void request('workspace/files', { sessionId: session.id, query, ...scope })
         .then((r) => {
           if (generation.current === current) setPaths(r.paths);
         })
@@ -78,13 +89,13 @@ export function Workspace({
       clearTimeout(timer);
       generation.current++;
     };
-  }, [session.id, query]);
+  }, [session.id, query, folderId]);
   async function inspect() {
     setLoading(true);
     setError('');
     const current = generation.current;
     try {
-      const value = await request('workspace/inspect', { sessionId: session.id });
+      const value = await request('workspace/inspect', { sessionId: session.id, ...scope });
       if (current === generation.current) setPreview(value);
     } catch (e) {
       if (current === generation.current) setError(String(e));
@@ -96,16 +107,30 @@ export function Workspace({
     <div className="developer-workspace">
       <section>
         <span className="eyebrow">Task workspace</span>
-        <h3>{session.managedWorkspace?.branch ?? 'Existing checkout'}</h3>
-        <code className="workspace-path">{session.workspace}</code>
-        {session.projectContext && (
+        {folders && (
+          <label className="snapshot-folder">
+            Folder
+            <select value={folderId} onChange={(e) => setChosen(e.target.value)}>
+              {folders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <h3>{managed?.branch ?? 'Existing checkout'}</h3>
+        <code className="workspace-path">
+          {managed?.path ?? folders?.find((f) => f.id === folderId)?.path ?? session.workspace}
+        </code>
+        {folders && (
           <p className="muted">
-            This preview and file browser cover only the default Project folder. Other folders are
-            available to Muse but have separate Git changes.
+            Each folder is a separate repository: changes, tests and commits here apply to{' '}
+            {folderName(folderId)} only.
           </p>
         )}
         <p className="muted">
-          {session.managedWorkspace
+          {managed
             ? 'Isolated from your original checkout. Commits stay on this task branch.'
             : 'Muse works directly in this checkout. Isolate a new task to enable commit and discard controls.'}
         </p>
@@ -163,7 +188,11 @@ export function Workspace({
                 onClick={async () => {
                   const current = generation.current;
                   try {
-                    const value = await request('workspace/file', { sessionId: session.id, path });
+                    const value = await request('workspace/file', {
+                      sessionId: session.id,
+                      path,
+                      ...scope,
+                    });
                     if (current === generation.current) setFile(value);
                   } catch (e) {
                     if (current === generation.current) setError(String(e));
@@ -209,12 +238,13 @@ export function Workspace({
             const found = await request<{ run: Json | null }>('workspace/reusable', {
               sessionId: session.id,
               command,
+              ...scope,
             }).catch(() => ({ run: null }));
             if (found.run) {
               setReuse(found.run);
               return;
             }
-            await mutate('workspace/run', { sessionId: session.id, command });
+            await mutate('workspace/run', { sessionId: session.id, command, ...scope });
             setPreview(null);
           }}
         >
@@ -253,7 +283,7 @@ export function Workspace({
                 onClick={async () => {
                   const command = reuse.command;
                   setReuse(null);
-                  await mutate('workspace/run', { sessionId: session.id, command });
+                  await mutate('workspace/run', { sessionId: session.id, command, ...scope });
                   setPreview(null);
                 }}
               >
@@ -267,6 +297,9 @@ export function Workspace({
           <details key={run.id} open={run.status === 'running'}>
             <summary>
               {run.result?.outcome ?? run.status} · {run.params.command}
+              {run.params.folderId
+                ? ` · ${folderName(run.params.folderId) ?? 'removed folder'}`
+                : ''}
             </summary>
             <p>Exit: {run.result?.exitCode ?? 'unavailable'} · developer-executed</p>
             <p className="muted">
@@ -312,14 +345,11 @@ export function Workspace({
           </details>
         ))}
       </section>
-      {(!archived || (session.managedWorkspace && !removed)) && (
+      {(!archived || (managed && !removed)) && (
         <section>
           <h3>Finish task</h3>
           <div className="row">
-            <button
-              disabled={!ready || !preview || !session.managedWorkspace}
-              onClick={() => setAction('commit')}
-            >
+            <button disabled={!ready || !preview || !managed} onClick={() => setAction('commit')}>
               Commit changes…
             </button>
             <button disabled={!canArchive || archived} onClick={() => setAction('archive')}>
@@ -327,10 +357,35 @@ export function Workspace({
             </button>
             <button
               className="danger"
-              disabled={!canDiscard || !preview || !session.managedWorkspace}
-              onClick={() => {
-                setAction('discard');
+              disabled={!canDiscard || !preview || !managed}
+              onClick={async () => {
                 setConfirmation('');
+                setDiscarding(null);
+                if (session.managedWorkspaces) {
+                  // Discard removes every folder's worktree: show and bind what each holds now.
+                  try {
+                    const all = [];
+                    for (const m of session.managedWorkspaces) {
+                      const value = await request('workspace/inspect', {
+                        sessionId: session.id,
+                        folderId: m.folderId,
+                      });
+                      all.push({
+                        name: m.name,
+                        folderId: m.folderId,
+                        fingerprint: value.fingerprint,
+                        changes:
+                          (value.patch ? value.patch.split('\ndiff --git ').length : 0) +
+                          (value.untracked?.length ?? 0),
+                      });
+                    }
+                    setDiscarding(all);
+                  } catch (e) {
+                    setError(String(e));
+                    return;
+                  }
+                }
+                setAction('discard');
               }}
             >
               Discard worktree…
@@ -346,6 +401,7 @@ export function Workspace({
                   sessionId: session.id,
                   fingerprint: preview.fingerprint,
                   message,
+                  ...scope,
                 });
                 if (r?.status === 'applied') {
                   setAction(null);
@@ -389,12 +445,37 @@ export function Workspace({
           )}
           {action === 'discard' && (
             <div className="decision">
-              <h4>Discard this isolated worktree?</h4>
-              <p>
-                Archives the session and permanently removes uncommitted files, including ignored
-                files, from {session.workspace}. Committed history stays on{' '}
-                {session.managedWorkspace?.branch}. The original checkout is retained.
-              </p>
+              <h4>
+                {discarding
+                  ? 'Discard every folder’s worktree?'
+                  : 'Discard this isolated worktree?'}
+              </h4>
+              {discarding ? (
+                <>
+                  <p>
+                    Archives the session and permanently removes uncommitted files, including
+                    ignored files, from the worktree of every folder. Committed history stays on{' '}
+                    {session.managedWorkspace?.branch} in each repository. The original checkouts
+                    are retained.
+                  </p>
+                  <ul>
+                    {discarding.map((d) => (
+                      <li key={d.name}>
+                        {d.name}:{' '}
+                        {d.changes
+                          ? `${d.changes} changed or new file${d.changes === 1 ? '' : 's'}`
+                          : 'no uncommitted changes'}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p>
+                  Archives the session and permanently removes uncommitted files, including ignored
+                  files, from {session.workspace}. Committed history stays on{' '}
+                  {session.managedWorkspace?.branch}. The original checkout is retained.
+                </p>
+              )}
               <label>
                 Type session ID to confirm: <code>{session.id}</code>
                 <input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
@@ -405,8 +486,14 @@ export function Workspace({
                 onClick={async () => {
                   const r = await mutate('workspace/discard', {
                     sessionId: session.id,
-                    fingerprint: preview.fingerprint,
                     confirmation,
+                    ...(discarding
+                      ? {
+                          fingerprints: Object.fromEntries(
+                            discarding.map((d: Json) => [d.folderId, d.fingerprint]),
+                          ),
+                        }
+                      : { fingerprint: preview.fingerprint }),
                   });
                   if (r?.status === 'applied') {
                     setAction(null);

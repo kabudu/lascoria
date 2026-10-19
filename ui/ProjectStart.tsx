@@ -21,9 +21,12 @@ export function ProjectStart({
   started,
   disabled,
   economical,
+  worktrees,
 }: {
   started: (id: string) => void;
   disabled: boolean;
+  /** R15: the supervisor can give each folder its own isolated worktree. */
+  worktrees?: boolean;
   /** T4: start with the lowest reasoning effort the model offers. */
   economical?: boolean;
 }) {
@@ -35,6 +38,7 @@ export function ProjectStart({
   const [error, setError] = useState('');
   const [task, setTask] = useState('');
   const [model, setModel] = useState('');
+  const [isolated, setIsolated] = useState(false);
   const [attempt, setAttempt] = useState<{ operation: string; params: Json; id: string } | null>(
     null,
   );
@@ -313,10 +317,26 @@ export function ProjectStart({
             ' Muse receives the goal and folder notes with the first task, as your description of the Project; they grant no permissions.'}
         </p>
       )}
-      <p className="muted">
-        Project sessions work in these existing folders. Isolated worktrees and combined diff
-        captures are unavailable for Projects in this version.
-      </p>
+      {worktrees ? (
+        <>
+          <label className="settings-choice">
+            <input
+              type="checkbox"
+              checked={isolated}
+              disabled={locked}
+              onChange={(e) => setIsolated(e.target.checked)}
+            />
+            Give each folder its own isolated worktree from committed HEAD
+          </label>
+          <p className="muted">
+            {isolated
+              ? 'Every folder must be a Git repository root. Uncommitted changes stay in the original checkouts, and each folder commits on its own task branch. The session keeps these folders; a changed Project needs a new session.'
+              : 'Muse works directly in these existing folders.'}
+          </p>
+        </>
+      ) : (
+        <p className="muted">Project sessions work in these existing folders.</p>
+      )}
       <label>
         Project model
         <select value={model} disabled={locked} onChange={(e) => setModel(e.target.value)}>
@@ -373,6 +393,7 @@ export function ProjectStart({
               name: saved!.name,
               ...(model ? { modelId: model } : {}),
               ...(economical ? { effortPreset: 'economical' } : {}),
+              ...(worktrees && isolated ? { isolated: true } : {}),
             })
           }
         >

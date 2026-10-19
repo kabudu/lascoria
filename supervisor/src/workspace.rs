@@ -108,6 +108,139 @@ pub async fn create(source: &Path, target: &Path, session: &str) -> Result<Value
     Ok(json!({"source":source,"path":target,"branch":branch,"base":base}))
 }
 
+/// Before any state is written: every Project folder must be its repository's root, so a
+/// session never half-starts with some folders isolated and others not.
+pub async fn check_roots(folders: &[Value]) -> Result<()> {
+    for folder in folders {
+        let path = Path::new(
+            folder["path"]
+                .as_str()
+                .context("Project folder path missing")?,
+        );
+        let name = folder["name"].as_str().unwrap_or("A Project folder");
+        let top = git(path, &["rev-parse", "--show-toplevel"])
+            .await
+            .with_context(|| format!("{name} must be a Git repository root to be isolated"))?;
+        ensure!(
+            std::fs::canonicalize(path)? == std::fs::canonicalize(top.trim())?,
+            "{name} must be a Git repository root to be isolated"
+        );
+        git(path, &["rev-parse", "--verify", "HEAD"])
+            .await
+            .with_context(|| format!("{name} needs at least one commit to be isolated"))?;
+    }
+    Ok(())
+}
+
+/// One isolated worktree per Project folder, on the same task branch name in each
+/// repository. Every folder must be a repository root. If any folder fails, the worktrees and
+/// branches already created for this session are removed again (they hold no commits yet),
+/// so a failed start leaves the user's repositories as they were.
+pub async fn create_project(folders: &[Value], parent: &Path, session: &str) -> Result<Vec<Value>> {
+    let mut made: Vec<Value> = Vec::new();
+    for (index, folder) in folders.iter().enumerate() {
+        let source = Path::new(
+            folder["path"]
+                .as_str()
+                .context("Project folder path missing")?,
+        );
+        let target = parent.join(format!("{session}-{}", index + 1));
+        match create(source, &target, session).await {
+            Ok(mut managed) => {
+                managed["folderId"] = folder["id"].clone();
+                managed["name"] = folder["name"].clone();
+                made.push(managed);
+            }
+            Err(error) => {
+                for managed in &made {
+                    let source = Path::new(managed["source"].as_str().unwrap_or_default());
+                    let path = managed["path"].as_str().unwrap_or_default();
+                    let branch = managed["branch"].as_str().unwrap_or_default();
+                    let _ = git(source, &["worktree", "remove", "--force", "--", path]).await;
+                    let _ = git(source, &["branch", "-D", "--", branch]).await;
+                }
+                let name = folder["name"].as_str().unwrap_or("A Project folder");
+                return Err(error.context(format!("{name} could not be isolated")));
+            }
+        }
+    }
+    Ok(made)
+}
+
+/// The view of a session that a workspace operation acts on. Without a folder this is the
+/// session itself (its default folder). In a Project session a folder ID selects one of the
+/// session's own folders, resolved here rather than taken from the client: its isolated
+/// worktree when the session has them, otherwise the folder itself, which then has no
+/// commit or discard controls.
+pub fn scoped(row: &Value, folder: Option<&str>) -> Result<Value> {
+    let Some(id) = folder else {
+        return Ok(row.clone());
+    };
+    let project = row
+        .get("projectContext")
+        .filter(|p| p.is_object())
+        .context("Only Project sessions have folders to choose")?;
+    let entry = project["folders"]
+        .as_array()
+        .and_then(|folders| folders.iter().find(|f| f["id"] == id))
+        .context("That folder is no longer part of this session's Project")?;
+    let mut view = row.clone();
+    match row["managedWorkspaces"].as_array() {
+        Some(managed) => {
+            let managed = managed
+                .iter()
+                .find(|m| m["folderId"] == id)
+                .context("That folder has no isolated worktree in this session")?;
+            view["workspace"] = managed["path"].clone();
+            view["managedWorkspace"] = managed.clone();
+        }
+        None => {
+            view["workspace"] = entry["path"].clone();
+            view["managedWorkspace"] = Value::Null;
+        }
+    }
+    view["folder"] = json!({"id":id,"name":entry["name"]});
+    Ok(view)
+}
+
+/// Every worktree a session owns: one for a single-folder isolated task, one per folder for
+/// an isolated Project session.
+pub fn owned(row: &Value) -> Vec<Value> {
+    match row["managedWorkspaces"].as_array() {
+        Some(all) => all.clone(),
+        None if row["managedWorkspace"].is_object() => vec![row["managedWorkspace"].clone()],
+        None => Vec::new(),
+    }
+}
+
+/// Discard needs the exact content the user saw in every worktree it removes: one
+/// fingerprint for a single-folder task, one per folder ID for a Project session.
+pub async fn confirm_discard(row: &Value, params: &Value) -> Result<()> {
+    ensure!(
+        row["managedWorkspace"].is_object() && params["confirmation"] == row["id"],
+        "Confirm the current isolated workspace before discarding"
+    );
+    match row["managedWorkspaces"].as_array() {
+        None => ensure!(
+            inspect(row).await?["fingerprint"] == params["fingerprint"],
+            "Changes moved; refresh before discarding"
+        ),
+        Some(all) => {
+            for managed in all {
+                let id = managed["folderId"].as_str().unwrap_or_default();
+                let view = scoped(row, Some(id))?;
+                ensure!(
+                    params["fingerprints"][id].is_string()
+                        && inspect(&view).await?["fingerprint"] == params["fingerprints"][id],
+                    "Changes moved in {}; refresh before discarding",
+                    managed["name"].as_str().unwrap_or("a folder")
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 // Content identity is independent of whether a file is staged, untracked or deleted from the index.
 async fn content_fingerprint(root: &Path) -> Result<String> {
     let root = std::fs::canonicalize(root)?;
@@ -260,29 +393,26 @@ pub async fn commit(row: &Value, params: &Value) -> Result<Value> {
 }
 
 pub async fn discard(row: &Value, params: &Value) -> Result<Value> {
-    let managed = &row["managedWorkspace"];
-    ensure!(
-        managed.is_object(),
-        "Only harness-created worktrees can be discarded"
-    );
-    ensure!(
-        params["confirmation"] == row["id"],
-        "Discard must confirm the exact session ID"
-    );
-    ensure!(
-        params["fingerprint"].is_string()
-            && inspect(row).await?["fingerprint"] == params["fingerprint"],
-        "Changes moved; refresh before discarding"
-    );
-    let source = Path::new(managed["source"].as_str().context("Source missing")?);
-    let path = row["workspace"].as_str().unwrap();
-    ensure!(
-        managed["path"] == path,
-        "Managed workspace identity mismatch"
-    );
-    git(source, &["worktree", "remove", "--force", "--", path]).await?;
-    // Keep the branch, including all commits. Never delete committed history as part of discard.
-    Ok(json!({"removed":path,"retainedBranch":managed["branch"]}))
+    confirm_discard(row, params).await?;
+    let mut removed = Vec::new();
+    for managed in owned(row) {
+        let source = Path::new(managed["source"].as_str().context("Source missing")?);
+        let path = managed["path"].as_str().context("Worktree path missing")?;
+        ensure!(
+            row["managedWorkspaces"].is_array() || managed["path"] == row["workspace"],
+            "Managed workspace identity mismatch"
+        );
+        git(source, &["worktree", "remove", "--force", "--", path]).await?;
+        removed.push(json!({"removed":path,"retainedBranch":managed["branch"],"folderId":managed["folderId"]}));
+    }
+    // Keep the branches, including all commits. Never delete committed history as part of discard.
+    Ok(
+        if removed.len() == 1 && row["managedWorkspaces"].is_null() {
+            removed.pop().unwrap()
+        } else {
+            json!({"removed":removed})
+        },
+    )
 }
 
 /// T2: the latest finished run of the same test command whose result still describes these
@@ -574,6 +704,97 @@ mod tests {
             assert!(open_contained(&root, &root.join("link.txt")).is_err());
             Ok(())
         })();
+        let _ = std::fs::remove_dir_all(&base);
+        result
+    }
+
+    async fn repo(path: &Path, file: &str) -> Result<()> {
+        std::fs::create_dir_all(path)?;
+        git(path, &["init", "-q"]).await?;
+        std::fs::write(path.join(file), "one\n")?;
+        git(path, &["add", "."]).await?;
+        git(
+            path,
+            &[
+                "-c",
+                "user.name=F",
+                "-c",
+                "user.email=f@example.test",
+                "commit",
+                "-qm",
+                "init",
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn project_worktrees_are_per_folder_scoped_by_id_and_rolled_back_on_failure() -> Result<()>
+    {
+        let base = std::fs::canonicalize(std::env::temp_dir())?
+            .join(format!("lascoria-pw-{}", uuid::Uuid::new_v4()));
+        let (app, api, plain) = (base.join("app"), base.join("api"), base.join("plain"));
+        repo(&app, "app.txt").await?;
+        repo(&api, "api.txt").await?;
+        std::fs::create_dir_all(&plain)?;
+        let parent = base.join("worktrees");
+        std::fs::create_dir_all(&parent)?;
+        let result = async {
+            // A folder that is not a repository: nothing is left behind in the others.
+            let bad = [
+                json!({"id":"a","name":"App","path":app}),
+                json!({"id":"p","name":"Plain","path":plain}),
+            ];
+            let error = create_project(&bad, &parent, "s1").await.unwrap_err();
+            assert!(format!("{error:#}").contains("Plain could not be isolated"), "{error:#}");
+            assert!(!parent.join("s1-1").exists(), "the App worktree was removed again");
+            assert!(git(&app, &["branch", "--list", "lascoria/s1"]).await?.trim().is_empty());
+
+            let folders = [
+                json!({"id":"a","name":"App","path":app}),
+                json!({"id":"b","name":"API","path":api}),
+            ];
+            let made = create_project(&folders, &parent, "s2").await?;
+            assert_eq!(made.len(), 2);
+            assert_eq!(made[1]["folderId"], "b");
+            let row = json!({"id":"s2","workspace":made[0]["path"],"managedWorkspace":made[0],"managedWorkspaces":made,"projectContext":{"folders":folders}});
+            // Edits in one worktree do not show in the other or in the original checkout.
+            std::fs::write(parent.join("s2-2").join("api.txt"), "two\n")?;
+            let api_view = scoped(&row, Some("b"))?;
+            assert_eq!(api_view["managedWorkspace"]["source"], json!(api));
+            let api_changes = inspect(&api_view).await?;
+            assert!(api_changes["patch"].as_str().unwrap().contains("api.txt"));
+            assert!(inspect(&scoped(&row, Some("a"))?).await?["patch"].as_str().unwrap().is_empty());
+            assert!(git(&api, &["status", "--porcelain"]).await?.trim().is_empty());
+            assert!(scoped(&row, Some("elsewhere")).is_err());
+            // Committing in API commits on API's task branch only.
+            let committed = commit(
+                &api_view,
+                &json!({"fingerprint":api_changes["fingerprint"],"message":"API change"}),
+            )
+            .await?;
+            assert!(committed["head"].is_string());
+            assert_eq!(
+                git(&api, &["log", "-1", "--format=%s", "lascoria/s2"]).await?.trim(),
+                "API change"
+            );
+            assert_eq!(git(&app, &["log", "-1", "--format=%s", "lascoria/s2"]).await?.trim(), "init");
+            // Discard needs every folder's current fingerprint and keeps both branches.
+            let mut fingerprints = serde_json::Map::new();
+            for id in ["a", "b"] {
+                fingerprints.insert(id.into(), inspect(&scoped(&row, Some(id))?).await?["fingerprint"].clone());
+            }
+            let mut stale = fingerprints.clone();
+            stale.insert("a".into(), json!("sha256:old"));
+            assert!(discard(&row, &json!({"confirmation":"s2","fingerprints":stale})).await.is_err());
+            let removed = discard(&row, &json!({"confirmation":"s2","fingerprints":fingerprints})).await?;
+            assert_eq!(removed["removed"].as_array().unwrap().len(), 2);
+            assert!(!parent.join("s2-1").exists() && !parent.join("s2-2").exists());
+            assert_eq!(git(&api, &["log", "-1", "--format=%s", "lascoria/s2"]).await?.trim(), "API change");
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
         let _ = std::fs::remove_dir_all(&base);
         result
     }
