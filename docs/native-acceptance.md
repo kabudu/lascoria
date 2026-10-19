@@ -116,3 +116,10 @@ Use two disposable Git repositories with one commit each.
 | DR1 | Drag a text file and an image from the file manager onto the composer of an open session. | The composer shows a dashed outline while dragging; both files are staged in the strip with the same checks as Attach file. |
 | DR2 | Drag a folder onto the composer. | It is refused with its name; nothing is staged. |
 | DR3 | New session, Project. Drag two folders from the file manager onto the setup. | They fill the empty folder row and add a row, named after the folders; nothing is saved until Save project. Dragging a file there is refused. |
+
+
+### Continuation live evidence, 19 October
+
+A signed-in Muse task in isolated QA state invoked Jev once through the decision tool, recorded a completed `jev-1.13.0` answer (0.98) and replied 0.98. The public general-knowledge statement was the only decision context; the key was forgotten. This is prompted tool use, not spontaneous delegation or a coding-quality assessment. OpenAI was not retried.
+
+The separate subscription token benchmark completed three baseline and three economical/reused-result repairs of the same tiny addition fixture; every independent test passed. Mean reported tokens: 179,069 versus 140,057 (21.8% lower); mean elapsed 26.44 versus 21.64 seconds. These working-tree observations on Muse 1.4.10/macOS arm64 do not establish general savings, provider billing savings or full T5 acceptance. Physical DR1-DR3 and Windows/Linux acceptance remain open. QA bundles now use a distinct identifier/window title; computer-use still returned the original pending-question window during this run, which was not modified. No native drop pass is claimed.

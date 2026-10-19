@@ -1,3 +1,4 @@
+export const BENCHMARK_FIX = 'printf "export const sum = (a, b) => a + b;\\n" > sum.mjs';
 import http from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,6 +14,7 @@ export async function provider(root, options = {}) {
     finishBurst = resolve;
   });
   const stageBSent = new Set();
+  const benchmarkSent = new Set();
   const relaySent = new Set();
   let tools = 0;
   let asked = false;
@@ -98,11 +100,16 @@ export async function provider(root, options = {}) {
     if (relayCall) relaySent.add(relayMarker[0]);
     const input = body.includes('STAGE_A_INPUT') && !asked;
     if (input) asked = true;
-    const stageB =
-      options.stageB &&
-      ['STAGE_B_IMPLEMENT', 'STAGE_B_TEST', 'STAGE_B_DELEGATE'].find(
-        (marker) => body.includes(marker) && !stageBSent.has(marker),
-      );
+    const benchmarkTask =
+      options.tokenBenchmark && body.match(/\b(?:baseline|efficient)-\d+\b/)?.[0];
+    const benchmarkFix = benchmarkTask && !benchmarkSent.has(benchmarkTask);
+    if (benchmarkFix) benchmarkSent.add(benchmarkTask);
+    const stageB = benchmarkFix
+      ? 'STAGE_B_IMPLEMENT'
+      : options.stageB &&
+        ['STAGE_B_IMPLEMENT', 'STAGE_B_TEST', 'STAGE_B_DELEGATE'].find(
+          (marker) => body.includes(marker) && !stageBSent.has(marker),
+        );
     if (stageB) stageBSent.add(stageB);
     const childResult =
       options.stageB &&
@@ -208,7 +215,7 @@ export async function provider(root, options = {}) {
               : {
                   command:
                     stageB === 'STAGE_B_IMPLEMENT'
-                      ? 'printf "export const sum = (a, b) => a + b;\\n" > sum.mjs'
+                      ? BENCHMARK_FIX
                       : stageB === 'STAGE_B_TEST'
                         ? `node --input-type=module -e "import {sum} from './sum.mjs'; if(sum(2,3)!==5) process.exit(1); console.log('PASS sum(2,3)=5')"`
                         : 'printf approved >> approval-count.txt',

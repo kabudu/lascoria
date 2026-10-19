@@ -99,6 +99,7 @@ export function ComposerImages({
   steering,
   onChange,
   addRequest,
+  onAdded,
   videos = true,
 }: {
   /** False when the session's model provider cannot read video (Muse: Meta models only). */
@@ -110,6 +111,7 @@ export function ComposerImages({
   onChange: (ready: string[], blocked: boolean) => void;
   /** Files pasted or dropped onto the composer by the parent form. */
   addRequest?: { files: File[]; at: number };
+  onAdded?: (at: number) => void;
 }) {
   const [items, setItems] = useState<Staged[]>([]);
   const [limits, setLimits] = useState<Limits | null>(null);
@@ -146,7 +148,10 @@ export function ComposerImages({
     onChange(ready, items.some((i) => i.status === 'preparing') || Boolean(excess()));
   }, [items, limits]);
   useEffect(() => {
-    if (addRequest?.files.length && addRequest.at >= mountedAt.current) void add(addRequest.files);
+    if (addRequest?.files.length && addRequest.at >= mountedAt.current) {
+      const added = addRequest;
+      void add(added.files).finally(() => onAdded?.(added.at));
+    }
   }, [addRequest?.at]);
 
   // A retry reuses the item's upload ID, so an upload whose last reply was lost resumes (or is
@@ -182,7 +187,7 @@ export function ComposerImages({
         attachmentId: id,
         sha256: checksum,
       });
-      update(item.key, { ...ready, key: item.key, status: 'ready', progress: 1 });
+      update(item.key, { ...ready, key: item.key, status: 'ready', progress: 1, file: undefined });
     } catch (error) {
       update(item.key, {
         status: 'error',

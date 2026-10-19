@@ -3801,6 +3801,7 @@ version = "0.1.0"
 dependencies = [
  "dunce",
  "lascoria-runtime",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",

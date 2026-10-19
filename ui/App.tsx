@@ -342,7 +342,7 @@ export function App() {
   // Images staged for each session's next task, and a remount key after they are sent.
   const [images, setImages] = useState<Record<string, { ready: string[]; preparing: boolean }>>({});
   const [imageEpoch, setImageEpoch] = useState<Record<string, number>>({});
-  const [imageDrop, setImageDrop] = useState<{ files: File[]; at: number }>();
+  const [imageDrop, setImageDrop] = useState<{ files: File[]; at: number; sessionId: string }>();
   useEffect(() => {
     // Files dropped outside the composer must not navigate the app window to the file.
     const block = (event: DragEvent) => {
@@ -770,14 +770,22 @@ export function App() {
         target.dispatchEvent(new CustomEvent(DROP_EVENT, { detail: event.payload }));
         return;
       }
+      const sessionId = selectedSession.current;
+      if (!sessionId || target.dataset.dropSession !== sessionId) return;
+      const current = () =>
+        !disposed &&
+        selectedSession.current === sessionId &&
+        target.isConnected &&
+        target.dataset.dropSession === sessionId;
       try {
-        const { files, folders } = await droppedFiles(event.payload);
+        const { files, folders } = await droppedFiles(event.payload, current);
         if (folders.length)
           setNotice(
             `Folders can't be attached to a task: ${folders.join(', ')}. Drop files instead.`,
           );
-        if (files.length) setImageDrop({ files, at: Date.now() });
+        if (files.length) setImageDrop({ files, at: Date.now(), sessionId });
       } catch (e) {
+        if (!current()) return;
         setError(`Could not read the dropped file: ${String(e).replace(/^Error: /, '')}`);
       }
     }).then(keep);
@@ -2904,6 +2912,7 @@ export function App() {
                     })()}
                     <form
                       data-drop-target="composer"
+                      data-drop-session={session.id}
                       data-drop-label="Drop to attach"
                       onDragOver={(event) => {
                         if (
@@ -2917,7 +2926,7 @@ export function App() {
                         const files = [...event.dataTransfer.files];
                         if (!files.length) return;
                         event.preventDefault();
-                        setImageDrop({ files, at: Date.now() });
+                        setImageDrop({ files, at: Date.now(), sessionId: session.id });
                       }}
                       onSubmit={async (e) => {
                         e.preventDefault();
@@ -3022,7 +3031,7 @@ export function App() {
                           const files = [...event.clipboardData.files];
                           if (!files.length) return;
                           event.preventDefault();
-                          setImageDrop({ files, at: Date.now() });
+                          setImageDrop({ files, at: Date.now(), sessionId: session.id });
                         }}
                       />
                       {status.features?.includes('attachments') && (
@@ -3031,7 +3040,14 @@ export function App() {
                           sessionId={session.id}
                           disabled={!available || busy}
                           steering={Boolean(session.state.activeTurnId)}
-                          addRequest={imageDrop}
+                          addRequest={imageDrop?.sessionId === session.id ? imageDrop : undefined}
+                          onAdded={(at) =>
+                            setImageDrop((previous) =>
+                              previous?.at === at && previous.sessionId === session.id
+                                ? undefined
+                                : previous,
+                            )
+                          }
                           videos={
                             !session.state.modelRoute?.providerId ||
                             session.state.modelRoute.providerId === 'meta'

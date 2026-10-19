@@ -16,14 +16,16 @@
 //   baseline   Muse's default reasoning effort; the task asks Muse to run the tests itself.
 //   efficient  the economical effort preset (T4) and, from the second run on, the previous
 //              unchanged test result attached as context instead of asking for a rerun (T2).
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir, platform, arch, release } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { performance } from 'node:perf_hooks';
+import { randomUUID } from 'node:crypto';
 import { request } from '../src/client.js';
-import { provider } from './provider.js';
+import { provider, BENCHMARK_FIX } from './provider.js';
+import { canCompare } from './benchmark-results.js';
 
 const exec = promisify(execFile);
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,7 +37,7 @@ const root = await mkdtemp(join(tmpdir(), 'lsc-t5-'));
 const directory = live ? resolve(process.env.SCH_BENCH_STATE ?? '') : join(root, 'state');
 if (live && !process.env.SCH_BENCH_STATE)
   throw Error('Set SCH_BENCH_STATE to a signed-in state folder');
-const model = live ? null : await provider(root, { responseDelayMs: 200 });
+const model = live ? null : await provider(root, { responseDelayMs: 200, tokenBenchmark: true });
 const env = {
   ...process.env,
   ...(model?.env ?? {}),
@@ -61,6 +63,7 @@ const daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor')
   env,
   stdio: 'ignore',
 });
+class BenchmarkRefusal extends Error {}
 const status = () => request(directory, 'status');
 async function until(read, accept, what, ms = 300_000) {
   const end = Date.now() + ms;
@@ -68,7 +71,9 @@ async function until(read, accept, what, ms = 300_000) {
     try {
       const value = await read();
       if (accept(value)) return value;
-    } catch {}
+    } catch (error) {
+      if (error instanceof BenchmarkRefusal) throw error;
+    }
     await delay(200);
   }
   throw Error(`Timed out waiting for ${what}`);
@@ -99,10 +104,17 @@ async function repository(name) {
   ]);
   return dir;
 }
+const runId = randomUUID();
 const TASK = 'Fix sum.mjs so that `node test.mjs` passes. Keep the change minimal.';
 
 async function one(config, index, previousResult) {
   const workspace = await repository(`${config}-${index}`);
+  const initialFailure = await exec('node', ['test.mjs'], { cwd: workspace }).then(
+    () => false,
+    (error) => error.code === 1,
+  );
+  if (!initialFailure)
+    throw new BenchmarkRefusal('The starting fixture did not fail its independent test');
   const started = performance.now();
   const start = await request(
     directory,
@@ -112,7 +124,7 @@ async function one(config, index, previousResult) {
       name: `${config} ${index}`,
       ...(config === 'efficient' ? { effortPreset: 'economical' } : {}),
     },
-    `t5-${config}-${index}-start`,
+    `t5-${runId}-${config}-${index}-start`,
   );
   if (start.status !== 'applied') throw Error(`Start failed: ${JSON.stringify(start)}`);
   const sessionId = start.sessionId;
@@ -121,10 +133,38 @@ async function one(config, index, previousResult) {
     config === 'efficient' && previousResult
       ? `${TASK}\n\n${previousResult}\nUse this result instead of running the test before your change.`
       : `${TASK} Run the test before and after your change.`;
-  await request(directory, 'turn', { sessionId, text }, `t5-${config}-${index}-turn`);
+  await request(directory, 'turn', { sessionId, text }, `t5-${runId}-${config}-${index}-turn`);
   const row = (
     await until(
-      status,
+      async () => {
+        const value = await status();
+        if (!live) {
+          const row = value.sessions.find((r) => r.id === sessionId);
+          for (const approval of row?.state.approvals ?? []) {
+            const requested = approval.requested;
+            if (
+              requested.toolName !== 'bash' ||
+              requested.subject?.command !== BENCHMARK_FIX ||
+              requested.subject?.workspaceRoot !== (await realpath(workspace))
+            )
+              throw new BenchmarkRefusal(
+                'Controlled benchmark refused an unexpected permission request',
+              );
+            const choice = requested.availableChoices.find(
+              (c) => c.decision === 'approved' && c.scope === 'once',
+            );
+            if (!choice)
+              throw new BenchmarkRefusal('Controlled benchmark has no one-time permission choice');
+            await request(directory, 'decide', {
+              sessionId,
+              approvalId: approval.approvalId,
+              requirementId: requested.currentRequirementId,
+              choiceId: choice.choiceId,
+            });
+          }
+        }
+        return value;
+      },
       (s) => {
         const r = s.sessions.find((x) => x.id === sessionId);
         return r && !r.state.activeTurnId && r.state.turns?.some((t) => t.terminal);
@@ -139,9 +179,12 @@ async function one(config, index, previousResult) {
     () => true,
     () => false,
   );
-  await request(directory, 'session/archive', { sessionId }, `t5-${config}-${index}-archive`).catch(
-    () => {},
-  );
+  await request(
+    directory,
+    'session/archive',
+    { sessionId },
+    `t5-${runId}-${config}-${index}-archive`,
+  ).catch(() => {});
   return {
     config,
     index,
@@ -158,6 +201,13 @@ async function one(config, index, previousResult) {
 const results = [];
 try {
   await until(status, (s) => s.pid === daemon.pid, 'supervisor', 20_000);
+  // Resolve the saved subscription once, as the desktop does before allowing a task.
+  // Merely polling supervisor status does not initialise the account readiness barrier.
+  if (live) {
+    const account = await request(directory, 'account/status');
+    if (!account.authenticated)
+      throw Error('The live QA account needs sign-in or reconnect; no benchmark task was sent.');
+  }
   for (const config of ['baseline', 'efficient']) {
     let previous;
     for (let i = 0; i < runs; i++) {
@@ -165,7 +215,7 @@ try {
       results.push(result);
       // T2: the user's own earlier passing result, with provenance, as context for the next run.
       previous = result.correct
-        ? 'Test result: `node test.mjs` failed (exit 1) before the change, run by the user; the starting files are identical.'
+        ? 'Independent fixture check: `node test.mjs` failed (exit 1) before the change; the starting files are identical.'
         : undefined;
     }
   }
@@ -184,17 +234,18 @@ try {
   };
   const baseline = summary('baseline');
   const efficient = summary('efficient');
-  const comparable =
-    efficient.correct >= baseline.correct && baseline.meanTokens && efficient.meanTokens;
+  const comparable = canCompare(baseline, efficient);
   const report = {
     schemaVersion: 1,
     kind: live ? 'live-subscription' : 'controlled-loopback',
+    runId,
     reference: {
       platform: platform(),
       release: release(),
       arch: arch(),
       node: process.version,
       commit: (await exec('git', ['rev-parse', 'HEAD'])).stdout.trim(),
+      dirty: (await exec('git', ['status', '--porcelain'])).stdout !== '',
       muse: (await exec(process.env.MUSE_BIN ?? 'muse', ['--version'])).stdout.trim(),
     },
     task: TASK,
@@ -203,6 +254,7 @@ try {
     efficient,
     tokenSaving: comparable ? 1 - efficient.meanTokens / baseline.meanTokens : null,
     gates: {
+      allCorrect: results.every((r) => r.correct),
       allCompleted: results.every((r) => r.terminal === 'completed'),
       efficientAsCorrect: efficient.correct >= baseline.correct,
       tokensReported:
@@ -217,6 +269,7 @@ try {
   };
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, JSON.stringify(report, null, 2) + '\n');
+  if (!report.gates.allCorrect || !report.gates.allCompleted) process.exitCode = 1;
   console.log(
     JSON.stringify({
       kind: report.kind,

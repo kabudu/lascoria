@@ -85,3 +85,8 @@ These parts of R12 have not been reviewed yet and must be completed before relea
 - Muse skills, plugins and MCP configuration from repositories, and cross-workspace access through Project roots.
 - Full-history privacy review of the Git repository (PL03).
 - A separate reviewer, vulnerability reporting guidance, and rerunning affected checks after each fix.
+
+
+### Native drop boundary review (19 October)
+
+The first drop implementation read as many as sixteen 100 MB files before composer validation, and asynchronous completion could target a newly selected session. Intake now checks eight files/100 MB aggregate before egress from native storage, serializes reads, enforces the remaining allowance on the opened handle and binds delivery to the originating session. Native reads reject non-regular files; Unix opens use O_NONBLOCK so a file replaced by a FIFO cannot occupy a blocking reader indefinitely. Five Node regressions and a Rust allowance/regular-file/FIFO test pass; Windows desktop check and Clippy pass. Native physical drags and Windows special-path validation remain part of the platform gate. This bounds one intake, not total WebView memory or all pending attachments.

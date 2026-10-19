@@ -6,13 +6,26 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 if (process.platform !== 'darwin') throw Error('Build the macOS validation app on macOS');
 const root = resolve(import.meta.dirname, '..');
+const config = JSON.parse(await readFile(join(root, 'src-tauri/tauri.conf.json'), 'utf8'));
 // tauri build runs desktop:prepare (release UI and runtime) and embeds the frontend.
 execFileSync(
   'npx',
-  ['tauri', 'build', '--bundles', 'app', '--config', JSON.stringify({ bundle: { active: true } })],
+  [
+    'tauri',
+    'build',
+    '--bundles',
+    'app',
+    '--config',
+    JSON.stringify({
+      identifier: 'dev.lascoria.qa',
+      productName: 'Lascoria QA',
+      app: { windows: config.app.windows.map((window) => ({ ...window, title: 'Lascoria QA' })) },
+      bundle: { active: true },
+    }),
+  ],
   { cwd: root, stdio: 'inherit' },
 );
-const built = join(root, 'src-tauri/target/release/bundle/macos/Lascoria.app');
+const built = join(root, 'src-tauri/target/release/bundle/macos/Lascoria QA.app');
 const output = join(root, '.dev/macos-qa');
 const app = join(output, 'Lascoria QA.app');
 await rm(app, { recursive: true, force: true });
