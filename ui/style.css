@@ -2769,7 +2769,8 @@ select {
   padding: 0 8px;
 }
 .composer-images-note,
-.transcript-attachments {
+.transcript-attachments,
+.transcript-skill {
   display: block;
   margin: 4px 0 0;
   font-size: 0.8rem;

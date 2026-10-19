@@ -56,6 +56,7 @@ import {
   efficiencyAlerts,
   runningTasks,
   outcomeNotice,
+  skillRequest,
 } from './model';
 import type {
   Status,
@@ -2423,7 +2424,7 @@ export function App() {
                                 ? session.state.provisionalText?.[item.itemId]
                                 : undefined) ??
                                 (item.kind === 'skillRead'
-                                  ? `${item.selector ?? 'Skill'} · ${item.status === 'completed' ? 'loaded' : item.status === 'inProgress' ? 'loading' : (itemStatusLabels[item.status] ?? item.status)}`
+                                  ? `${item.selector ?? 'Skill'}${item.source ? ` (${String(item.source)})` : ''} · ${item.status === 'completed' ? 'loaded' : item.status === 'inProgress' ? 'loading' : (itemStatusLabels[item.status] ?? item.status)}`
                                   : undefined) ??
                                 item.displayText ??
                                 item.text ??
@@ -2434,6 +2435,27 @@ export function App() {
                                   ? (item.statusLine ?? 'Tool execution')
                                   : text(item))}
                             </pre>
+                            {(() => {
+                              const skill = skillRequest(item, session.state.items ?? [], {
+                                reported:
+                                  (session.handshake as { experimentalApi?: boolean } | undefined)
+                                    ?.experimentalApi === true,
+                                settled: Boolean(
+                                  session.state.turns?.find((t) => t.turnId === item.turnId)
+                                    ?.terminal,
+                                ),
+                              });
+                              return (
+                                skill && (
+                                  <small
+                                    className="transcript-skill"
+                                    data-reported={skill.reported}
+                                  >
+                                    Requested skill /{skill.selector} · {skill.observed}
+                                  </small>
+                                )
+                              );
+                            })()}
                             {item.kind === 'userMessage' && (item.attachments?.length ?? 0) > 0 && (
                               <small className="transcript-attachments">
                                 {attachedLabel(item.attachments ?? [])}
