@@ -181,6 +181,12 @@ summary {
   color: #fff;
   border-color: #a85540;
 }
+/* Keep destructive buttons readable on hover and focus; the generic hover is light. */
+.danger:hover:not(:disabled),
+.danger:focus-visible {
+  background: #8a3a2c;
+  color: #fff;
+}
 .row {
   display: flex;
   align-items: center;
@@ -3153,4 +3159,11 @@ button.link {
   padding: 0;
   color: var(--accent);
   text-decoration: underline;
+}
+
+.developer-workspace h3 {
+  overflow-wrap: anywhere;
+}
+.project-map .hint {
+  margin-bottom: 12px;
 }

@@ -168,7 +168,11 @@ export function Workspace({
         )}
       </section>
       {removed && (
-        <p>The worktree was removed. Committed history is retained on the task branch.</p>
+        <p>
+          {session.managedWorkspaces
+            ? 'Every folder’s worktree was removed. Committed history is retained on the task branch in each repository.'
+            : 'The worktree was removed. Committed history is retained on the task branch.'}
+        </p>
       )}
       {!removed && (
         <section>

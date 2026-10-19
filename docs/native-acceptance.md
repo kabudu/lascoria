@@ -97,3 +97,14 @@ Release builds reach only the compiled-in vendor endpoints, so these checks neve
 A rebuilt working-tree macOS QA release bundle based on `b9f173a` used isolated state and synthetic repositories. At 901 CSS pixels, New session remained clickable with expanded tools, task search filtered immediately, Settings chrome stayed fixed while its content scrolled, and the saved two-request daily limit displayed correctly. An exact manual Jev disclosure preview preceded one negative-control request: the added line said PASSED, and the question asking whether it said FAILED returned 4% probability of yes (`jev-1.13.0`). The advisory result and feedback controls were readable. The QA key was forgotten and owned processes stopped without restarting the user supervisor.
 
 Separate Rust-adapter live trials passed five simple oracles each for Jev and SubQ, including helper identity replay and automatic triage. These do not establish coding-task quality, calibration, a live Muse model choosing the tool, or Windows/Linux native acceptance. OpenAI returned 401; the user limited further trials to Jev and SubQ. Final clean-head source validation is recorded in draft PR #1.
+
+## Isolated Project sessions and the Project map (R15, 19 October)
+
+Use two disposable Git repositories with one commit each.
+
+| ID | Steps | Expected |
+| --- | --- | --- |
+| PW1 | New session, Project. Fill the name, a goal and both folders. Look at the map, then tick **Give each folder its own isolated worktree** and read the explanation. | The map shows the folders around the goal; the explanation names the repository-root requirement and that the session keeps its folders. |
+| PW2 | Start with a short task. Read Muse's echo of the Project note. | The note lists the session's worktree paths, never the original folders. |
+| PW3 | Edit a file in the second folder's worktree. Workspace tab, **Folder**: the second folder, **Refresh change preview**, **Commit changes…**. | Only that folder's change appears; the commit lands on its task branch; both original checkouts stay clean and on their own branches. |
+| PW4 | **Discard worktree…**, read the list, confirm. | Every folder is listed with its uncommitted changes; both worktrees are removed and both task branches keep their commits. |

@@ -89,7 +89,13 @@ test(
     const project = await request(
       directory,
       'project/save',
-      { id: randomUUID(), name: 'Isolated pair', expectedRevision: 0, folders },
+      {
+        id: randomUUID(),
+        name: 'Isolated pair',
+        goal: 'Keep both in step',
+        expectedRevision: 0,
+        folders,
+      },
       'save',
     );
     const start = await request(
@@ -117,7 +123,16 @@ test(
       model.requests.some((r) => r.includes(appTree) && r.includes(apiTree)),
       'both worktrees reach the model',
     );
-    assert.ok(!model.requests.some((r) => r.includes(`${repos.api}"`)), 'originals are not roots');
+    // The Project note with the first task names the worktrees too, never the originals.
+    assert.ok(
+      model.requests.some((r) => r.includes('Keep both in step')),
+      'the note was sent',
+    );
+    for (const original of Object.values(repos))
+      assert.ok(
+        !model.requests.some((r) => r.includes(original)),
+        `${original} never reaches Muse`,
+      );
 
     // A change in the API worktree: only API's preview, snapshot and commit see it.
     await writeFile(join(apiTree, 'api.txt'), 'changed in the task\n');

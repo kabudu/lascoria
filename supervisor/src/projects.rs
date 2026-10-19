@@ -245,6 +245,23 @@ pub fn change_note(project: &Value) -> String {
 /// The user's Project goal and folder notes, sent once with the first plain task of a Project
 /// session (and again with a folder change), so the model knows how the folders fit together.
 /// `None` when the Project has neither.
+/// The Project context as Muse works in it: in an isolated session each folder's path is its
+/// worktree, so notes never point Muse at the user's original checkouts.
+pub fn working_context(row: &Value) -> Option<Value> {
+    let mut project = row.get("projectContext")?.clone();
+    if let (Some(folders), Some(managed)) = (
+        project["folders"].as_array_mut(),
+        row["managedWorkspaces"].as_array(),
+    ) {
+        for folder in folders {
+            if let Some(entry) = managed.iter().find(|m| m["folderId"] == folder["id"]) {
+                folder["path"] = entry["path"].clone();
+            }
+        }
+    }
+    Some(project)
+}
+
 pub fn brief(project: &Value) -> Option<String> {
     let folders = project["folders"]
         .as_array()
@@ -586,5 +603,25 @@ mod tests {
         assert!(roots(&input).is_err());
         drop(db);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn isolated_sessions_describe_their_worktrees_not_the_original_folders() {
+        let row = json!({
+            "projectContext":{"name":"Pair","goal":"Ship","revision":1,"folders":[{"id":"a","name":"App","path":"/src/app"},{"id":"b","name":"API","path":"/src/api"}]},
+            "managedWorkspaces":[{"folderId":"a","path":"/state/worktrees/s-1"},{"folderId":"b","path":"/state/worktrees/s-2"}]
+        });
+        let note = brief(&working_context(&row).unwrap()).unwrap();
+        assert!(note.contains("/state/worktrees/s-1") && note.contains("/state/worktrees/s-2"));
+        assert!(
+            !note.contains("/src/app") && !note.contains("/src/api"),
+            "{note}"
+        );
+        let plain = json!({"projectContext":row["projectContext"]});
+        assert!(
+            brief(&working_context(&plain).unwrap())
+                .unwrap()
+                .contains("/src/api")
+        );
     }
 }
