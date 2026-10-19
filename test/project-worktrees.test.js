@@ -6,11 +6,36 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { request } from '../src/client.js';
-import { bounded } from '../src/runtime.js';
+import { pathToFileURL } from 'node:url';
+const installed = process.env.LASCORIA_PROJECT_APP;
+const supervisor = installed
+  ? join(
+      installed,
+      'runtime',
+      `constellation-supervisor${process.platform === 'win32' ? '.exe' : ''}`,
+    )
+  : resolve('supervisor/target/debug/constellation-supervisor');
+const { request } = await import(
+  installed ? pathToFileURL(join(installed, 'runtime/workers/client.js')).href : '../src/client.js'
+);
+const { bounded } = await import(
+  installed
+    ? pathToFileURL(join(installed, 'runtime/workers/runtime.js')).href
+    : '../src/runtime.js'
+);
 import { provider } from '../testing/provider.js';
 const exec = promisify(execFile);
 const git = async (cwd, ...args) => (await exec('git', args, { cwd })).stdout.trim();
+// Decode JSON strings before checking paths: Windows backslashes are escaped on the wire.
+const requestText = (body) => {
+  const strings = [];
+  const visit = (value) => {
+    if (typeof value === 'string') strings.push(value);
+    else if (value && typeof value === 'object') Object.values(value).forEach(visit);
+  };
+  visit(JSON.parse(body));
+  return strings.join('\n');
+};
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, predicate) {
   let value;
@@ -52,13 +77,16 @@ test(
       );
     }
     const model = await provider(root, { responseDelayMs: 20 });
-    const daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
+    const daemon = spawn(supervisor, [], {
       env: {
         ...process.env,
         ...model.env,
         SCH_STATE_DIR: directory,
         SCH_PROVIDER: 'meta',
         SCH_AUTH_MANAGED: '0',
+        ...(installed
+          ? { SCH_RESOURCES: join(installed, 'runtime'), SCH_NODE: process.execPath }
+          : {}),
         GIT_AUTHOR_NAME: 'QA',
         GIT_AUTHOR_EMAIL: 'qa@example.test',
         GIT_COMMITTER_NAME: 'QA',
@@ -120,17 +148,19 @@ test(
     await request(directory, 'turn', { sessionId, text: 'Confirm the folders' }, 'task');
     await until(status, (s) => s.sessions[0].state.turns?.at(-1)?.terminal === 'completed');
     assert.ok(
-      model.requests.some((r) => r.includes(appTree) && r.includes(apiTree)),
+      model.requests.some(
+        (r) => requestText(r).includes(appTree) && requestText(r).includes(apiTree),
+      ),
       'both worktrees reach the model',
     );
     // The Project note with the first task names the worktrees too, never the originals.
     assert.ok(
-      model.requests.some((r) => r.includes('Keep both in step')),
+      model.requests.some((r) => requestText(r).includes('Keep both in step')),
       'the note was sent',
     );
     for (const original of Object.values(repos))
       assert.ok(
-        !model.requests.some((r) => r.includes(original)),
+        !model.requests.some((r) => requestText(r).includes(original)),
         `${original} never reaches Muse`,
       );
 

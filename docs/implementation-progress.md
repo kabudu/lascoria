@@ -534,3 +534,18 @@ Running checklist:
 - [x] Focused attachment/Project UI checks, Windows desktop check/Clippy, repository/privacy and supply-chain checks (zero npm vulnerabilities; 843 Rust crates checked, existing reviewed warnings retained). Final reviewed-head local CI and commit/push results are recorded in draft PR #1. No merge or release.
 
 R10 independent coding-quality and Windows/Linux acceptance, R14 physical drop/video/platform trials, R15 interruption/platform validation, R16 target-matrix checks and the consolidated resource/security/UX gates remain open.
+
+
+### Native drag/drop and Windows continuation (19 October)
+
+Running checklist from `68f0e2b`:
+
+- [x] Confirm the connected Windows laptop and private redirected transfer path; preserve its existing app/state. Build the current unsigned Windows release QA package.
+- [x] Reproduce macOS QA selection ambiguity: distinct bundle ID/title alone still returned the normal app. A disposable copy with a unique executable is correctly selected and shows its isolated session. Make that executable separation permanent in the QA packager/launcher and keep only one packaged QA bundle.
+- [x] macOS physical DR1/DR2 with user assistance: highlight, both files staged, folder refused. Native view and session-owned ready attachment list agree.
+- [ ] DR3 Project folder intake and full native drop/recovery/platform matrix.
+- [x] SHA-256 verify the Windows archive and official Muse 1.4.10 binary; installed-resource Windows smoke (11 checks) and lifecycle smoke (10 checks, none unexercised) pass. Native OS file picking stages the text/image pair. Physical Windows drops remain unverified.
+- [x] Reproduce a real Windows Project startup failure: Muse requires namespaced canonical additional roots. Convert at the SDK boundary for start and next-task replacement. The portable installed-resource Project worktree test fails before and passes after; focused macOS worktree/context tests pass. The portable Windows context test also passes next-task folder replacement, compaction and recovery.
+- [x] Fix the Windows canonical-root finding and package portable Project regressions; update scoped platform evidence. Repository/privacy checks and focused macOS/Windows checks pass.
+
+Delivery validation and the final commit/push receipt are recorded against the exact reviewed revision in [draft PR #1](https://github.com/kabudu/lascoria/pull/1). No merge or release is authorised. DR3 and the full platform/native recovery matrix above remain open.

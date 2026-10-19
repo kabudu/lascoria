@@ -5,8 +5,24 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { request } from '../src/client.js';
-import { bounded } from '../src/runtime.js';
+import { pathToFileURL } from 'node:url';
+const installed = process.env.LASCORIA_PROJECT_APP;
+const supervisor = installed
+  ? join(
+      installed,
+      'runtime',
+      `constellation-supervisor${process.platform === 'win32' ? '.exe' : ''}`,
+    )
+  : resolve('supervisor/target/debug/constellation-supervisor');
+const { request } = await import(
+  installed ? pathToFileURL(join(installed, 'runtime/workers/client.js')).href : '../src/client.js'
+);
+const { bounded } = await import(
+  installed
+    ? pathToFileURL(join(installed, 'runtime/workers/runtime.js')).href
+    : '../src/runtime.js'
+);
+
 import { provider } from '../testing/provider.js';
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, predicate) {
@@ -35,13 +51,16 @@ test(
     for (const dir of [app, api, docs]) await mkdir(dir);
     const model = await provider(root, { responseDelayMs: 800 });
     const boot = () =>
-      spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
+      spawn(supervisor, [], {
         env: {
           ...process.env,
           ...model.env,
           SCH_STATE_DIR: directory,
           SCH_PROVIDER: 'meta',
           SCH_AUTH_MANAGED: '0',
+          ...(installed
+            ? { SCH_RESOURCES: join(installed, 'runtime'), SCH_NODE: process.execPath }
+            : {}),
           XDG_CONFIG_HOME: join(root, 'config'),
           XDG_DATA_HOME: join(root, 'data'),
           XDG_CACHE_HOME: join(root, 'cache'),
@@ -95,7 +114,7 @@ test(
       );
     await request(directory, 'turn', { sessionId, text: 'First task' }, 'task-1');
     await finished(1);
-    assert.ok(!model.requests.at(-1).includes(docs));
+    assert.ok(!model.requests.at(-1).includes(JSON.stringify(docs).slice(1, -1)));
     // R15: the goal and folder notes reach the model once, with the first plain task, while the
     // transcript keeps the user's words.
     const occurrences = (text) => text.split('Project goal: Keep the public API stable').length - 1;
@@ -174,7 +193,10 @@ test(
     // Muse keeps describing the session-start folders to the model, so the change is also named
     // in a model-visible note; the transcript keeps the user's words.
     const last = model.requests.at(-1);
-    assert.ok(last.includes('Lascoria note') && last.includes(docs), evidence());
+    assert.ok(
+      last.includes('Lascoria note') && last.includes(JSON.stringify(docs).slice(1, -1)),
+      evidence(),
+    );
     assert.ok(
       row.state.items.some((item) => item.displayText === applyText),
       `Transcript shows the user text: ${JSON.stringify(row.state.items.slice(-4))}`,

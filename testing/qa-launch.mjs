@@ -32,7 +32,7 @@ const layout = windows
       const app = join(base, 'Lascoria QA.app');
       return {
         base,
-        ui: join(app, 'Contents/MacOS/spatial-constellation-desktop'),
+        ui: join(app, 'Contents/MacOS/LascoriaQA'),
         resources: join(app, 'Contents/Resources/runtime'),
       };
     })();

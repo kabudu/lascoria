@@ -1,6 +1,6 @@
 // Unsigned macOS validation app for native acceptance (docs/native-acceptance.md). Ad hoc
 // signed only, so it runs on this Mac; this is not a release artifact and is never published.
-import { cp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
+import { rename, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -30,9 +30,22 @@ const output = join(root, '.dev/macos-qa');
 const app = join(output, 'Lascoria QA.app');
 await rm(app, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-await cp(built, app, { recursive: true });
+// One QA bundle and a distinct executable prevent automation/Launch Services selecting
+// the user's normal app or a second build-directory copy with the same identity.
+await rename(built, app);
+await rename(
+  join(app, 'Contents/MacOS/spatial-constellation-desktop'),
+  join(app, 'Contents/MacOS/LascoriaQA'),
+);
+execFileSync('plutil', [
+  '-replace',
+  'CFBundleExecutable',
+  '-string',
+  'LascoriaQA',
+  join(app, 'Contents/Info.plist'),
+]);
 execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' });
-const binary = join(app, 'Contents/MacOS/spatial-constellation-desktop');
+const binary = join(app, 'Contents/MacOS/LascoriaQA');
 const runtime = join(app, 'Contents/Resources/runtime');
 const hash = async (file) =>
   createHash('sha256')

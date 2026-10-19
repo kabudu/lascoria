@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Windows Project sessions send the native canonical folder paths required by Muse, including isolated worktrees and folder changes for subsequent tasks.
+
 - Native attachment drops enforce a shared 100 MB/eight-file intake limit and stay bound to the session where they were dropped. Special files are refused and overlapping reads are bounded.
 
 - Drop files from your file manager onto the composer to attach them, or drop folders onto Project setup to add them.
