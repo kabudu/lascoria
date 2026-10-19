@@ -513,3 +513,7 @@ PW2 recheck passed natively: in an isolated Project session started against the 
 ### R14/R15 native drops (19 October)
 
 The window now handles drops natively, so folders dropped on Project setup arrive with their paths and files dropped on the composer are read through a narrow command limited to the latest drop ([attachments](attachments.md#native-drops-19-october)). The Projects UI test covers folder and file drops on Project setup through the app's drop routing event; native DR1 to DR3 checks are pending.
+
+### R12 adversarial local clients (19 October)
+
+`test/ipc-adversarial.test.js` covers thirteen malformed, unauthenticated, oversized or slow request shapes plus a connection flood against a real supervisor; all are refused without a crash, a stuck client or a state change ([security review](security-review.md#adversarial-local-clients-19-october)). Windows named pipes, cross-user attempts and hostile repositories remain.
