@@ -597,3 +597,42 @@ export function runningTasks(
 ) {
   return sessions.filter((s) => s.id !== except && s.state?.activeTurnId).length;
 }
+
+/**
+ * R13: a plain sentence for what just happened, instead of an operation name and an internal
+ * status word. An unknown outcome always says to check before repeating.
+ */
+export function outcomeNotice(operation: string, status?: string) {
+  const names: Record<string, string> = {
+    start: 'Session',
+    turn: 'Task',
+    steer: 'Steering',
+    cancel: 'Stop request',
+    decide: 'Permission decision',
+    answer: 'Answer',
+    resume: 'Recovery',
+    setModel: 'Model change',
+    setEffort: 'Effort change',
+    'artifact/capture': 'Snapshot',
+    'evidence/record': 'Evidence',
+    'workspace/run': 'Test command',
+    'workspace/commit': 'Commit',
+    'workspace/discard': 'Worktree discard',
+    'session/archive': 'Archive',
+  };
+  const what = names[operation] ?? 'Request';
+  switch (status) {
+    case 'applied':
+      return `${what} done.`;
+    case 'accepted':
+      return `${what} sent to Muse.`;
+    case 'running':
+      return `${what} running.`;
+    case 'rejected':
+      return `${what} refused; nothing changed.`;
+    case 'outcomeUnknown':
+      return `${what}: the outcome is unknown. Check before repeating it.`;
+    default:
+      return `${what} saved.`;
+  }
+}

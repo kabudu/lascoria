@@ -54,6 +54,7 @@ import {
   zoomAtPoint,
   efficiencyAlerts,
   runningTasks,
+  outcomeNotice,
 } from './model';
 import type {
   Status,
@@ -920,20 +921,7 @@ export function App() {
       lastCommand.current = { id, operation, params };
       dispatched = true;
       const result = await request(operation, params, id);
-      const names: Record<string, string> = {
-        start: 'Session',
-        turn: 'Task',
-        steer: 'Steering',
-        cancel: 'Cancellation',
-        decide: 'Permission decision',
-        answer: 'Answer',
-        resume: 'Recovery',
-        setModel: 'Model change',
-        setEffort: 'Effort change',
-        'artifact/capture': 'Diff capture',
-        'evidence/record': 'Evidence',
-      };
-      setNotice(`${names[operation] ?? operation} · ${result.status ?? 'saved'}`);
+      setNotice(outcomeNotice(operation, result.status));
       if (operation !== 'stop') await refresh();
       if (operation === 'turn' && result.result?.turnId)
         updatePrefs({

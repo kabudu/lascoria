@@ -534,3 +534,17 @@ test('efficiency alerts: budgets, repeated tool calls, context pressure and runn
     1,
   );
 });
+
+test('action notices are plain sentences and never hide an unknown outcome', async () => {
+  const { outcomeNotice } = await import('../ui/model.ts');
+  assert.equal(outcomeNotice('workspace/commit', 'applied'), 'Commit done.');
+  assert.equal(outcomeNotice('turn', 'accepted'), 'Task sent to Muse.');
+  assert.equal(outcomeNotice('artifact/capture', undefined), 'Snapshot saved.');
+  assert.match(outcomeNotice('workspace/discard', 'outcomeUnknown'), /unknown\. Check before/);
+  assert.equal(outcomeNotice('relay/agentSend', 'rejected'), 'Request refused; nothing changed.');
+  for (const status of ['applied', 'accepted', 'outcomeUnknown', undefined])
+    assert.doesNotMatch(
+      outcomeNotice('workspace/run', status),
+      /workspace\/|applied|accepted|outcomeUnknown/,
+    );
+});
