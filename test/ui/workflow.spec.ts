@@ -113,19 +113,19 @@ test('real Muse implementation, tests and review through React and the native Ru
   try {
     await ready();
     await page.goto('/');
-    await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
     await page.getByLabel('Workspace menu', { exact: true }).click();
     await page.getByRole('button', { name: 'Diagnostics', exact: true }).focus();
     await page.keyboard.press('Escape');
     await expect(page.locator('.workspace-menu')).toHaveJSProperty('open', false);
     await expect(page.getByLabel('Workspace menu', { exact: true })).toBeFocused();
     await page.getByLabel('Workspace menu', { exact: true }).click();
-    await page.getByText('Supervisor connected', { exact: true }).click();
+    await page.getByText('Background service connected', { exact: true }).click();
     await expect(page.locator('.workspace-menu')).toHaveJSProperty('open', false);
     failStatus = true;
     await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toBeVisible();
     failStatus = false;
-    await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
     await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toHaveCount(0);
     const beforeInvalid = (await status()).sessions.length;
     await expect(
@@ -211,7 +211,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     expect(errorBounds).toHaveLength(2);
     expect(errorBounds[0].bottom).toBeLessThanOrEqual(errorBounds[1].top);
     failStatus = false;
-    await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Recover session', exact: true })).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: 'Expand canvas controls', exact: true }),
@@ -643,7 +643,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     ).rejects.toThrow(/retry payload changed/);
     // Restore UI's expected revision by reloading through its normal bootstrap.
     await page.reload();
-    await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
     await page.getByText('Task label, notes and relationships', { exact: true }).click();
     await page.getByRole('button', { name: 'Rename session', exact: true }).click();
     await page
@@ -755,7 +755,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     expect((await request(directory, 'presentation/get')).value.view).toBe('list');
     page = await context.newPage();
     await page.goto('/');
-    await expect(page.getByText('Supervisor connected', { exact: true })).toBeVisible();
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
     await page.locator('.session-card').first().click();
     await page.locator('.command-area textarea').fill('Follow-up acknowledgement check');
     await page.locator('.session-card').nth(1).click();
