@@ -98,6 +98,17 @@ A rebuilt working-tree macOS QA release bundle based on `b9f173a` used isolated 
 
 Separate Rust-adapter live trials passed five simple oracles each for Jev and SubQ, including helper identity replay and automatic triage. These do not establish coding-task quality, calibration, a live Muse model choosing the tool, or Windows/Linux native acceptance. OpenAI returned 401; the user limited further trials to Jev and SubQ. Final clean-head source validation is recorded in draft PR #1.
 
+### Independent quality check, 19 October
+
+`node testing/decision-quality-trial.js --paid .dev jev,subq` on `e869a40` (macOS arm64, isolated echo-provider state, keys forgotten afterwards). Each provider reviewed four synthetic diffs that add a fixed-amount discount before tax, with the question whether every test passes; `node --test` on the same change gave the answer. Ground truth: correct with a default (pass), discount after tax (fail), missing default so an existing call returns NaN (fail), correct refactor (pass).
+
+| Provider | Model | Correct | Brier score | Probabilities of passing (in that order) |
+| --- | --- | --- | --- | --- |
+| SubQ | `subq-snap-preview` | 4/4 | 0.005 | 0.95, 0.07, 0.08, 0.93 |
+| Jev | `jev-1.13.0` | 3/4 | 0.277 | 0.91, 0.49, 0.92, 0.88 |
+
+Jev missed the regression that only shows through the existing test (0.92 for a change that fails) and was undecided on the reordered discount. This supports the product's framing of advice as an estimate that never accepts evidence or replaces running the tests; it is a small synthetic sample, not a calibration study.
+
 ## Isolated Project sessions and the Project map (R15, 19 October)
 
 Use two disposable Git repositories with one commit each.
@@ -149,3 +160,18 @@ rem Put Git for Windows and the package's runtime folder on PATH first.
 ```
 
 Each test starts its own disposable supervisor/state and local controlled model provider, then cleans up. It never uses the user's running supervisor. These checks exercise the real Muse protocol but are not live-model quality trials.
+
+## Session helper binding and skill reports (F1 and R9, 19 October)
+
+Run from the repository (macOS, Linux) or an installed QA package with `LASCORIA_RELAY_APP` set to it (Windows, `runtime\node.exe`), with Muse 1.4.10 as `MUSE_BIN`:
+
+```sh
+node --test --test-concurrency=1 test/relay-identity.test.js test/skills-observed.test.js test/relay-agent.test.js
+```
+
+| ID | Test | Expected |
+| --- | --- | --- |
+| HB1 | `relay-identity.test.js` | With peer binding on, the helper Muse starts for a session sends a message before and after a supervisor restart; a helper started by the test is refused with no capability, a guessed one and (macOS, Linux) the real one copied from the helper's environment; the capability is in no data file; on Linux a desktop client started with `LD_PRELOAD` is refused. |
+| SK1 | `skills-observed.test.js` | The session host reports `experimentalApi`; a typed `/release-notes` request produces a `skillRead` item naming the skill and its source, and a plain task produces none. The skill is installed only when the test's Muse home is isolated; otherwise the test is skipped rather than writing to the user's Muse configuration. |
+
+Results: Linux x64 (container, Muse 1.4.10) HB1 and SK1 passed; macOS arm64 HB1 passed (`ps eww` capability read), and both ran in local CI on `8386cf2` and `4cfb250`. Windows is recorded below when run.
