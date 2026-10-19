@@ -51,9 +51,6 @@ test(
       join(skill, 'SKILL.md'),
       '---\nname: release-notes\ndescription: Write release notes in the house style.\n---\nStart with a one-line summary.\n',
     );
-    await exec(process.env.MUSE_BIN ?? 'muse', ['skills', 'install', skill, '--scope', 'user'], {
-      env,
-    });
     const workspace = join(root, 'work');
     await mkdir(workspace);
     const model = await provider(root, {});
@@ -83,23 +80,37 @@ test(
       (s) => s.pid === daemon.pid,
       'boot',
     );
-    const { sessionId } = await api('start', { workspace }, 'start');
-    const ready = await until(
-      () => api('status'),
-      (s) => s.sessions[0]?.state.current,
-      'ready',
-    );
-    assert.equal(ready.sessions[0].handshake.experimentalApi, true, 'session host opted in');
+    const started = async (id) => {
+      const { sessionId } = await api('start', { workspace }, id);
+      const ready = await until(
+        () => api('status'),
+        (s) => s.sessions.find((r) => r.id === sessionId)?.state.current,
+        'ready',
+      );
+      return [sessionId, ready.sessions.find((r) => r.id === sessionId)];
+    };
+    // Install the skill only into this test's own Muse home: never into the user's.
+    const [, probe] = await started('probe');
+    const home = probe.handshake.museHome;
+    if (!resolve(home).startsWith(resolve(root))) {
+      t.skip(`Muse home ${home} is not isolated by XDG variables on this platform`);
+      return;
+    }
+    await exec(process.env.MUSE_BIN ?? 'muse', ['skills', 'install', skill, '--scope', 'user'], {
+      env,
+    });
+    const [sessionId, ready] = await started('start');
+    assert.equal(ready.handshake.experimentalApi, true, 'session host opted in');
     const catalog = await api('skills', { sessionId });
     assert.ok(catalog.skills.some((s) => s.selector === 'release-notes' && s.source === 'user'));
 
     await api('turn', { sessionId, text: '/release-notes for 1.0' }, 'skill-turn');
     const done = await until(
       () => api('status'),
-      (s) => s.sessions[0].state.turns?.at(-1)?.terminal,
+      (s) => s.sessions.find((r) => r.id === sessionId).state.turns?.at(-1)?.terminal,
       'skill turn',
     );
-    const row = done.sessions[0];
+    const row = done.sessions.find((r) => r.id === sessionId);
     assert.equal(row.state.turns.at(-1).terminal, 'completed');
     const turnId = row.state.turns.at(-1).turnId;
     const ask = row.state.items.find((i) => i.kind === 'userMessage' && i.turnId === turnId);
@@ -116,14 +127,15 @@ test(
     );
     // A plain task reports no skill.
     await api('turn', { sessionId, text: 'Say hello' }, 'plain-turn');
-    const plain = await until(
-      () => api('status'),
-      (s) => s.sessions[0].state.turns?.length === 2 && s.sessions[0].state.turns.at(-1).terminal,
-      'plain turn',
+    const mine = (s) => s.sessions.find((r) => r.id === sessionId);
+    const plain = mine(
+      await until(
+        () => api('status'),
+        (s) => mine(s).state.turns?.length === 2 && mine(s).state.turns.at(-1).terminal,
+        'plain turn',
+      ),
     );
-    const plainTurn = plain.sessions[0].state.turns.at(-1).turnId;
-    assert.ok(
-      !plain.sessions[0].state.items.some((i) => i.kind === 'skillRead' && i.turnId === plainTurn),
-    );
+    const plainTurn = plain.state.turns.at(-1).turnId;
+    assert.ok(!plain.state.items.some((i) => i.kind === 'skillRead' && i.turnId === plainTurn));
   },
 );
