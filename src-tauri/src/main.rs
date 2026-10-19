@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod drops;
 mod editor;
 mod folder_picker;
 mod muse_setup;
@@ -375,7 +376,14 @@ fn main() {
         .manage(notifications::Notifier::default())
         .manage(folder_picker::FolderPicker::default())
         .manage(muse_setup::Setup::default())
+        .manage(drops::Drops::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(drop) = event {
+                drops::on_event(window, &window.state::<drops::Drops>(), drop);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            drops::read_dropped,
             supervisor_request,
             connect_supervisor,
             folder_picker::pick_workspace_folder,

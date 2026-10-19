@@ -108,3 +108,11 @@ Use two disposable Git repositories with one commit each.
 | PW2 | Start with a short task. Read Muse's echo of the Project note. | The note lists the session's worktree paths, never the original folders. |
 | PW3 | Edit a file in the second folder's worktree. Workspace tab, **Folder**: the second folder, **Refresh change preview**, **Commit changes…**. | Only that folder's change appears; the commit lands on its task branch; both original checkouts stay clean and on their own branches. |
 | PW4 | **Discard worktree…**, read the list, confirm. | Every folder is listed with its uncommitted changes; both worktrees are removed and both task branches keep their commits. |
+
+## Native drops (R14/R15, 19 October)
+
+| ID | Steps | Expected |
+| --- | --- | --- |
+| DR1 | Drag a text file and an image from the file manager onto the composer of an open session. | The composer shows a dashed outline while dragging; both files are staged in the strip with the same checks as Attach file. |
+| DR2 | Drag a folder onto the composer. | It is refused with its name; nothing is staged. |
+| DR3 | New session, Project. Drag two folders from the file manager onto the setup. | They fill the empty folder row and add a row, named after the folders; nothing is saved until Save project. Dragging a file there is refused. |

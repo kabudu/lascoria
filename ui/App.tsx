@@ -40,6 +40,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { FormEvent } from 'react';
 import { connect, request } from './api';
+import { DROP_EVENT, droppedFiles, type NativeDrop } from './drops';
 import {
   tasks,
   nodeActivity,
@@ -742,6 +743,49 @@ export function App() {
         : 'Lascoria stopped. Close the window, or reconnect to resume saved sessions.',
     );
   }
+  useEffect(() => {
+    // R14/R15: the desktop window takes file and folder drops itself (HTML drops carry no
+    // folder paths) and reports where they landed. The drop goes to the nearest drop target
+    // under the pointer: the composer stages files; Project setup takes folders.
+    if (!(window as any).__TAURI_INTERNALS__?.metadata) return;
+    const stops: (() => void)[] = [];
+    let disposed = false;
+    const keep = (fn: () => void) => (disposed ? fn() : stops.push(fn));
+    void listen<{ state: string; x?: number; y?: number }>('lascoria-drag', (event) => {
+      const over =
+        event.payload.state === 'over' &&
+        document
+          .elementFromPoint(event.payload.x ?? -1, event.payload.y ?? -1)
+          ?.closest('[data-drop-target]');
+      document.querySelectorAll('.drop-hover').forEach((e) => e.classList.remove('drop-hover'));
+      if (over) over.classList.add('drop-hover');
+    }).then(keep);
+    void listen<NativeDrop & { x: number; y: number }>('lascoria-drop', async (event) => {
+      document.querySelectorAll('.drop-hover').forEach((e) => e.classList.remove('drop-hover'));
+      const target = document
+        .elementFromPoint(event.payload.x, event.payload.y)
+        ?.closest<HTMLElement>('[data-drop-target]');
+      if (!target) return;
+      if (target.dataset.dropTarget !== 'composer') {
+        target.dispatchEvent(new CustomEvent(DROP_EVENT, { detail: event.payload }));
+        return;
+      }
+      try {
+        const { files, folders } = await droppedFiles(event.payload);
+        if (folders.length)
+          setNotice(
+            `Folders can't be attached to a task: ${folders.join(', ')}. Drop files instead.`,
+          );
+        if (files.length) setImageDrop({ files, at: Date.now() });
+      } catch (e) {
+        setError(`Could not read the dropped file: ${String(e).replace(/^Error: /, '')}`);
+      }
+    }).then(keep);
+    return () => {
+      disposed = true;
+      stops.forEach((fn) => fn());
+    };
+  }, []);
   useEffect(() => {
     // Native window close flushes presentation only; execution belongs to the supervisor.
     if (!(window as any).__TAURI_INTERNALS__?.metadata) return;
@@ -2861,6 +2905,7 @@ export function App() {
                       );
                     })()}
                     <form
+                      data-drop-target="composer"
                       onDragOver={(event) => {
                         if (
                           status.features?.includes('attachments') &&

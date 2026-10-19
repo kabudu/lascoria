@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Drop files from your file manager onto the composer to attach them, or drop folders onto Project setup to add them.
+
 - The in-app updater no longer includes a zip extractor, removing three known `zip` vulnerabilities from the dependency graph; Lascoria's signed updates were never zip archives.
 
 - Project setup shows a map of the Project's folders around its goal. Arrange the cards by dragging or with the arrow keys; it is only a picture and never changes the folder order or what Muse receives.

@@ -3167,3 +3167,9 @@ button.link {
 .project-map .hint {
   margin-bottom: 12px;
 }
+
+/* A native drag over a drop target (composer or Project setup). */
+[data-drop-target].drop-hover {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+}
