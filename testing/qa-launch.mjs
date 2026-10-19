@@ -29,10 +29,10 @@ const layout = windows
     })()
   : (() => {
       const base = resolve('.dev/macos-qa');
-      const app = join(base, 'Lascoria QA.app');
+      const app = join(base, 'Lascoria Acceptance.app');
       return {
         base,
-        ui: join(app, 'Contents/MacOS/LascoriaQA'),
+        ui: join(app, 'Contents/MacOS/LascoriaAcceptance'),
         resources: join(app, 'Contents/Resources/runtime'),
       };
     })();
