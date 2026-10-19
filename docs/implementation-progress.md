@@ -512,7 +512,7 @@ PW2 recheck passed natively: in an isolated Project session started against the 
 
 ### R14/R15 native drops (19 October)
 
-The window now handles drops natively, so folders dropped on Project setup arrive with their paths and files dropped on the composer are read through a narrow command limited to the latest drop ([attachments](attachments.md#native-drops-19-october)). The Projects UI test covers folder and file drops on Project setup through the app's drop routing event; native DR1 to DR3 checks are pending.
+The window now handles drops natively, so folders dropped on Project setup arrive with their paths and files dropped on the composer are read through a narrow command limited to the latest drop ([attachments](attachments.md#native-drops-19-october)). The Projects UI test covers folder and file drops on Project setup through the app's drop routing event. Native DR1 to DR3 were attempted on a `c16bd99` QA build: the remote-control tooling's synthetic mouse drags select in Finder but never start a drag session, so the checks were not run and need a person to drag the files once (about a minute, steps in [native acceptance](native-acceptance.md#native-drops-r14r15-19-october)).
 
 ### R12 adversarial local clients (19 October)
 
