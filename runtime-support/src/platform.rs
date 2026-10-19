@@ -151,16 +151,11 @@ pub fn check_peer(stream: &Stream) -> io::Result<()> {
     let _ = stream;
     Ok(())
 }
-/// Executable of the connected peer process, for binding control authority to an installed
-/// binary rather than to a file any same-user process can read. `None` where the platform
-/// cannot report the peer process.
-pub fn peer_executable(stream: &Stream) -> io::Result<Option<std::path::PathBuf>> {
+/// Process ID of the connected peer. `None` where the platform cannot report it.
+pub fn peer_pid(stream: &Stream) -> io::Result<Option<u32>> {
     #[cfg(unix)]
     {
-        let Some(pid) = stream.peer_cred()?.pid() else {
-            return Ok(None);
-        };
-        process_executable(pid as u32).map(Some)
+        Ok(stream.peer_cred()?.pid().map(|pid| pid as u32))
     }
     #[cfg(windows)]
     {
@@ -175,8 +170,107 @@ pub fn peer_executable(stream: &Stream) -> io::Result<Option<std::path::PathBuf>
         {
             return Err(io::Error::last_os_error());
         }
-        process_executable(pid).map(Some)
+        Ok(Some(pid))
     }
+}
+/// Executable of the connected peer process, for binding control authority to an installed
+/// binary rather than to a file any same-user process can read. `None` where the platform
+/// cannot report the peer process.
+pub fn peer_executable(stream: &Stream) -> io::Result<Option<std::path::PathBuf>> {
+    peer_pid(stream)?.map(process_executable).transpose()
+}
+/// Signs that another program is steering a process from outside (F1 residual): a tracer
+/// attached, or libraries forced into it when it was launched. Reported for Linux, where a
+/// same-user program can otherwise start the desktop app with `LD_PRELOAD` or under
+/// `ptrace`; macOS hardened-runtime builds refuse both for signed apps, and Windows offers
+/// no equivalent check, so elsewhere this reports nothing.
+#[cfg(target_os = "linux")]
+pub fn process_interference(pid: u32) -> io::Result<Option<&'static str>> {
+    let status = fs::read_to_string(format!("/proc/{pid}/status"))?;
+    if status
+        .lines()
+        .filter_map(|line| line.strip_prefix("TracerPid:"))
+        .any(|tracer| tracer.trim() != "0")
+    {
+        return Ok(Some("another program is tracing it"));
+    }
+    let environ = fs::read(format!("/proc/{pid}/environ"))?;
+    if environ.split(|b| *b == 0).any(|entry| {
+        [b"LD_PRELOAD=".as_slice(), b"LD_AUDIT="]
+            .iter()
+            .any(|name| entry.starts_with(name) && entry.len() > name.len())
+    }) {
+        return Ok(Some("it was started with injected libraries"));
+    }
+    Ok(None)
+}
+#[cfg(not(target_os = "linux"))]
+pub fn process_interference(_pid: u32) -> io::Result<Option<&'static str>> {
+    Ok(None)
+}
+/// The parent of a running process, for binding a session helper to the Muse host that
+/// started it.
+#[cfg(target_os = "linux")]
+pub fn parent_pid(pid: u32) -> io::Result<u32> {
+    // Field 4 of /proc/<pid>/stat, after the parenthesised command name (which may itself
+    // contain spaces or parentheses, so split at the last ')').
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
+    stat.rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().nth(1))
+        .and_then(|ppid| ppid.parse().ok())
+        .ok_or_else(|| io::Error::other("Unreadable process status"))
+}
+#[cfg(target_os = "macos")]
+pub fn parent_pid(pid: u32) -> io::Result<u32> {
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+    let read = unsafe {
+        libc::proc_pidinfo(
+            pid as libc::c_int,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            (&mut info as *mut libc::proc_bsdinfo).cast(),
+            size,
+        )
+    };
+    if read != size {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(info.pbi_ppid)
+}
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+pub fn parent_pid(_pid: u32) -> io::Result<u32> {
+    Err(io::Error::other(
+        "Parent process lookup is unsupported on this platform",
+    ))
+}
+#[cfg(windows)]
+pub fn parent_pid(pid: u32) -> io::Result<u32> {
+    use std::os::windows::io::{FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::{
+        Foundation::INVALID_HANDLE_VALUE,
+        System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+            TH32CS_SNAPPROCESS,
+        },
+    };
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        let _snapshot = OwnedHandle::from_raw_handle(snapshot);
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut more = Process32FirstW(snapshot, &mut entry) != 0;
+        while more {
+            if entry.th32ProcessID == pid {
+                return Ok(entry.th32ParentProcessID);
+            }
+            more = Process32NextW(snapshot, &mut entry) != 0;
+        }
+    }
+    Err(io::Error::other("Process not found"))
 }
 /// The path the operating system resolved for an already open file. Checking this after
 /// opening closes the window in which a checked path is swapped for a link (F3).
@@ -473,6 +567,40 @@ mod windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn notices_a_process_started_with_injected_libraries() -> io::Result<()> {
+        let start = |preload: Option<&str>| {
+            let mut command = std::process::Command::new("sleep");
+            command.arg("5").env_remove("LD_PRELOAD");
+            if let Some(library) = preload {
+                // A missing library only prints a loader warning; the process still runs.
+                command
+                    .env("LD_PRELOAD", library)
+                    .stderr(std::process::Stdio::null());
+            }
+            command.spawn()
+        };
+        let mut clean = start(None)?;
+        let mut injected = start(Some("/nonexistent/lascoria-test.so"))?;
+        // Read after both have replaced the forked image with `sleep`.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let result = (
+            process_interference(clean.id()),
+            process_interference(injected.id()),
+        );
+        for child in [&mut clean, &mut injected] {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        assert_eq!(result.0?, None);
+        assert!(result.1?.is_some());
+        assert_eq!(
+            parent_pid(std::process::id())?,
+            std::os::unix::process::parent_id()
+        );
+        Ok(())
+    }
     #[tokio::test]
     async fn local_channel_and_private_state_roundtrip() -> io::Result<()> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};

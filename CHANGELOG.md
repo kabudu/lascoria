@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Muse sessions' message and decision tools now work only through the helper Muse started for that session. Another program running the same helper, or a debugged or library-injected copy of the app on Linux, is refused.
+
 - Windows Project sessions send the native canonical folder paths required by Muse, including isolated worktrees and folder changes for subsequent tasks.
 
 - Native attachment drops enforce a shared 100 MB/eight-file intake limit and stay bound to the session where they were dropped. Special files are refused and overlapping reads are bounded.

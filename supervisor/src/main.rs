@@ -9,6 +9,7 @@ mod metrics;
 mod peer;
 mod projects;
 mod relay;
+mod relay_identity;
 mod relay_mcp;
 mod review;
 mod search;
@@ -122,6 +123,8 @@ impl Actor {
         }
         let generation = row["generation"].as_u64().unwrap_or(0) + 1;
         row["generation"] = json!(generation);
+        // F1: the new host generation's helper proves itself with a fresh capability.
+        relay_identity::issue(&id, generation);
         row["lifecycle"] = json!("recovering");
         row["state"]["current"] = json!(false);
         self.save(row)?;
@@ -1008,10 +1011,22 @@ async fn connection(
     // Identify the connecting program before reading any request (finding F1).
     // Classification may hash an executable the first time it connects; keep that file I/O
     // off the async workers that serve every other connection.
-    let executable = lascoria_runtime::platform::peer_executable(&stream)
-        .ok()
-        .flatten();
-    let peer_class = tokio::task::spawn_blocking(move || policy.classify(executable)).await?;
+    let peer_pid = lascoria_runtime::platform::peer_pid(&stream).ok().flatten();
+    let executable =
+        peer_pid.and_then(|pid| lascoria_runtime::platform::process_executable(pid).ok());
+    let enforced = policy.enforced();
+    let peer_class = tokio::task::spawn_blocking(move || {
+        let class = policy.classify(executable)?;
+        if class == peer::Peer::Desktop
+            && let Some(pid) = peer_pid
+            && let Some(reason) = lascoria_runtime::platform::process_interference(pid)
+                .map_err(|_| anyhow::anyhow!("Only the Lascoria app can control its background service"))?
+        {
+            bail!("Only the Lascoria app can control its background service; this copy was refused because {reason}");
+        }
+        Ok(class)
+    })
+    .await?;
     let mut framed = Framed::new(stream, LinesCodec::new_with_max_length(65536));
     let (delivered_tx, delivered_rx) = oneshot::channel();
     let mut started = None;
@@ -1032,6 +1047,17 @@ async fn connection(
             peer_class,
             request["operation"].as_str().context("Operation required")?,
         )?;
+        if peer_class == peer::Peer::RelayHelper && enforced {
+            // Every helper operation names the helper's own session (relay_mcp sets it from
+            // argv); bind that session to the Muse host Lascoria started for it.
+            relay_identity::verify(
+                request["params"]["sessionId"].as_str().context("Session required")?,
+                request["relayCapability"].as_str(),
+                peer_pid,
+                std::process::id(),
+                lascoria_runtime::platform::parent_pid,
+            )?;
+        }
         started = Some(Instant::now());
         if request["operation"] == "account/status" { return auth.lock().await.status().await; }
         if request["operation"] == "diagnostics" { return Ok(metrics.lock().unwrap().snapshot()); }

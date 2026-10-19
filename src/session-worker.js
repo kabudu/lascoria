@@ -416,7 +416,13 @@ export async function createSession(send, onDeath) {
                     transport: 'stdio',
                     command: process.env.SCH_RELAY_HELPER,
                     args: ['--relay-mcp', sessionId],
-                    env: { SCH_STATE_DIR: process.env.SCH_RELAY_STATE_DIR },
+                    env: {
+                      SCH_STATE_DIR: process.env.SCH_RELAY_STATE_DIR,
+                      // F1: binds this helper to this session's host; never logged or shown.
+                      ...(/^[0-9a-f]{64}$/.test(params.relayCapability ?? '')
+                        ? { SCH_RELAY_CAPABILITY: params.relayCapability }
+                        : {}),
+                    },
                     framing: 'lineDelimitedJson',
                     mode: 'required',
                   },

@@ -8,6 +8,13 @@ use tokio::{
 };
 use tokio_util::codec::{FramedRead, LinesCodec};
 
+/// The session capability Muse passed in this helper's environment, if well formed.
+fn capability() -> Option<String> {
+    std::env::var("SCH_RELAY_CAPABILITY")
+        .ok()
+        .filter(|c| c.len() == 64 && c.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 async fn request(operation: &str, params: Value, id: String) -> Result<Value> {
     let root = lascoria_runtime::state_dir();
     let mut token = String::new();
@@ -22,10 +29,14 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value> {
     );
     timeout(Duration::from_secs(10), async {
         let mut stream = lascoria_runtime::platform::connect(std::path::Path::new(".")).await?;
-        let payload =
-            json!({"version":1,"token":token,"id":id,"operation":operation,"params":params})
-                .to_string()
-                + "\n";
+        let mut payload =
+            json!({"version":1,"token":token,"id":id,"operation":operation,"params":params});
+        // F1: proves this helper was started by the Muse host Lascoria configured for this
+        // session (see relay_identity). Development supervisors without peer binding ignore it.
+        if let Some(capability) = capability() {
+            payload["relayCapability"] = json!(capability);
+        }
+        let payload = payload.to_string() + "\n";
         ensure!(
             payload.len() <= 65536,
             "Local message request exceeds budget"
