@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- On Linux the program is now called `lascoria`, so notifications and window lists show Lascoria's name and icon, and the app is listed under Development.
+
 - The shortcut picker now shows skills installed while a session is open: a list older than 30 seconds is refreshed each time the picker opens.
 
 - When connecting sessions, a Project session is listed by its Project name and folder count instead of only its first folder.
