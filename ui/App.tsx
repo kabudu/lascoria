@@ -976,7 +976,7 @@ export function App() {
     } catch (e) {
       setError(
         dispatched
-          ? `${String(e)} Request ${id}. Inspect the journal before repeating an uncertain action.`
+          ? `${String(e)} Request ${id}. Check Command acknowledgements below the composer before repeating it.`
           : String(e),
       );
     } finally {
@@ -1226,7 +1226,7 @@ export function App() {
             </button>
           )}
           <span className={`connection ${connected ? 'live' : ''}`}>
-            {connected ? 'Supervisor connected' : 'Disconnected'}
+            {connected ? 'Background service connected' : 'Disconnected'}
           </span>
           <button
             className="account-status"
@@ -3357,11 +3357,11 @@ export function App() {
               const result = await mutate(operation, { sessionId: settingsTarget, ...params });
               setSettingsMessage(
                 !result
-                  ? 'Request outcome unknown; inspect the journal before retrying.'
+                  ? 'The outcome is unknown. Check Command acknowledgements below the composer before trying again.'
                   : result.status === 'rejected'
                     ? (result.error?.message ?? 'Muse refused this setting.')
                     : result.status === 'outcomeUnknown'
-                      ? 'Outcome unknown; inspect the journal before retrying.'
+                      ? 'The outcome is unknown. Check Command acknowledgements below the composer before trying again.'
                       : operation === 'setModel'
                         ? 'Model change admitted. It takes effect at the next model-call boundary.'
                         : 'Effort default saved for subsequent turns. The running turn keeps its resolved effort.',
