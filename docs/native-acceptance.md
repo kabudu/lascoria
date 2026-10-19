@@ -15,7 +15,7 @@ Status: prepared 17 October 2026 for the increments marked "native pending" in [
 | --- | --- | --- |
 | macOS (arm64) | `node scripts/package-macos-qa.js` makes `.dev/macos-qa/Lascoria Acceptance.app` (ad hoc signed, unsigned for distribution) and `provenance.json` with the revision and binary checksums. | `node testing/qa-launch.mjs echo ~/.local/bin/muse-bin-1.4.10-R6427.1`, `live` with the same binary for checks that need Muse's real models after signing in inside the app (QA scripts can still drive it), or `bound` (see F1/U1). `reopen` relaunches only the app with the same state. `stop` ends what `echo` started; in `bound` mode the app owns its supervisor, so end it with **Log out…**, **Pause work and quit**. |
 | Windows (x64) | `node scripts/package-windows-qa.js` on the Mac makes `.dev/windows-qa` (cross-built, unsigned). Copy the whole folder to the laptop. | In that folder: `runtime\node.exe testing\qa-launch.mjs echo <path to Muse 1.4.10 muse.exe>`. Install Muse 1.4.10 first through U1 if the laptop still has 1.4.9. |
-| Linux | No Linux desktop host is available yet. `node scripts/package-native-qa.js` plus the automated checks below cover runtime behaviour on a Linux machine; desktop checks stay **not run** until a Linux desktop is provided. | |
+| Linux | `npm run desktop:prepare`, then `cargo build --release --features custom-protocol` in `src-tauri`; run `src-tauri/target/release/spatial-constellation-desktop` with an isolated `SCH_STATE_DIR` and XDG folders. Without a physical Linux desktop, an X server such as Xvfb hosts it (WebKitGTK). | See the Linux desktop evidence below. |
 
 ## A. Automated checks (each OS)
 
@@ -175,3 +175,12 @@ node --test --test-concurrency=1 test/relay-identity.test.js test/skills-observe
 | SK1 | `skills-observed.test.js` | The session host reports `experimentalApi`; a typed `/release-notes` request produces a `skillRead` item naming the skill and its source, and a plain task produces none. The skill is installed only when the test's Muse home is isolated; otherwise the test is skipped rather than writing to the user's Muse configuration. |
 
 Results: Linux x64 (container, Muse 1.4.10) HB1 and SK1 passed; macOS arm64 HB1 passed (`ps eww` capability read), and both ran in local CI on `8386cf2` and `4cfb250`. Windows x64 (laptop, official Muse 1.4.10-R6427.1, unsigned QA package of `e869a40`, SHA-256 verified before unpacking): `relay-identity`, `skills-observed` and `relay-agent` passed, 3/3 with none skipped, so the Muse-started helper is accepted through the Windows process tree and Muse's home was isolated for the skill install. Copying the result log back to the redirected folder was refused by the redirection (read-only); the log stays in the QA folder on the laptop.
+
+## Linux desktop (19 October)
+
+Ubuntu 24.04 x64 container, WebKitGTK 2.52.6 under Xvfb (no GPU; software rendering), release desktop built from `c36d371`, isolated state and XDG folders, input through XTest:
+
+- Echo mode (script-started supervisor): the window connected ("Background service connected"), showed the session, and a task typed into the composer with **Start turn** completed (`echo: Say hello from Linux`) with the transcript and the Attention entry. The echo provider also leaves failed background reminder items, as it does on every platform with that provider.
+- Bound mode (the desktop starts its own supervisor from `runtime/`): Muse 1.4.10 was found ready and the account screen appeared; a Node CLI client was refused with "Only the Lascoria app can control its background service", so F1 peer binding holds with the real Linux desktop. The API key status showed as unavailable because the container has no Secret Service.
+
+Not covered: a physical Linux desktop session (Wayland or X11 with a file manager), so native file drops, the folder chooser, notifications and the Secret Service vault stay open for Linux.
