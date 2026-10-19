@@ -3,6 +3,8 @@
 // scripts/package-windows-qa.js, with its own runtime\node.exe.
 //
 //   node qa-launch.mjs echo  <Muse 1.4.10 binary>   feature checks, no sign-in needed
+//   node qa-launch.mjs live  <Muse 1.4.10 binary>   like echo, but with Muse's real models: sign
+//                                                   in inside the app; QA scripts can drive it
 //   node qa-launch.mjs bound [older Muse binary]    the app starts its own supervisor; with a
 //                                                   path, setup starts from that older choice
 //   node qa-launch.mjs reopen                       reopen only the app, same mode and state
@@ -54,8 +56,8 @@ if (mode === 'stop') {
 const running = JSON.parse(await readFile(record, 'utf8').catch(() => '{}'));
 if (mode === 'reopen' && !running.mode) throw Error('Nothing to reopen; start echo or bound first');
 const launch = mode === 'reopen' ? running.mode : mode;
-if (!['echo', 'bound'].includes(launch))
-  throw Error('Usage: qa-launch.mjs echo <muse> | bound [muse] | reopen | stop');
+if (!['echo', 'live', 'bound'].includes(launch))
+  throw Error('Usage: qa-launch.mjs echo <muse> | live <muse> | bound [muse] | reopen | stop');
 if (!existsSync(layout.ui)) throw Error(`Validation app not found at ${layout.ui}`);
 const root = join(layout.base, `state-${launch}`);
 const directory = join(root, 'state');
@@ -76,14 +78,13 @@ const select = (path, version) =>
   );
 let daemonPid = running.daemonPid;
 if (mode === 'bound' && muse) await select(muse, '1.4.9');
-if (launch === 'echo')
+if (launch === 'echo' || launch === 'live')
   Object.assign(env, {
     SCH_RESOURCES: windows ? '\\\\?\\' + layout.resources : layout.resources,
     SCH_NODE: exe('node'),
-    SCH_PROVIDER: 'echo',
-    SCH_AUTH_MANAGED: '0',
   });
-if (mode === 'echo') {
+if (launch === 'echo') Object.assign(env, { SCH_PROVIDER: 'echo', SCH_AUTH_MANAGED: '0' });
+if (mode === 'echo' || mode === 'live') {
   if (!muse) throw Error('Pass the Muse 1.4.10 binary');
   await select(muse, '1.4.10');
   const log = await open(join(root, 'supervisor.log'), 'a');
