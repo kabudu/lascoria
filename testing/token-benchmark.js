@@ -7,7 +7,8 @@
 //                                                   proves the harness, not real savings)
 //   SCH_BENCH_LIVE=1 SCH_BENCH_STATE=<state folder> node testing/token-benchmark.js
 //       your Muse subscription, signed in beforehand in that isolated state folder (for example
-//       a `qa-launch.mjs bound` state after S1). Close the app using it first. Real model calls;
+//       a `qa-launch.mjs live` or `bound` state after signing in; Muse data is taken from beside
+//       that folder). Stop the app and supervisor using it first. Real model calls;
 //       uses your allowance.
 //
 // Options: SCH_BENCH_RUNS (default 3 per configuration), SCH_BENCH_OUTPUT (report path).
@@ -42,8 +43,14 @@ const env = {
   SCH_PROVIDER: 'meta',
   SCH_AUTH_MANAGED: live ? '1' : '0',
   MUSE_NO_AUTO_UPDATE: '1',
+  // Muse's own data (sign-in, sessions) stays beside the chosen state folder, as qa-launch.mjs
+  // lays it out, never in your normal Muse home.
   ...(live
-    ? {}
+    ? {
+        XDG_CONFIG_HOME: join(dirname(directory), 'config'),
+        XDG_DATA_HOME: join(dirname(directory), 'data'),
+        XDG_CACHE_HOME: join(dirname(directory), 'cache'),
+      }
     : {
         XDG_CONFIG_HOME: join(root, 'config'),
         XDG_DATA_HOME: join(root, 'data'),
