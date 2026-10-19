@@ -2167,7 +2167,7 @@ export function App() {
                   <span>
                     {visible.length} tasks · {nodes.length - visible.length} hidden
                   </span>
-                  <span>Solid: native parentage · Dashed: user assertion</span>
+                  <span>Solid lines: started by Muse · Dashed: links you added</span>
                 </div>
               </section>
               <FloatingPanel
@@ -2185,10 +2185,8 @@ export function App() {
                     <p className="eyebrow">SELECTED TASK</p>
                     <h2 title={task?.label}>{task?.label ?? 'No tasks yet'}</h2>
                     <p className="muted">
-                      {task?.provenance === 'native'
-                        ? 'Native Muse item'
-                        : 'Derived grouping by native turn ID'}{' '}
-                      · {task?.status ?? 'idle'}
+                      {task?.provenance === 'native' ? 'Started by Muse' : 'A task you gave Muse'} ·{' '}
+                      {task?.status ?? 'idle'}
                     </p>
                     {task &&
                       queue.some(
@@ -3722,7 +3720,10 @@ function RevisionBadge({
       {artifact.folder && <span>Folder: {artifact.folder.name}</span>}
       <code>{artifact.fingerprint}</code>
       <small>
-        Base / HEAD: {artifact.base} · task association: {artifact.provenance}
+        Base / HEAD: {artifact.base} ·{' '}
+        {artifact.provenance === 'userAsserted'
+          ? 'linked to its task by you'
+          : `task link: ${artifact.provenance}`}
         {fresh ? ` · checked ${new Date(fresh.checkedAtMillis).toLocaleTimeString()}` : ''}
       </small>
     </div>
