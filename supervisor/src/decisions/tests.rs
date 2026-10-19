@@ -714,6 +714,29 @@ async fn triage_sends_only_chosen_parts_once_per_update_and_only_with_consent() 
         .clone();
     assert_eq!(triaged["status"], "completed");
     assert_eq!(triaged["source"]["turnId"], "t1");
+    // An unrelated settings change (the Muse tool's daily limit) keeps the note current.
+    mode(
+        &service,
+        f.db.clone(),
+        json!({"mode":"tool","dailyLimit":25}),
+    )
+    .await;
+    let note = |id: &'static str| {
+        let (service, db) = (&service, f.db.clone());
+        async move {
+            service
+                .handle(db, "decision/status", &json!({"sessionId":"session-a"}), id)
+                .await
+                .unwrap()["recent"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|r| r["purpose"] == "triage")
+                .unwrap()["status"]
+                .clone()
+        }
+    };
+    assert_eq!(note("status-unrelated").await, "completed");
     // A new wait for the user is a new update.
     finished_task(&f.db, true);
     let old = service
