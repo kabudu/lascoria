@@ -52,6 +52,8 @@ test('data lifecycle: backup with lost reply, export/import, cleanup and restore
   let daemon = boot();
   const context = await browser.newContext();
   let loseBackupReply = false;
+  let refuseSummary = true;
+  let releaseRemoval: (() => void) | undefined;
   try {
     await ready(daemon);
     await context.exposeBinding('nativeBridge', async (_s, command, args) => {
@@ -61,6 +63,10 @@ test('data lifecycle: backup with lost reply, export/import, cleanup and restore
         command === 'connect_supervisor'
           ? { operation: 'status', params: {}, id: 'connect' }
           : args;
+      if (input.operation === 'data/summary' && refuseSummary) {
+        refuseSummary = false;
+        throw new Error('Synthetic temporary data read failure');
+      }
       const { stdout } = await exec(
         resolve('src-tauri/target/debug/spatial-constellation-desktop'),
         ['--bridge-json', JSON.stringify(input)],
@@ -75,6 +81,10 @@ test('data lifecycle: backup with lost reply, export/import, cleanup and restore
         loseBackupReply = false;
         throw new Error('Synthetic lost backup reply after commit');
       }
+      if (input.operation === 'data/removeArchived')
+        await new Promise<void>((done) => {
+          releaseRemoval = done;
+        });
       return data.result;
     });
     await context.addInitScript(() => {
@@ -102,6 +112,8 @@ test('data lifecycle: backup with lost reply, export/import, cleanup and restore
       .click();
     const dialog = page.getByRole('dialog');
     const panel = dialog.getByRole('region', { name: 'Data and backups' });
+    await expect(panel.getByRole('alert')).toContainText('temporary data read failure');
+    await panel.getByRole('button', { name: 'Retry reading local data', exact: true }).click();
     await expect(panel).toContainText('2 of 100');
     await expect(panel).toContainText('No backups yet.');
 
@@ -109,6 +121,8 @@ test('data lifecycle: backup with lost reply, export/import, cleanup and restore
     loseBackupReply = true;
     await panel.getByRole('button', { name: 'Back up now', exact: true }).click();
     await expect(panel.getByRole('alert')).toContainText('lost backup reply');
+    await expect(panel.getByRole('alert')).toContainText('may already have completed');
+    await expect(panel.getByRole('alert')).not.toContainText('Your data is unchanged');
     await panel.getByRole('button', { name: 'Back up now', exact: true }).click();
     await expect(panel.getByRole('status')).toContainText('Backup saved.');
     expect((await request(directory, 'data/summary')).backups).toHaveLength(1);
@@ -126,12 +140,27 @@ test('data lifecycle: backup with lost reply, export/import, cleanup and restore
     await expect(panel.getByRole('alertdialog')).toContainText(
       'Task folders on disk are not deleted',
     );
+    await expect(panel.getByRole('button', { name: 'Keep sessions', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(panel.getByRole('button', { name: 'Remove sessions', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(panel.getByRole('alertdialog')).toHaveCount(0);
+    await expect(
+      panel.getByRole('button', { name: 'Remove selected…', exact: true }),
+    ).toBeFocused();
+    await expect(dialog).toBeVisible();
+    await panel.getByRole('button', { name: 'Remove selected…', exact: true }).click();
     await page.setViewportSize({ width: 800, height: 650 });
     expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
     await panel.getByRole('button', { name: 'Keep sessions', exact: true }).click();
     expect((await request(directory, 'status')).sessions).toHaveLength(2);
     await panel.getByRole('button', { name: 'Remove selected…', exact: true }).click();
     await panel.getByRole('button', { name: 'Remove sessions', exact: true }).click();
+    await expect.poll(() => Boolean(releaseRemoval)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(panel.getByRole('alertdialog')).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Keep sessions', exact: true })).toBeDisabled();
+    releaseRemoval!();
     await expect(panel.getByRole('status')).toContainText('Removed 1 session.');
     let snapshot = await request(directory, 'status');
     expect(snapshot.sessions.map((s: any) => s.id)).toEqual([live]);
