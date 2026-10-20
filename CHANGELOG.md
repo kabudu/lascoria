@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Data & backups can retry a failed read in place; destructive confirmations support safe keyboard focus and cancellation, and lost replies no longer claim that data is unchanged.
+
 - Skill-load attribution requires a matching native turn identity; missing IDs cannot associate unrelated transcript entries.
 
 - On Linux the program is now called `lascoria`, so notifications and window lists show Lascoria's name and icon, and the app is listed under Development.

@@ -70,6 +70,40 @@ export function DataLifecycle({
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [pending, setPending] = useState<Pending>();
+  const confirmation = useRef<HTMLDialogElement>(null);
+  const confirmationOpener = useRef<HTMLElement | null>(null);
+  const ask = (value: Pending, opener: HTMLElement) => {
+    // WebKit pointer clicks do not necessarily focus their button.
+    confirmationOpener.current = opener;
+    setPending(value);
+  };
+  const busyNow = useRef(busy);
+  busyNow.current = busy;
+  useEffect(() => {
+    if (!pending || !confirmation.current) return;
+    const opener = confirmationOpener.current;
+    const dialog = confirmation.current;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!busyNow.current) setPending(undefined);
+    };
+    // Disabled action buttons can move focus to the document while a reply is pending.
+    // Capture Escape there too, before the workspace's global modal shortcut sees it.
+    window.addEventListener('keydown', escape, true);
+    dialog.showModal();
+    dialog.querySelector<HTMLButtonElement>('button.quiet')?.focus();
+    return () => {
+      window.removeEventListener('keydown', escape, true);
+      dialog.close();
+      // WebKit restores the parent dialog's focus again when this node is removed.
+      // Restore the opener after React finishes removing the confirmation.
+      queueMicrotask(() => {
+        if (opener?.isConnected) opener.focus();
+      });
+    };
+  }, [pending]);
   // A retry after a lost reply reuses its identity; the supervisor returns the original result.
   const attempt = useRef<{ key: string; id: string } | undefined>(undefined);
   const identity = (key: string) => {
@@ -77,6 +111,7 @@ export function DataLifecycle({
     return attempt.current.id;
   };
   const load = async () => {
+    setError('');
     try {
       setSummary(await request<Summary>('data/summary'));
     } catch (failure) {
@@ -97,7 +132,7 @@ export function DataLifecycle({
       await load();
     } catch (failure) {
       setError(
-        `${String(failure)}. Your data is unchanged unless the details below say otherwise; retrying is safe.`,
+        `${String(failure)}. The request may already have completed. Retry the same action to check its saved result; it will not run twice.`,
       );
     } finally {
       setBusy('');
@@ -106,7 +141,14 @@ export function DataLifecycle({
   if (!summary)
     return (
       <section className="data-panel" aria-label="Data and backups" aria-busy={!error}>
-        {error ? <p role="alert">{error}</p> : <p role="status">Reading local data…</p>}
+        {error ? (
+          <>
+            <p role="alert">{error}</p>
+            <button onClick={() => void load()}>Retry reading local data</button>
+          </>
+        ) : (
+          <p role="status">Reading local data…</p>
+        )}
       </section>
     );
   const removable = summary.archived.filter((row) => !row.hasLocalMessages);
@@ -261,7 +303,7 @@ export function DataLifecycle({
                   className="quiet"
                   disabled={Boolean(busy) || Boolean(summary.pendingRestore)}
                   aria-label={`Restore backup from ${when(backup.createdAtMillis)}`}
-                  onClick={() => setPending({ kind: 'restore', backup })}
+                  onClick={(event) => ask({ kind: 'restore', backup }, event.currentTarget)}
                 >
                   Restore…
                 </button>
@@ -304,7 +346,7 @@ export function DataLifecycle({
           <div className="data-actions">
             <button
               disabled={!selected.length || Boolean(busy)}
-              onClick={() => setPending({ kind: 'remove', sessions: selected })}
+              onClick={(event) => ask({ kind: 'remove', sessions: selected }, event.currentTarget)}
             >
               Remove selected…
             </button>
@@ -324,7 +366,7 @@ export function DataLifecycle({
         <button
           className="quiet"
           disabled={!summary.compactableEntries || Boolean(busy)}
-          onClick={() => setPending({ kind: 'compact' })}
+          onClick={(event) => ask({ kind: 'compact' }, event.currentTarget)}
         >
           Compact older history
         </button>
@@ -336,13 +378,41 @@ export function DataLifecycle({
       </div>
 
       {pending && (
-        <div className="data-confirm" role="alertdialog" aria-labelledby="data-confirm-title">
+        <dialog
+          ref={confirmation}
+          className="data-confirm"
+          role="alertdialog"
+          aria-labelledby="data-confirm-title"
+          aria-describedby="data-confirm-description"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') event.stopPropagation();
+            if (event.key === 'Tab') {
+              const buttons = [
+                ...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+              ];
+              const first = buttons[0];
+              const last = buttons.at(-1);
+              if (
+                (!event.shiftKey && document.activeElement === last) ||
+                (event.shiftKey && document.activeElement === first)
+              ) {
+                event.preventDefault();
+                (event.shiftKey ? last : first)?.focus();
+              }
+            }
+          }}
+          onCancel={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!busy) setPending(undefined);
+          }}
+        >
           {pending.kind === 'remove' && (
             <>
               <h4 id="data-confirm-title">
                 Remove {plural(pending.sessions.length, 'archived session')}?
               </h4>
-              <p>
+              <p id="data-confirm-description">
                 Their transcripts, saved changes and drafts are removed from Lascoria. A backup is
                 made first, so you can restore them. Task folders on disk are not deleted.
               </p>
@@ -381,7 +451,7 @@ export function DataLifecycle({
               <h4 id="data-confirm-title">
                 Restore the backup from {when(pending.backup.createdAtMillis)}?
               </h4>
-              <p>
+              <p id="data-confirm-description">
                 When Lascoria next starts, current sessions, transcripts and drafts are replaced by
                 this backup. Current data is backed up first. Your Muse sign-in and billing choice
                 stay as they are now. Work started after the backup is not repeated.
@@ -411,7 +481,7 @@ export function DataLifecycle({
           {pending.kind === 'compact' && (
             <>
               <h4 id="data-confirm-title">Compact older command history?</h4>
-              <p>
+              <p id="data-confirm-description">
                 Finished entries older than 7 days keep only their identity and outcome, so they are
                 never repeated. Test output, local message deliveries and uncertain entries are kept
                 in full. A backup is made first.
@@ -438,7 +508,7 @@ export function DataLifecycle({
               </div>
             </>
           )}
-        </div>
+        </dialog>
       )}
       <details className="usage-details">
         <summary>About local data</summary>

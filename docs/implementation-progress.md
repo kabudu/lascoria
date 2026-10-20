@@ -558,3 +558,16 @@ Delivery validation and the final commit/push receipt are recorded against the e
 Reviewed the helper identity, platform peer checks, experimental skill-report boundary, catalog refresh and Linux packaging changes. Found and fixed one attribution edge case: a user message and a skill-load report with missing turn IDs compared equal, so the UI could claim the report belonged to that request without native correlation. The focused presentation regression failed before the fix and passes after; reports now require a nonempty matching native turn ID. This proves the projection boundary, not that the pinned Muse normally omits that field.
 
 Corrected running-summary rows that still described completed Windows/Linux checks as pending. Parent gates remain open: physical Linux intake, signed distribution/update trials, full lifecycle/accessibility/failure and resource matrices, developer trials, and final security/UX reviews. Linux virtual-display evidence is not physical Wayland/X11 file-manager acceptance. Final validation is recorded separately against the reviewed revision.
+
+
+### R5/R7/R13 data recovery and keyboard confirmation (20 October)
+
+- [x] Reproduce a transient initial data-read failure leaving Settings without a retry action through the existing Rust-backed UI workflow.
+- [x] Add Retry reading local data without closing Settings, changing the selected session or starting model work.
+- [x] Replace the inline confirmation with a real modal boundary. Focus the safe choice, keep Tab/Shift+Tab inside, let Escape cancel only the confirmation, and restore focus to its opener. Escape cannot dismiss it while a data action is pending.
+- [x] Remove the incorrect unchanged-data assurance after a lost reply. Explain that the action may have completed and same-action retry retrieves the recorded result.
+- [x] Rust-backed regression: failed initial read/retry, committed backup/lost reply/retry yields one backup, keyboard cancellation leaves both sessions intact, removal and restore still complete with no command replay.
+- [x] Native macOS release acceptance build: safe initial focus, Tab containment, Escape preserves Settings and the archived fixture, and focus returns to Remove selected. WebKit's pointer-click focus difference was reproduced and fixed by retaining the actual trigger, then revalidated in the rebuilt app. Owned QA processes stopped; isolated state retained privately.
+- [ ] Exact reviewed-head local CI and commit/push receipt (recorded in the PR on completion).
+
+This closes UX17's implemented recovery paths, not the full R5/R7/R13 cross-platform lifecycle, accessibility or failure matrix. Existing user sessions and pending questions are preserved.
