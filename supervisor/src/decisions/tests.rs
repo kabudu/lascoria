@@ -86,6 +86,15 @@ impl Drop for Server {
     }
 }
 async fn server(response: Value, delay_ms: u64, expected: Option<Value>, code: u16) -> Server {
+    server_gated(response, delay_ms, expected, code, None).await
+}
+async fn server_gated(
+    response: Value,
+    delay_ms: u64,
+    expected: Option<Value>,
+    code: u16,
+    gate: Option<Arc<tokio::sync::Semaphore>>,
+) -> Server {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let calls = Arc::new(AtomicUsize::new(0));
@@ -131,6 +140,9 @@ async fn server(response: Value, delay_ms: u64, expected: Option<Value>, code: u
                 assert_eq!(&body, expected);
             }
             count.fetch_add(1, Ordering::SeqCst);
+            if let Some(gate) = &gate {
+                gate.acquire().await.unwrap().forget();
+            }
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             let body = response.to_string();
             let header = format!(
@@ -394,7 +406,8 @@ async fn admission_is_bounded_and_unfinished_identities_remain_unknown_after_res
     let f = fixture().await;
     let mut service = Service::new().unwrap();
     enable(&service, f.db.clone(), "openai").await;
-    let server = server(response("openai"), 100, None, 200).await;
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    let server = server_gated(response("openai"), 0, None, 200, Some(gate.clone())).await;
     service.endpoint = Some(server.url.clone());
     let service = Arc::new(service);
     let mut jobs = Vec::new();
@@ -414,7 +427,9 @@ async fn admission_is_bounded_and_unfinished_identities_remain_unknown_after_res
         }));
     }
     tokio::time::timeout(Duration::from_secs(2), async {
-        while service.active.lock().unwrap().len() < 2 {
+        // Active admission precedes durable reservation. Hold provider replies until both
+        // records exist, rather than racing their creation against a 100 ms response delay.
+        while recent_runs(&f.db.lock().unwrap()).unwrap().len() < 2 {
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
     })
@@ -435,6 +450,7 @@ async fn admission_is_bounded_and_unfinished_identities_remain_unknown_after_res
         .await
         .unwrap();
     assert_eq!(status["recent"].as_array().unwrap().len(), 2);
+    gate.add_permits(2);
     for job in jobs {
         assert_eq!(job.await.unwrap()["status"], "completed");
     }
