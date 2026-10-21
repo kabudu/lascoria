@@ -576,6 +576,73 @@ pub fn apply_pending_restore(root: &Path, database: &Path) -> Result<Option<Valu
     bail!("Unrecognised restore state; remove {PENDING} after checking backups")
 }
 
+const RECOVERY: &str = "data:damagedRecovery";
+
+/// Whether SQLite reported the file itself as unreadable data, rather than, say, a lock or a
+/// full disk that will pass.
+fn damaged(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause.downcast_ref::<rusqlite::Error>().is_some_and(|e| {
+            matches!(
+                e.sqlite_error_code(),
+                Some(rusqlite::ErrorCode::NotADatabase | rusqlite::ErrorCode::DatabaseCorrupt)
+            )
+        })
+    })
+}
+
+/// R7: opens the journal at startup. If SQLite finds the file damaged, it is kept in
+/// `damaged/` and Lascoria starts with empty data, recording what happened and the newest
+/// backup so the app can offer to restore it. Any other failure (a newer schema, a lock, a
+/// full disk) still stops startup with its reason and touches nothing.
+pub fn open_or_recover(root: &Path, database: &Path) -> Result<Db> {
+    let checked = Db::open(database).and_then(|db| {
+        let check: String = db.0.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+        ensure!(
+            check == "ok",
+            "Lascoria's data file failed its integrity check: {check}"
+        );
+        Ok(db)
+    });
+    let error = match checked {
+        Ok(db) => return Ok(db),
+        Err(error) => error,
+    };
+    let integrity = error.to_string().starts_with("Lascoria's data file failed");
+    if !damaged(&error) && !integrity {
+        return Err(error);
+    }
+    let kept_dir = root.join("damaged");
+    lascoria_runtime::platform::private_dir(&kept_dir)?;
+    let at = now_ms() as u64;
+    let kept = kept_dir.join(format!("state-{at}.sqlite"));
+    fs::rename(database, &kept).context("Could not set the damaged data file aside")?;
+    let journal = database.with_extension("sqlite-journal");
+    if journal.exists() {
+        let _ = fs::rename(&journal, kept.with_extension("sqlite-journal"));
+    }
+    drop(lascoria_runtime::platform::private_file(database, false)?);
+    let fresh = Db::open(database)?;
+    let latest = list(root)?.into_iter().next();
+    fresh.put(
+        "presentation",
+        RECOVERY,
+        &json!({
+            "status":"damaged",
+            "keptAs":format!("damaged/state-{at}.sqlite"),
+            "atMillis":at,
+            "reason":format!("{error:#}").chars().take(300).collect::<String>(),
+            "latestBackup":latest.map(|m| json!({"id":m["id"],"createdAtMillis":m["createdAtMillis"]})),
+        }),
+    )?;
+    Ok(fresh)
+}
+
+/// What the app shows after a damaged journal was set aside, until the user dismisses it.
+pub fn recovery(db: &Db) -> Result<Option<Value>> {
+    db.get("presentation", RECOVERY)
+}
+
 fn relay_sessions(db: &Db) -> Result<std::collections::HashSet<String>> {
     let mut ids = std::collections::HashSet::new();
     if let Some(state) = db.get("presentation", RELAY)? {
@@ -838,6 +905,10 @@ pub fn handle(
             params["backupId"].as_str().context("Backup required")?,
         ),
         "data/cancelRestore" => cancel_restore(root),
+        "data/dismissRecovery" => {
+            db.0.execute("DELETE FROM presentation WHERE id=?1", [RECOVERY])?;
+            Ok(json!({"dismissed":true}))
+        }
         "data/removeArchived" => {
             let sessions: Vec<String> = params["sessionIds"]
                 .as_array()
@@ -869,6 +940,45 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn a_damaged_journal_is_kept_aside_and_the_newest_backup_offered() -> Result<()> {
+        let root = Root::new();
+        let database = root.0.join("state.sqlite");
+        // Healthy data opens as it is.
+        let db = seeded(&root.0)?;
+        let backup = create(&db, &root.0, "b-latest", "manual")?;
+        drop(db);
+        assert!(recovery(&open_or_recover(&root.0, &database)?)?.is_none());
+        // Bytes that are not a database: kept unchanged in damaged/, empty data opened.
+        let garbage: Vec<u8> = (0..20_000u32).map(|i| (i * 7919 % 251) as u8).collect();
+        fs::write(&database, &garbage)?;
+        let fresh = open_or_recover(&root.0, &database)?;
+        let note = recovery(&fresh)?.expect("recovery recorded");
+        assert_eq!(note["status"], "damaged");
+        assert_eq!(note["latestBackup"]["id"], backup["id"]);
+        assert_eq!(
+            fs::read(root.0.join(note["keptAs"].as_str().unwrap()))?,
+            garbage
+        );
+        assert!(fresh.get("sessions", "live")?.is_none());
+        // Dismissing it removes the notice; the kept file stays.
+        handle(&fresh, &root.0, "data/dismissRecovery", &json!({}), "d1")?;
+        assert!(recovery(&fresh)?.is_none());
+        assert!(root.0.join(note["keptAs"].as_str().unwrap()).exists());
+        drop(fresh);
+        // Data from a newer version is not damage: startup stops and nothing is moved.
+        let newer = Connection::open(&database)?;
+        newer.execute_batch("PRAGMA user_version=99;")?;
+        drop(newer);
+        let refused = open_or_recover(&root.0, &database)
+            .err()
+            .expect("newer data refused");
+        assert!(refused.to_string().contains("newer version"));
+        assert!(database.exists());
+        assert_eq!(fs::read_dir(root.0.join("damaged"))?.count(), 1);
+        Ok(())
     }
 
     fn seeded(root: &Path) -> Result<Db> {

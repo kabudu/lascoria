@@ -1774,6 +1774,25 @@ export function App() {
               <button onClick={() => void boot()}>Reconnect</button>
             </div>
           )}
+          {status.dataRecovery && (
+            <div className="banner error" role="alert" aria-label="Data could not be read">
+              Lascoria could not read its data file, so it started with empty data. The damaged file
+              is kept in its data folder ({status.dataRecovery.keptAs}).
+              {status.dataRecovery.latestBackup
+                ? ` A backup from ${new Date(status.dataRecovery.latestBackup.createdAtMillis).toLocaleString()} can be restored.`
+                : ' No backup was found.'}
+              <button onClick={() => setModal('data')}>Open Data &amp; backups</button>
+              <button
+                onClick={() =>
+                  void request('data/dismissRecovery', {})
+                    .then(refresh)
+                    .catch((e) => setError(String(e)))
+                }
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
           {status.storage && (
             <div className="banner error" role="alert" aria-label="Changes not saved">
               {status.storage.message ||
