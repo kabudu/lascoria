@@ -1,6 +1,10 @@
 # Public-history cleanup plan
 
-Status: plan selected by the owner on 21 October 2026; execution is not authorised by this document. No commit, branch, tag, pull request or remote history has been rewritten or deleted. The owner authorised retargeting draft PR #1 to master on 21 October. Its head/history remain intact and delivery is still unresolved; this does not authorise merge or cleanup execution. Public opening stays blocked by PL03 in [public-launch.md](public-launch.md).
+Status: the owner approved the private merge and local cleanup preparation on 21 October 2026. PR #1 is merged into master with its commits preserved. Verified access-restricted backups of local/remote refs and the retained GitHub PR ref are outside this checkout. The approved three-document and message cleanup has been prepared in an isolated candidate; no remote history has been rewritten or deleted. Public opening remains blocked by PL03 in [public-launch.md](public-launch.md).
+
+The initial candidate audit covered 152 commits: 142 changed identity, author/committer attribution and parent topology were preserved, and changed file content was restricted to the three approved documents. The current source tree matched the reviewed pre-cleanup tree exactly before evidence-reference reconciliation. Historical signatures cannot survive rewriting signed commits; future releases must be signed from the final reviewed revision. Current evidence references and the exact scanner exception are reconciled to candidate commit identities; the private mapping retains provenance.
+
+The proposed remote replacement covers all six advertised branch heads, with explicit expected-old leases and no branch deletion. GitHub's retained refs/pull/1/head cannot be replaced through a normal push: its old history/cached views need separate GitHub reconciliation or explicit owner acceptance before public opening. The candidate includes a cleaned local copy for audit, which does not claim to change that hosted ref.
 
 ## Findings and scope
 
@@ -17,16 +21,16 @@ The public plan deliberately contains no private session URL, session identifier
 
 ## Before any rewrite
 
-- [ ] Resolve delivery of the current draft PR with the owner. Retargeting to master was authorised and completed on 21 October; merging/closing remains separate. Merge, close, retarget or replace it only under the corresponding explicit authority; this plan selects none of those actions automatically.
+- [x] Resolve delivery of PR #1 with the owner. It was merged into private master with its commits preserved after exact-head local CI passed on 21 October. Local cleanup preparation is approved; no remote rewrite or opening is approved.
 - [ ] Obtain separate, explicit approval for the exact history rewrite and remote ref replacements, including any necessary protection changes. Commit/push permission for feature work is not force-push or branch-deletion permission.
 - [ ] Freeze writes during cleanup and inventory all local/remote branches, tags, PR refs and collaborators' clones. Record the chosen public ref set and every historical location of the findings.
-- [ ] Save a verified, access-restricted archive of the original Git refs outside the future public checkout. Do not include ignored runtime credentials or live captures in a repository archive. Keep original-to-rewritten commit/ref mappings and any replacement-input files private; never add those inputs to the future public tree.
-- [ ] Confirm the approved replacement rules against a fresh private clone and a current supported `git-filter-repo`. Do not operate on the active development checkout or the user's running Lascoria state.
+- [x] Save a verified, access-restricted archive of the original Git refs outside the future public checkout. Do not include ignored runtime credentials or live captures in a repository archive. Keep original-to-rewritten commit/ref mappings and any replacement-input files private; never add those inputs to the future public tree.
+- [x] Confirm the approved replacement rules against a fresh private clone and a current supported `git-filter-repo`. Do not operate on the active development checkout or the user's running Lascoria state.
 
 ## Local preparation after approval
 
-- [ ] Apply narrowly scoped message and file replacements in the disposable clone. Remove the reviewed private-session and AI trailers; sanitise the reviewed historical documentation. Do not remove arbitrary source trees, disable secret rules or discard unrelated history to make a scan pass.
-- [ ] Review the resulting code/tree changes against the original. Only the approved message/document minimisation should differ; identify unexpected changes before proceeding.
+- [x] Apply narrowly scoped message and file replacements in the disposable clone. Remove the reviewed private-session and AI trailers; sanitise the reviewed historical documentation. Do not remove arbitrary source trees, disable secret rules or discard unrelated history to make a scan pass.
+- [x] Review the resulting code/tree changes against the original. Only the approved message/document minimisation should differ; identify unexpected changes before proceeding.
 - [ ] Re-inventory every intended public ref, including commit messages and document metadata. Run full-history secret scanning plus the broader privacy checks; a secret scanner alone cannot validate session-link or environment minimisation.
 - [ ] Reconcile changed commit/tag identities and invalidated signatures. Update public evidence references so they do not guide readers to removed identifiers in old cached revisions. Keep any necessary old-to-new evidence mapping private and rerun final-head local CI on the exact proposed public tree.
 - [ ] Present the exact ref-change plan, validation result, backup location and rollback/recovery procedure for owner approval before replacing remote refs. Do not publish existing QA artifacts as releases from a rewritten revision; build distribution artifacts from the final reviewed source.

@@ -1,6 +1,6 @@
 # Security review (R12)
 
-Started 17 October 2026 against `codex/release-foundations-windows` at `5603378` plus the uncommitted R5/R17/D3 increment. This is the R12 threat model and findings register. It is an evidence-based source review in progress, not a completed audit. Scoped adversarial runtime checks are recorded below; fuzzing and independent review remain open, and a passing scanner or test suite does not close this gate.
+Started 17 October 2026 against `codex/release-foundations-windows` at `ef2ef1e` plus the uncommitted R5/R17/D3 increment. This is the R12 threat model and findings register. It is an evidence-based source review in progress, not a completed audit. Scoped adversarial runtime checks are recorded below; fuzzing and independent review remain open, and a passing scanner or test suite does not close this gate.
 
 ## Deployment assumptions
 
@@ -108,13 +108,13 @@ Limits: this is not a sandbox for Git or a hostile same-user program. Git/config
 
 ### F1 signed macOS runtime proof (21 October)
 
-The local Developer ID QA bundle passes team-signature verification with hardened runtime. The actual release-compiled supervisor passed `testing/macos-signing-smoke.js`: accept a signed native fixture, refuse a same-user interpreter holding the token, refuse the fixture at the same allowed path after ad hoc re-signing, then accept its restored valid signature without a supervisor restart. This tests the OS running-code requirement through the production IPC path, including its path-identity fast path. Both embedded runtime hashes match signed provenance. The signed runtime also completed a controlled real-Muse Echo turn. The subsequent signed native Echo/export and final `cf87233` notarized update checks passed as recorded in the release evidence. Remaining R12 adversarial/platform checks are separate. No general same-user sandbox or broader security clearance is inferred.
+The local Developer ID QA bundle passes team-signature verification with hardened runtime. The actual release-compiled supervisor passed `testing/macos-signing-smoke.js`: accept a signed native fixture, refuse a same-user interpreter holding the token, refuse the fixture at the same allowed path after ad hoc re-signing, then accept its restored valid signature without a supervisor restart. This tests the OS running-code requirement through the production IPC path, including its path-identity fast path. Both embedded runtime hashes match signed provenance. The signed runtime also completed a controlled real-Muse Echo turn. The subsequent signed native Echo/export and final `75864df` notarized update checks passed as recorded in the release evidence. Remaining R12 adversarial/platform checks are separate. No general same-user sandbox or broader security clearance is inferred.
 
 ### Fresh TLS dependency advisories (21 October)
 
 A fresh online supply-chain review found [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html) and [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html), concerning trust in distrusted emSign intermediates. Both the supervisor and desktop lockfiles now resolve `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.10, the stable patched versions. Only those package versions/checksums changed; existing compatible dependency choices were preserved. No advisory suppression or TLS verification bypass was added. The new dependencies were fetched separately from local CI.
 
-`node scripts/check-supply-chain.js` passed after the updates: zero npm vulnerabilities, five shipped npm packages and 843 Rust crates checked, with the same five previously reviewed warnings. This is a dated dependency/license audit, not complete R12 security clearance. Final-head offline CI and any distribution rebuilt with these lockfiles must be recorded separately; the final `cf87233` notarized QA versions include this dependency patch. Subsequent source changes, including F10, require fresh distribution builds and acceptance.
+`node scripts/check-supply-chain.js` passed after the updates: zero npm vulnerabilities, five shipped npm packages and 843 Rust crates checked, with the same five previously reviewed warnings. This is a dated dependency/license audit, not complete R12 security clearance. Final-head offline CI and any distribution rebuilt with these lockfiles must be recorded separately; the final `75864df` notarized QA versions include this dependency patch. Subsequent source changes, including F10, require fresh distribution builds and acceptance.
 
 
 ## File-manager fallback and executable documents (F10, 21 October)
