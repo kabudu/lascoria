@@ -636,7 +636,7 @@ impl Actor {
                     .filter(|r| r["lifecycle"] != "archived")
                     .count()
                     < 10,
-                "Session limit reached"
+                "You can have 10 open sessions. Archive a session you have finished, then start this one"
             );
             if let Some(model) = params.get("modelId") {
                 ensure!(
@@ -663,7 +663,7 @@ impl Actor {
             };
             ensure!(
                 self.db.lock().unwrap().count("sessions")? < 100,
-                "Retained session limit reached (100)"
+                "Lascoria keeps up to 100 sessions, including archived ones. Remove archived sessions in Data & backups, then start this one"
             );
             let session = Uuid::now_v7().to_string();
             let mut managed = Value::Null;
