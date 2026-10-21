@@ -43,6 +43,8 @@ test('updates are checked, downloaded and installed only on request, with a safe
     lastError: null,
   };
   let stopped = false;
+  let downloads = 0;
+  let installs = 0;
   await page.exposeFunction('updatesBridge', async (command: string, args: any) => {
     if (command === 'connect_supervisor') {
       stopped = false;
@@ -59,7 +61,17 @@ test('updates are checked, downloaded and installed only on request, with a safe
         };
         return update;
       }
-      if (command === 'update_download') update = { ...update, downloaded: true };
+      if (command === 'update_download') {
+        downloads++;
+        update =
+          downloads === 1
+            ? {
+                ...update,
+                downloaded: false,
+                lastError: 'The update did not pass its signature check, so it was not used',
+              }
+            : { ...update, downloaded: true, lastError: null };
+      }
       if (command === 'update_cancel' && args?.clearAvailable)
         update = {
           ...update,
@@ -68,7 +80,11 @@ test('updates are checked, downloaded and installed only on request, with a safe
           downloading: false,
           lastCheckedAtMs: null,
         };
-      if (command === 'update_install') return null;
+      if (command === 'update_install') {
+        installs++;
+        if (installs === 1) throw Error('Installation failed; retry the downloaded update');
+        return null;
+      }
       return update;
     }
     calls.push(args?.operation);
@@ -90,6 +106,7 @@ test('updates are checked, downloaded and installed only on request, with a safe
     }
   });
   await page.addInitScript(() => {
+    (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: any) => (window as any).updatesBridge(command, args),
       transformCallback: () => 1,
@@ -110,6 +127,13 @@ test('updates are checked, downloaded and installed only on request, with a safe
   await expect(panel.getByRole('heading', { name: 'Lascoria 0.2.0 is available' })).toBeVisible();
   expect(calls).not.toContain('update_download');
   await panel.getByRole('button', { name: 'Download' }).click();
+  // A background download error arrives through status, not a rejected invoke promise.
+  await expect(panel.getByRole('alert')).toHaveText(
+    'The update did not pass its signature check, so it was not used',
+  );
+  await expect(panel.getByRole('button', { name: 'Install and restart…' })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Download' }).click();
+  await expect(panel.getByRole('alert')).toHaveCount(0);
   // Changing the channel retires the previous artifact even when it was downloaded.
   await panel.getByRole('radio', { name: /Beta releases/ }).check();
   await expect(panel.getByRole('button', { name: 'Install and restart…' })).toHaveCount(0);
@@ -124,6 +148,18 @@ test('updates are checked, downloaded and installed only on request, with a safe
   await panel.getByRole('button', { name: 'Install and restart…' }).click();
   await confirm.getByRole('button', { name: 'Pause work, install and restart' }).click();
   await expect.poll(() => calls.includes('update_install')).toBe(true);
+  await expect(panel.getByRole('alert')).toHaveText(
+    'Installation failed; retry the downloaded update',
+  );
+  // Leaving Updates remounts its local state; the app still remembers the stopped service.
+  const sections = page.getByRole('navigation', { name: 'Settings sections' });
+  await sections.getByRole('button', { name: 'General', exact: true }).click();
+  await sections.getByRole('button', { name: 'Updates', exact: true }).click();
+  await panel.getByRole('button', { name: 'Install and restart…' }).click();
+  await confirm.getByRole('button', { name: 'Pause work, install and restart' }).click();
+  await expect.poll(() => installs).toBe(2);
+  expect(calls.filter((call) => call === 'stop')).toHaveLength(1);
+  expect(calls.indexOf('presentation/save')).toBeLessThan(calls.indexOf('stop'));
   // Work was paused and the service stopped before installing.
   expect(calls.indexOf('stop')).toBeGreaterThan(-1);
   expect(calls.indexOf('stop')).toBeLessThan(calls.indexOf('update_install'));

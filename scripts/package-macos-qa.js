@@ -6,9 +6,20 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { signMacRuntime, verifyMacRuntime } from './sign-macos-runtime.js';
 if (process.platform !== 'darwin') throw Error('Build the macOS validation app on macOS');
-if (process.argv.slice(2).some((arg) => arg !== '--developer-id'))
-  throw Error('Usage: package-macos-qa.js [--developer-id]');
+if (process.argv.slice(2).some((arg) => !['--developer-id', '--update-acceptance'].includes(arg)))
+  throw Error('Usage: package-macos-qa.js [--developer-id] [--update-acceptance]');
 const signed = process.argv.includes('--developer-id');
+const updateAcceptance = process.argv.includes('--update-acceptance');
+if (
+  updateAcceptance &&
+  (!signed ||
+    !process.env.LASCORIA_QA_UPDATER_ENDPOINT ||
+    !process.env.LASCORIA_QA_UPDATER_CERT_PEM ||
+    !process.env.LASCORIA_UPDATER_PUBKEY)
+)
+  throw Error(
+    'Update acceptance requires Developer ID signing, a loopback endpoint, fixture CA and QA public key',
+  );
 const identity = process.env.APPLE_SIGNING_IDENTITY;
 const team = process.env.LASCORIA_APPLE_TEAM_ID;
 if (signed && (!identity || !/^[A-Z0-9]{10}$/.test(team ?? '')))
@@ -35,12 +46,16 @@ execFileSync(
     'build',
     '--bundles',
     'app',
+    ...(updateAcceptance ? ['--features', 'update-acceptance'] : []),
     '--config',
     JSON.stringify({
       identifier: 'dev.lascoria.acceptance',
       productName: 'Lascoria Acceptance',
       app: { windows: config.app.windows.map((window) => ({ ...window, title: 'Lascoria QA' })) },
       bundle: { active: true },
+      ...(updateAcceptance
+        ? { plugins: { updater: { pubkey: process.env.LASCORIA_UPDATER_PUBKEY } } }
+        : {}),
     }),
   ],
   { cwd: root, stdio: 'inherit', env: buildEnv },
@@ -93,6 +108,7 @@ const hash = async (file) =>
     .update(await readFile(file))
     .digest('hex');
 const provenance = {
+  updateAcceptance,
   purpose: signed
     ? 'native validation; Developer ID signed, not notarized'
     : 'native validation; unsigned (ad hoc)',

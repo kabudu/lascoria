@@ -189,6 +189,17 @@ async fn connect_supervisor(app: tauri::AppHandle) -> Result<Value, String> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    // Explicit local updater acceptance uses isolated Echo/controlled-provider state after
+    // restart too. Production builds never honor this fixture authentication bypass.
+    #[cfg(feature = "update-acceptance")]
+    {
+        let provider = std::env::var("SCH_PROVIDER").unwrap_or_else(|_| "echo".into());
+        if !matches!(provider.as_str(), "echo" | "meta") {
+            return Err("Unsupported local acceptance provider".into());
+        }
+        cmd.env("SCH_AUTH_MANAGED", "0")
+            .env("SCH_PROVIDER", provider);
+    }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;

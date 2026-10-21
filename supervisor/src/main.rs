@@ -550,7 +550,11 @@ impl Actor {
             return Ok(response["result"].clone());
         }
         if operation == "stop" {
-            let sessions = self.db.lock().unwrap().all("sessions")?;
+            let sessions = {
+                let db = self.db.lock().unwrap();
+                unsaved::ensure_saved(&db)?;
+                db.all("sessions")?
+            };
             let expected: Vec<&str> = sessions
                 .iter()
                 .map(|row| row["id"].as_str().unwrap())
@@ -1533,7 +1537,8 @@ async fn supervisor_main() -> Result<()> {
 
         }
     }
-    accept_task.abort();
+    // Refuse queued mutations while retaining read-only status during a storage-blocked drain.
+    drop(requests);
     while let Some(done) = tasks.join_next().await {
         if let Err(error) = done {
             eprintln!("Drain session task: {error}");
@@ -1550,7 +1555,15 @@ async fn supervisor_main() -> Result<()> {
     account_monitor.abort();
     triage.abort();
     unsaved_retry.abort();
-    unsaved::flush(&db.lock().unwrap());
+    // Storage may fail after the initial stop check, including while workers checkpoint.
+    // Keep the ownership lock and bounded volatile state until it lands; an updater cannot
+    // replace these resources while this writer remains alive. Status reads stay available.
+    let mut delay = 1u64;
+    while unsaved::ensure_saved(&db.lock().unwrap()).is_err() {
+        tokio::time::sleep(Duration::from_secs(delay)).await;
+        delay = (delay * 2).min(30);
+    }
+    accept_task.abort();
     let _ = account_monitor.await;
     account.lock().await.stop().await;
     fs::remove_file(socket_path)?;

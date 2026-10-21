@@ -515,10 +515,12 @@ export function App() {
     setConnected(true);
     return value;
   }
+  const serviceStoppedForUpdate = useRef(false);
   async function boot() {
     try {
       const order = ++snapshotRequest.current;
       acceptStatus(await connect(), order);
+      serviceStoppedForUpdate.current = false;
       setConnected(true);
       const saved = await request('presentation/get');
       revision.current = saved.revision;
@@ -685,11 +687,15 @@ export function App() {
   // R3: pause work and wait until the background service has exited.
   async function pauseAndStopService() {
     await flushDraftsRef.current();
+    await flushPrefs();
+    if (serviceStoppedForUpdate.current) return;
     await pauseAll();
     for (let i = 0; i < 100; i++) {
       try {
         await request('status');
       } catch {
+        serviceStoppedForUpdate.current = true;
+        setConnected(false);
         return;
       }
       await new Promise((r) => setTimeout(r, 200));
