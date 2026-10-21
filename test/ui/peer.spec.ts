@@ -35,8 +35,12 @@ test('supervisor control is bound to the desktop executable when the app starts 
     return JSON.parse(stdout);
   };
   try {
+    // The debug supervisor hashes the large debug desktop binary at startup before it answers;
+    // on slower machines that takes several seconds.
     await expect
-      .poll(async () => (await bridge('status').catch(() => ({})))?.result?.pid ?? 0)
+      .poll(async () => (await bridge('status').catch(() => ({})))?.result?.pid ?? 0, {
+        timeout: 30000,
+      })
       .toBe(daemon.pid);
     // This test runner holds the real token but is not the desktop app.
     await expect(request(directory, 'status')).rejects.toThrow(

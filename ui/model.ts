@@ -28,7 +28,12 @@ export function tasks(session: SessionRow, prefs: Prefs): Task[] {
         sessionId: session.id,
         turnId: item.turnId,
         item,
-        label: prefs.labels?.[id] ?? item.objective ?? item.label ?? item.entryId ?? item.kind,
+        label:
+          prefs.labels?.[id] ??
+          item.objective ??
+          item.label ??
+          item.entryId ??
+          nodeKind({ provenance: 'native', item }),
         status: item.status,
         provenance: 'native' as const,
         parentId: item.turnId ? `${session.id}:${item.turnId}` : undefined,
@@ -739,4 +744,20 @@ export function taskFailure(
         action: error.retryable ? 'Sending the task again may work.' : 'See the details below.',
       };
   }
+}
+
+/** R13: what a canvas node is, in the words a user would use (not Muse's item kinds). */
+export function nodeKind(node: {
+  provenance?: string;
+  nativeChild?: unknown;
+  item?: { kind?: string } | null;
+}) {
+  if (node.nativeChild) return 'Workflow step';
+  if (node.provenance !== 'native') return 'Task';
+  const kinds: Record<string, string> = {
+    subagent: 'Helper agent',
+    workflow: 'Workflow',
+    reminderChild: 'Background check',
+  };
+  return kinds[node.item?.kind ?? ''] ?? 'Muse activity';
 }

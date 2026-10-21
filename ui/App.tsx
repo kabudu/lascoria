@@ -58,6 +58,7 @@ import {
   outcomeNotice,
   skillRequest,
   taskFailure,
+  nodeKind,
 } from './model';
 import type {
   Status,
@@ -1948,10 +1949,10 @@ export function App() {
                           <strong>{node.label}</strong>
                           <span>{node.status}</span>
                           <small>
-                            {node.provenance === 'derived' ? 'Turn grouping' : node.item?.kind} ·{' '}
-                            {node.provenance === 'derived'
-                              ? 'session owner'
-                              : (node.item?.role ?? 'owner unavailable')}
+                            {nodeKind(node)}
+                            {node.provenance === 'native' && node.item?.role
+                              ? ` · ${node.item.role}`
+                              : ''}
                           </small>
                         </button>
                       </li>
@@ -2195,7 +2196,7 @@ export function App() {
                                 }
                               }}
                               id={`node-${node.id}`}
-                              aria-label={`${node.label}, ${node.status}, ${node.provenance}, ${activity.label}`}
+                              aria-label={`${node.label}, ${node.status}, ${nodeKind(node)}, ${activity.label}`}
                             >
                               <small>
                                 <span className="node-symbol" aria-hidden="true">
@@ -2205,9 +2206,7 @@ export function App() {
                                       ? '✳'
                                       : '◉'}
                                 </span>
-                                {node.provenance === 'native'
-                                  ? node.item?.kind
-                                  : 'DERIVED TURN TASK'}
+                                {nodeKind(node)}
                               </small>
                               <strong>{node.label}</strong>
                               <span>
