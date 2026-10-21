@@ -76,8 +76,11 @@ pub fn roots(project: &Value) -> Result<Vec<PathBuf>> {
             raw.len() <= 4096 && std::path::Path::new(raw).is_absolute(),
             "Use an absolute folder path"
         );
-        let path = dunce::canonicalize(raw)
-            .with_context(|| format!("Project folder unavailable: {alias}"))?;
+        let path = dunce::canonicalize(raw).map_err(|_| {
+            anyhow::anyhow!(
+                "The Project folder {alias} is no longer there: {raw}. Put it back, or update the Project's folders"
+            )
+        })?;
         ensure!(path.is_dir(), "Project folder is not a directory: {alias}");
         ensure!(
             !roots
