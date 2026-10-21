@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Background Git refuses files selecting configured conversion filters instead of running their programs; failed task checkout cleans up its owned worktree and branch.
+
 - Data & backups can retry a failed read in place; destructive confirmations support safe keyboard focus and cancellation, and lost replies no longer claim that data is unchanged.
 
 - Skill-load attribution requires a matching native turn identity; missing IDs cannot associate unrelated transcript entries.

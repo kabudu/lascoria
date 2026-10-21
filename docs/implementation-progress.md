@@ -571,3 +571,16 @@ Corrected running-summary rows that still described completed Windows/Linux chec
 - Final exact reviewed-head local CI and commit/push results are recorded in the PR receipt. The first full run exposed an existing decision-admission test race: active admission was mistaken for durable-record readiness. Its controlled provider now holds replies until both durable records exist; the two-request admission limit and restart-unknown assertions remain unchanged.
 
 This closes UX17's implemented recovery paths, not the full R5/R7/R13 cross-platform lifecycle, accessibility or failure matrix. Existing user sessions and pending questions are preserved.
+
+
+### R12 hostile Git filters and safe checkout (21 October)
+
+- [x] Reproduce repository-configured clean-filter execution during snapshot inspection with a disposable marker, without real credentials or user repositories.
+- [x] Share bounded Git process policy across snapshot/workspace operations, disabling configured clean/smudge/process programs and refusing selected filtered files. Ordinary files remain usable even with unused configured filters.
+- [x] Create task worktrees without checkout, discover target-branch filter settings, then perform guarded checkout. On refusal remove the owned worktree/branch; never take ownership of an existing destination/branch.
+- [x] Rust regression covers clean/process/smudge refusal, unused drivers, null-delimited unusual names and size/count bounds, no marker execution, source preservation and checkout cleanup. All 73 supervisor tests pass.
+- [x] Public supervisor/real-Muse controlled-provider workflow verifies refused filtered capture, no marker, valid capture after removal of the fixture configuration, direct tests, guarded commit and archive. Normal isolated Project worktrees pass.
+- [x] Windows x64 supervisor cross-check passes offline; this is compilation, not native adversarial acceptance.
+- Help, security findings (F9), changelog and this checklist updated. Final reviewed-head local CI, remote diff/review and push results are recorded in the PR receipt.
+
+R12 remains open: concurrent malicious configuration mutation is not atomically isolated, and the remaining hostile-repository, cross-user, signed-build, native platform and independent-review gates still apply. No release or visibility change is authorised.

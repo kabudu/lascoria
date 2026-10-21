@@ -5,6 +5,7 @@ mod data;
 mod db;
 mod decisions;
 mod dedicated;
+mod git;
 mod metrics;
 mod peer;
 mod projects;

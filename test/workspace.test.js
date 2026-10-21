@@ -127,6 +127,29 @@ test(
       request(directory, 'workspace/file', { sessionId, path: '../source/README.md' }),
       /repository-relative/,
     );
+    // R12: snapshotting is not permission to execute repository-configured filters.
+    const captureTarget = {
+      sessionId,
+      taskId: (await row()).state.turns.find((turn) => turn.terminal === 'completed').turnId,
+    };
+    const readme = await readFile(join(workspace, 'README.md'), 'utf8');
+    await writeFile(join(workspace, 'README.md'), `${readme}Snapshot safety fixture\n`);
+    await writeFile(join(workspace, '.gitattributes'), '*.md filter=marker\n');
+    git('config', 'filter.marker.clean', 'echo ran > filter-ran; cat');
+    try {
+      await assert.rejects(
+        request(directory, 'artifact/capture', captureTarget, 'filtered-capture'),
+        /filter/i,
+      );
+      await assert.rejects(access(join(workspace, 'filter-ran')));
+    } finally {
+      git('config', '--unset', 'filter.marker.clean');
+      await rm(join(workspace, '.gitattributes'));
+      await writeFile(join(workspace, 'README.md'), readme);
+    }
+    assert.ok(
+      (await request(directory, 'artifact/capture', captureTarget, 'safe-capture')).fingerprint,
+    );
     const command = `node --input-type=module -e "import {sum} from './sum.mjs';if(sum(2,3)!==5)process.exit(1);console.log('PASS direct test')"`;
     const runParams = { sessionId, command };
     assert.equal(
