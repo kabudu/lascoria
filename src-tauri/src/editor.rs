@@ -311,6 +311,40 @@ fn spawn(mut command: tokio::process::Command) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolve only from the supervisor's durable session snapshot. A stale Project selection
+/// must not fall back to another repository, and isolated Projects must use their worktrees.
+fn session_root<'a>(
+    row: &'a Value,
+    folder: Option<&str>,
+    revision: Option<u64>,
+) -> Result<&'a str, String> {
+    if row["workspaceDiscarded"] == true {
+        return Err("This session's task folder was discarded".into());
+    }
+    let value = if let Some(id) = folder {
+        if revision.is_none() || row["projectContext"]["revision"].as_u64() != revision {
+            return Err("Project folders changed. Refresh before opening this file".into());
+        }
+        let entry = row["projectContext"]["folders"]
+            .as_array()
+            .and_then(|all| all.iter().find(|entry| entry["id"] == id))
+            .ok_or("That folder is no longer part of this session's Project")?;
+        if let Some(all) = row["managedWorkspaces"].as_array() {
+            &all.iter()
+                .find(|entry| entry["folderId"] == id)
+                .ok_or("That folder has no isolated worktree in this session")?["path"]
+        } else {
+            &entry["path"]
+        }
+    } else {
+        &row["workspace"]
+    };
+    value
+        .as_str()
+        .filter(|path| !path.is_empty())
+        .ok_or_else(|| "This session folder is unavailable".into())
+}
+
 /// Opens a session's folder (empty `path`) or a file inside it.
 #[tauri::command]
 pub async fn open_in_editor(
@@ -318,18 +352,15 @@ pub async fn open_in_editor(
     session_id: String,
     path: String,
     editor: String,
+    folder_id: Option<String>,
+    project_revision: Option<u64>,
 ) -> Result<(), String> {
     let status = crate::request("status", json!({}), "editor-open".into()).await?;
     let row = status["sessions"]
         .as_array()
         .and_then(|rows| rows.iter().find(|row| row["id"] == session_id.as_str()))
         .ok_or("Unknown session")?;
-    if row["workspaceDiscarded"] == true {
-        return Err("This session's task folder was discarded".into());
-    }
-    let root = row["workspace"]
-        .as_str()
-        .ok_or("This session has no folder")?;
+    let root = session_root(row, folder_id.as_deref(), project_revision)?;
     let target = contained(Path::new(root), &path)?;
     launch(&app, &editor, &target).await
 }
@@ -337,6 +368,30 @@ pub async fn open_in_editor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_editor_uses_the_selected_root_and_never_falls_back() {
+        let mut row = json!({"workspace":"/repo/web", "projectContext":{"revision":1,"folders":[
+            {"id":"web","path":"/repo/web"}, {"id":"api","path":"/repo/api"}
+        ]}});
+        assert_eq!(session_root(&row, None, None).unwrap(), "/repo/web");
+        assert_eq!(
+            session_root(&row, Some("api"), Some(1)).unwrap(),
+            "/repo/api"
+        );
+        assert!(session_root(&row, Some("removed"), Some(1)).is_err());
+        assert!(session_root(&row, Some("api"), None).is_err());
+        assert!(session_root(&row, Some("api"), Some(2)).is_err());
+        row["managedWorkspaces"] = json!([{"folderId":"api","path":"/worktrees/api"}]);
+        assert_eq!(
+            session_root(&row, Some("api"), Some(1)).unwrap(),
+            "/worktrees/api"
+        );
+        assert!(session_root(&row, Some("web"), Some(1)).is_err());
+        row["workspaceDiscarded"] = json!(true);
+        assert!(session_root(&row, Some("api"), Some(1)).is_err());
+        assert!(session_root(&json!({"workspace":"/repo"}), Some("api"), Some(1)).is_err());
+    }
 
     #[tokio::test]
     async fn system_fallback_refuses_files_and_missing_paths_before_os_dispatch() {

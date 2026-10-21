@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Open Project files in the selected folder or owned worktree, refuse stale folder selections, and identify the folder in added task context.
+
 - Keep Open in editor from running repository files through default OS associations. The default file-manager option opens folders only; choose an editor for files.
 
 - Centre the workspace film’s permission-button label using measured glyph bounds.

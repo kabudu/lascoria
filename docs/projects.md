@@ -88,3 +88,7 @@ A Project can carry an optional goal (up to 1,000 characters, line breaks allowe
 
 Evidence: a Rust test covers bounds, trimming, line-break normalisation, absent values and the brief text; `test/project-context.test.js` (real Muse 1.4.10 with a controlled model) asserts the goal and note reach the model exactly once with the first task, are not repeated with the second and leave the transcript showing the user's words.
 
+
+## Editor and file-context scope
+
+Open in editor in Workspace uses the selected Project folder, including its isolated worktree where present. A changed Project revision, removed folder or missing worktree is refused rather than opening the same relative path in another repository. Choose an editor in Settings for individual files. File context added to a task names the folder and working root so identical paths in different repositories remain distinguishable.
