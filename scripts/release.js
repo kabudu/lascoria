@@ -10,20 +10,24 @@
 // Nothing here creates tags, pushes or publishes: the maintainer commits the prepared change,
 // tags it and pushes the tag; the workflow builds and publishes only after `verify` passes.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const file = (path) => join(root, path);
 const read = (path) => readFileSync(file(path), 'utf8');
-const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
 
 export function parse(version) {
   const match = SEMVER.exec(version);
-  if (!match) throw Error(`Not a release version: ${version} (use X.Y.Z or X.Y.Z-beta.N)`);
-  return {
-    parts: match.slice(1, 4).map(Number),
-    prerelease: match[4] ?? null,
-  };
+  const parts = match?.slice(1, 4).map(Number);
+  const prerelease = match?.[4] ?? null;
+  if (
+    !match ||
+    !parts.every(Number.isSafeInteger) ||
+    (prerelease && prerelease.split('.').some((id) => !id || /^0\d+$/.test(id)))
+  )
+    throw Error(`Not a release version: ${version} (use X.Y.Z or X.Y.Z-beta.N)`);
+  return { parts, prerelease };
 }
 /** Positive when a is newer than b. Pre-releases sort before their release. */
 export function compare(a, b) {
@@ -32,7 +36,18 @@ export function compare(a, b) {
   if (x.prerelease === y.prerelease) return 0;
   if (!x.prerelease) return 1;
   if (!y.prerelease) return -1;
-  return x.prerelease.localeCompare(y.prerelease, 'en', { numeric: true });
+  const [left, right] = [x.prerelease.split('.'), y.prerelease.split('.')];
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    const [a, b] = [left[i], right[i]];
+    if (a === b) continue;
+    const [numericA, numericB] = [/^\d+$/.test(a), /^\d+$/.test(b)];
+    if (numericA !== numericB) return numericA ? -1 : 1;
+    // Numeric identifiers can exceed JS's exact integer range; length then ASCII order
+    // compares them exactly because leading zeroes were refused by parse().
+    if (numericA && a.length !== b.length) return a.length - b.length;
+    return a < b ? -1 : 1;
+  }
+  return left.length - right.length;
 }
 
 /** Every place that carries the application version. All must agree. */
@@ -51,11 +66,10 @@ const LOCKED = [
 export function versions(readFile = read) {
   const found = VERSIONED.map(([path, pattern]) => [path, pattern.exec(readFile(path))?.[2]]);
   for (const [path, names] of LOCKED) {
-    if (!existsSync(file(path))) continue;
     const text = readFile(path);
     for (const name of names) {
       const match = new RegExp(`name = "${name}"\\nversion = "([^"]+)"`).exec(text);
-      if (match) found.push([`${path} (${name})`, match[1]]);
+      found.push([`${path} (${name})`, match?.[1]]);
     }
   }
   const lock = JSON.parse(readFile('package-lock.json'));
@@ -123,32 +137,42 @@ export function curated(text, version) {
 function prepare(version) {
   parse(version);
   const current = JSON.parse(read('package.json')).version;
+  const wrong = versions().filter(([, value]) => value !== current);
+  if (wrong.length)
+    throw Error(
+      `Version fields must agree before preparing: ${wrong.map(([p, v]) => `${p}=${v}`).join(', ')}`,
+    );
   if (compare(version, current) <= 0) throw Error(`${version} is not newer than ${current}`);
   const date = new Date().toISOString().slice(0, 10);
-  writeFileSync(file('CHANGELOG.md'), promoteChangelog(read('CHANGELOG.md'), version, date));
+  // Read and validate the complete source set before making any edits. I/O failures during
+  // the writes still require inspecting git diff; this is preflight, not a filesystem transaction.
+  const edits = new Map([['CHANGELOG.md', promoteChangelog(read('CHANGELOG.md'), version, date)]]);
   for (const [path, pattern] of VERSIONED)
-    writeFileSync(file(path), read(path).replace(pattern, `$1${version}$3`));
+    edits.set(path, read(path).replace(pattern, `$1${version}$3`));
   for (const [path, names] of LOCKED) {
-    if (!existsSync(file(path))) continue;
     let text = read(path);
     for (const name of names)
       text = text.replace(new RegExp(`(name = "${name}"\\nversion = ")[^"]+(")`), `$1${version}$2`);
-    writeFileSync(file(path), text);
+    edits.set(path, text);
   }
   const lock = JSON.parse(read('package-lock.json'));
   lock.version = version;
-  if (lock.packages?.['']) lock.packages[''].version = version;
-  writeFileSync(file('package-lock.json'), JSON.stringify(lock, null, 2) + '\n');
-  const notes = file(`docs/releases/v${version}.md`);
-  if (!existsSync(notes)) {
-    mkdirSync(file('docs/releases'), { recursive: true });
-    writeFileSync(
-      notes,
+  lock.packages[''].version = version;
+  edits.set('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+  const notesPath = `docs/releases/v${version}.md`;
+  const notes = file(notesPath);
+  if (!existsSync(notes))
+    edits.set(
+      notesPath,
       `# Lascoria v${version}: TODO short theme\n\nTODO: a short opening, the material changes, compatibility and support limits, and one install path. See docs/RELEASE.md.\n`,
     );
+  else read(notesPath);
+  for (const [path, text] of edits) {
+    mkdirSync(dirname(file(path)), { recursive: true });
+    writeFileSync(file(path), text);
   }
   console.log(
-    `Prepared ${version}. Curate docs/releases/v${version}.md, review the diff, commit, then tag v${version} on main and push the tag.`,
+    `Prepared ${version}. Curate docs/releases/v${version}.md, review the diff, commit, then tag v${version} on the default branch and push the tag.`,
   );
 }
 

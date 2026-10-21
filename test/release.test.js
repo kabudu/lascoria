@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, truncate, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -10,7 +10,7 @@ import {
   curated,
   versions,
 } from '../scripts/release.js';
-import { plan, manifest } from '../scripts/release-artifacts.js';
+import { plan, manifest, TARGETS } from '../scripts/release-artifacts.js';
 
 test('release versions, changelog promotion and curated notes', () => {
   assert.ok(compare('0.2.0', '0.1.9') > 0);
@@ -46,7 +46,7 @@ test('release versions, changelog promotion and curated notes', () => {
   );
 });
 
-test('release artifacts get collision-free names and a signed updater manifest', async (t) => {
+test('release artifacts get collision-free names and an updater manifest with artifact signatures', async (t) => {
   const files = [
     '/b/macos/Lascoria.app.tar.gz',
     '/b/macos/Lascoria.app.tar.gz.sig',
@@ -70,29 +70,63 @@ test('release artifacts get collision-free names and a signed updater manifest',
   t.after(() => rm(dir, { recursive: true, force: true }));
   const names = [
     'Lascoria_0.2.0_darwin-aarch64.app.tar.gz',
+    'Lascoria_0.2.0_darwin-aarch64.dmg',
+    'Lascoria_0.2.0_darwin-x86_64.app.tar.gz',
+    'Lascoria_0.2.0_darwin-x86_64.dmg',
     'Lascoria_0.2.0_windows-x86_64-setup.exe',
     'Lascoria_0.2.0_linux-x86_64.AppImage',
+    'Lascoria_0.2.0_linux-x86_64.deb',
+    'Lascoria_0.2.0_linux-aarch64.AppImage',
+    'Lascoria_0.2.0_linux-aarch64.deb',
   ];
+  const artifactFiles = [];
   for (const name of names) {
     await writeFile(join(dir, name), 'bundle');
-    await writeFile(join(dir, `${name}.sig`), `sig-of-${name}\n`);
+    artifactFiles.push(join(dir, name));
+    if (/\.(tar\.gz|exe|AppImage)$/.test(name)) {
+      await writeFile(join(dir, `${name}.sig`), `sig-of-${name}\n`);
+      artifactFiles.push(join(dir, `${name}.sig`));
+    }
   }
-  const value = manifest(
-    names.flatMap((n) => [join(dir, n), join(dir, `${n}.sig`)]),
-    'v0.2.0',
-    'Notes',
-    new Date('2026-10-18T12:00:00Z'),
-  );
+  const value = manifest(artifactFiles, 'v0.2.0', 'Notes', new Date('2026-10-18T12:00:00Z'));
   assert.equal(value.version, '0.2.0');
   assert.equal(value.pub_date, '2026-10-18T12:00:00.000Z');
-  assert.deepEqual(Object.keys(value.platforms).sort(), [
-    'darwin-aarch64',
-    'linux-x86_64',
-    'windows-x86_64',
-  ]);
+  assert.deepEqual(Object.keys(value.platforms).sort(), [...TARGETS].sort());
   assert.deepEqual(value.platforms['windows-x86_64'], {
     signature: 'sig-of-Lascoria_0.2.0_windows-x86_64-setup.exe',
     url: 'https://github.com/kabudu/lascoria/releases/download/v0.2.0/Lascoria_0.2.0_windows-x86_64-setup.exe',
   });
-  assert.throws(() => manifest([join(dir, names[0])], 'v0.2.0', ''), /has no signature/);
+  assert.throws(() => manifest([join(dir, names[0])], 'v0.2.0', ''), /missing required artifact/);
+  for (const removed of artifactFiles) {
+    assert.throws(
+      () =>
+        manifest(
+          artifactFiles.filter((f) => f !== removed),
+          'v0.2.0',
+          '',
+        ),
+      /missing required artifact/,
+    );
+  }
+  assert.throws(() => manifest([...artifactFiles, artifactFiles[0]], 'v0.2.0', ''), /Duplicate/);
+  assert.throws(() => manifest(artifactFiles, 'v0.3.0', ''), /Unexpected release artifact/);
+  // Sparse fixtures exercise the release/client boundary without allocating large buffers.
+  await truncate(join(dir, names[0]), 256 * 1024 * 1024);
+  assert.equal(manifest(artifactFiles, 'v0.2.0', '').version, '0.2.0');
+  await truncate(join(dir, names[0]), 256 * 1024 * 1024 + 1);
+  assert.throws(() => manifest(artifactFiles, 'v0.2.0', ''), /256 MB updater limit/);
+  await writeFile(join(dir, names[0]), 'bundle');
+  const signature = `${names[0]}.sig`;
+  await writeFile(join(dir, signature), '   ');
+  assert.throws(() => manifest(artifactFiles, 'v0.2.0', ''), /empty signature/);
+  await writeFile(join(dir, signature), 'x'.repeat(16385));
+  assert.throws(() => manifest(artifactFiles, 'v0.2.0', ''), /signature is too large/);
+  assert.throws(
+    () => plan('darwin-aarch64', '0.2.0', files.slice(0, 2)),
+    /required .dmg installer/,
+  );
+  assert.throws(
+    () => plan('linux-x86_64', '0.2.0', ['/b/x.AppImage', '/b/x.AppImage.sig']),
+    /required .deb installer/,
+  );
 });
