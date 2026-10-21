@@ -1,8 +1,10 @@
 name: Validate native foundations
 on:
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 concurrency:
@@ -38,7 +40,7 @@ jobs:
       - run: cargo test --manifest-path supervisor/Cargo.toml
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Portable projection and provider tests
-        run: node --test test/presentation.test.js test/diagnostics.test.js test/provider.test.js
+        run: node --test test/presentation.test.js test/diagnostics.test.js test/provider.test.js test/release.test.js test/release-version.test.js test/publish-release.test.js
       - name: Build installed desktop runtime
         run: npm run desktop:build
       - name: Browser policy independent of optional credential storage

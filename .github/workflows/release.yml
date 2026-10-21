@@ -5,8 +5,8 @@
 #   the CHANGELOG.md section and the curated docs/releases/v<version>.md must agree
 #   (scripts/release.js verify);
 # * each supported OS/architecture is built natively, signed and, on macOS, notarized;
-# * updater bundles are signed with the maintainer's updater key, and a signed
-#   latest.json plus SHA256SUMS.txt are generated;
+# * updater bundles are signed with the maintainer's updater key, and a
+#   latest.json containing artifact signatures plus SHA256SUMS.txt are generated;
 # * a GitHub Release is created with the curated title and notes and every package.
 #
 # Hosted Actions stay disabled while the repository is private; this workflow also skips
@@ -75,8 +75,12 @@ jobs:
           : "${APPLE_ID:?APPLE_ID must be configured}"
           : "${APPLE_TEAM_ID:?APPLE_TEAM_ID must be configured}"
 
-  build:
+  validate:
     needs: plan
+    uses: ./.github/workflows/validate.yml
+
+  build:
+    needs: [plan, validate]
     name: build (${{ matrix.target }})
     strategy:
       fail-fast: true
@@ -136,7 +140,13 @@ jobs:
           security unlock-keychain -p "$password" "$keychain"
           security import "$RUNNER_TEMP/certificate.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          keychains=()
+          while IFS= read -r item; do
+            item="${item#*\"}"
+            item="${item%\"*}"
+            keychains+=("$item")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$keychain" "${keychains[@]}"
           rm "$RUNNER_TEMP/certificate.p12"
       - name: Sign bundled runtime executables for notarization
         if: runner.os == 'macOS'
@@ -165,6 +175,9 @@ jobs:
 
   publish:
     needs: [plan, build]
+    concurrency:
+      group: lascoria-release-publication
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -190,44 +203,13 @@ jobs:
           node scripts/release.js title "$VERSION" > "$RUNNER_TEMP/title.txt"
           node scripts/release.js notes "$VERSION" > "$RUNNER_TEMP/notes.md"
           node scripts/release-artifacts.js manifest dist-release "$GITHUB_REF_NAME" "$RUNNER_TEMP/notes.md"
-      - name: Refuse to overwrite a published release
+      - name: Reconcile and publish immutable release artifacts
         shell: bash
         run: |
           set -euo pipefail
-          if draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2>/dev/null); then
-            if [ "$draft" != "true" ]; then
-              echo "Release $GITHUB_REF_NAME is already published; reconcile it by hand." >&2
-              exit 1
-            fi
-            # A draft left by an interrupted run was never visible to users: start it again.
-            gh release delete "$GITHUB_REF_NAME" --yes
-          fi
-      - name: Create the GitHub Release
+          node scripts/publish-release.js release "$GITHUB_REF_NAME" "$GITHUB_SHA" dist-release "$RUNNER_TEMP/title.txt" "$RUNNER_TEMP/notes.md"
+      - name: Reconcile the beta updater channel without regressing it
         shell: bash
-        run: |
-          set -euo pipefail
-          flag=""
-          if [ "${{ needs.plan.outputs.prerelease }}" = "true" ]; then flag="--prerelease"; fi
-          # Upload everything to a draft first, then publish, so a failed upload never leaves a
-          # half-populated public release.
-          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --target "$GITHUB_SHA" $flag \
-            --title "$(cat "$RUNNER_TEMP/title.txt")" --notes-file "$RUNNER_TEMP/notes.md" \
-            dist-release/*
-          expected=$(ls dist-release | sort)
-          uploaded=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | sort)
-          if [ "$expected" != "$uploaded" ]; then
-            echo "Uploaded assets do not match the built packages" >&2
-            exit 1
-          fi
-          gh release edit "$GITHUB_REF_NAME" --draft=false
-      - name: Point the beta channel at this release
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The beta updater reads latest.json from a rolling "updater-beta" prerelease, updated
-          # by every release, so beta users also receive each newer stable release.
-          if ! gh release view updater-beta >/dev/null 2>&1; then
-            gh release create updater-beta --prerelease --title "Beta updater channel" \
-              --notes "Updater manifest for beta releases. Install releases from their own pages."
-          fi
-          gh release upload updater-beta dist-release/latest.json --clobber
+        env:
+          LASCORIA_SERIALIZED_PUBLISH: '1'
+        run: node scripts/publish-release.js beta "$GITHUB_SHA" dist-release/latest.json

@@ -16,4 +16,3 @@ playwright-report/
 .dev/
 
 runtime-support/target/
-runtime-support/Cargo.lock

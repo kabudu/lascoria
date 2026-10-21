@@ -5,7 +5,7 @@
 //       targets. <target> is darwin-aarch64, darwin-x86_64, windows-x86_64, linux-x86_64 or
 //       linux-aarch64.
 //   node scripts/release-artifacts.js manifest <dir> <tag> <notes-file>
-//       Write latest.json (the signed updater manifest) and SHA256SUMS.txt for every file.
+//       Write latest.json (the updater manifest with artifact signatures) and SHA256SUMS.txt for every file.
 import {
   readdirSync,
   readFileSync,
@@ -13,9 +13,11 @@ import {
   copyFileSync,
   mkdirSync,
   statSync,
+  lstatSync,
 } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { createHash } from 'node:crypto';
+import { parse } from './release.js';
 
 export const TARGETS = [
   'darwin-aarch64',
@@ -24,6 +26,7 @@ export const TARGETS = [
   'linux-x86_64',
   'linux-aarch64',
 ];
+const MAX_UPDATER_BYTES = 256 * 1024 * 1024;
 const REPOSITORY = 'https://github.com/kabudu/lascoria';
 
 function walk(dir) {
@@ -38,6 +41,8 @@ function walk(dir) {
 
 /** Which bundle files a target publishes, and the public name each gets. */
 export function plan(target, version, files) {
+  if (!TARGETS.includes(target)) throw Error(`Unknown target ${target}`);
+  parse(version);
   const name = (suffix) => `Lascoria_${version}_${target}${suffix}`;
   const pick = (test) => files.filter((file) => test(basename(file)));
   const rules = target.startsWith('darwin')
@@ -67,27 +72,63 @@ export function plan(target, version, files) {
   const signatures = result.filter(([, n]) => n.endsWith('.sig'));
   if (updater.length !== 1 || signatures.length !== 1)
     throw Error(`${target} needs exactly one signed updater bundle (is the signing key set?)`);
+  for (const suffix of requiredSuffixes(target)) {
+    if (!result.some(([, name]) => name.endsWith(suffix)))
+      throw Error(`${target} is missing its required ${suffix} installer`);
+  }
   return result;
+}
+
+function requiredSuffixes(target) {
+  return target.startsWith('darwin')
+    ? ['.dmg', '.app.tar.gz', '.app.tar.gz.sig']
+    : target.startsWith('windows')
+      ? ['-setup.exe', '-setup.exe.sig']
+      : ['.AppImage', '.AppImage.sig', '.deb'];
 }
 
 /** The updater manifest: each platform's signed bundle, as the Tauri updater expects it. */
 export function manifest(files, tag, notes, date = new Date()) {
-  const version = tag.replace(/^v/, '');
+  if (typeof tag !== 'string' || !tag.startsWith('v')) throw Error('Expected a version tag');
+  const version = tag.slice(1);
+  parse(version);
+  const byName = new Map();
+  const expected = new Set(
+    TARGETS.flatMap((target) =>
+      [...requiredSuffixes(target), ...(target === 'windows-x86_64' ? ['.msi'] : [])].map(
+        (suffix) => `Lascoria_${version}_${target}${suffix}`,
+      ),
+    ),
+  );
+  for (const file of files) {
+    const name = basename(file);
+    if (!expected.has(name)) throw Error(`Unexpected release artifact: ${name}`);
+    if (byName.has(name)) throw Error(`Duplicate release artifact: ${name}`);
+    const meta = lstatSync(file);
+    if (!meta.isFile() || meta.size === 0)
+      throw Error(`Release artifact is not a nonempty regular file: ${name}`);
+    if (/\.(tar\.gz|exe|AppImage)$/.test(name) && meta.size > MAX_UPDATER_BYTES)
+      throw Error(`${name} exceeds the client's 256 MB updater limit`);
+    byName.set(name, file);
+  }
   const platforms = {};
   for (const target of TARGETS) {
-    const bundle = files.find(
-      (file) =>
-        file.includes(`_${target}`) && /(\.app\.tar\.gz|-setup\.exe|\.AppImage)$/.test(file),
+    const names = requiredSuffixes(target).map(
+      (suffix) => `Lascoria_${version}_${target}${suffix}`,
     );
-    if (!bundle) continue;
-    const signature = files.find((file) => file === `${bundle}.sig`);
-    if (!signature) throw Error(`${bundle} has no signature`);
+    for (const name of names) {
+      if (!byName.has(name)) throw Error(`${target} is missing required artifact ${name}`);
+    }
+    const bundle = names.find((name) => /\.(tar\.gz|exe|AppImage)$/.test(name));
+    const signatureFile = byName.get(`${bundle}.sig`);
+    if (lstatSync(signatureFile).size > 16384) throw Error(`${bundle} signature is too large`);
+    const signature = readFileSync(signatureFile, 'utf8').trim();
+    if (!signature) throw Error(`${bundle} has an empty signature`);
     platforms[target] = {
-      signature: readFileSync(signature, 'utf8').trim(),
-      url: `${REPOSITORY}/releases/download/${tag}/${basename(bundle)}`,
+      signature,
+      url: `${REPOSITORY}/releases/download/${tag}/${bundle}`,
     };
   }
-  if (!Object.keys(platforms).length) throw Error('No updater bundles found');
   return { version, notes, pub_date: date.toISOString(), platforms };
 }
 
