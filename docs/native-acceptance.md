@@ -190,4 +190,6 @@ Ubuntu 24.04 x64 container, WebKitGTK 2.52.6 under Xvfb (no GPU; software render
 - AppImage: `npx tauri build --bundles appimage` produced `Lascoria_0.1.0_amd64.AppImage` (126 MiB). Run with `APPIMAGE_EXTRACT_AND_RUN=1` (no FUSE in the container), it started its bundled supervisor and refused a CLI client; after the window was closed the service kept running, and reopening the AppImage connected to that same service.
 - Finding fixed: Linux notifications and the window class used the build name `spatial-constellation-desktop`. `src-tauri/tauri.linux.conf.json` now names the Linux program `lascoria`, matching its icon, and the desktop entry gets the Development category.
 
-Not covered: a physical Linux desktop session (Wayland or X11 with a file manager), so native file drops and the folder chooser stay open for Linux.
+- Native dialogs (21 October, desktop rebuilt at `c19a3b2`): **Export transcript…** opened the GTK save dialog with the suggested `Dialog-QA-transcript.md`; saving to a folder outside the app's data wrote the Markdown transcript with mode 0600 and the app confirmed "Transcript saved · 5 messages". **New session, Browse…** opened the GTK folder chooser; choosing a Git repository filled its path, and starting with an initial task created an isolated worktree from that repository whose task completed.
+
+Not covered: a physical Linux desktop session (Wayland or X11 with a file manager), so native file drops stay open for Linux.
