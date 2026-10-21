@@ -678,3 +678,65 @@ export function skillRequest(
         : 'Muse did not report loading it; that does not show whether it ran';
   return { selector, observed, reported: Boolean(read) };
 }
+
+/**
+ * R7/R13: what a failed task means and what to do next, in plain words. Muse's own message
+ * stays available as detail; the kind name is never the headline.
+ */
+export function taskFailure(
+  error: { kind?: string; message?: string; retryable?: boolean; quota?: { resetsAtMs?: number } },
+  now = Date.now(),
+) {
+  const transport =
+    /transport error|error sending request|connection (refused|reset)|timed out|dns/i.test(
+      error.message ?? '',
+    );
+  if (error.quota?.resetsAtMs)
+    return {
+      title: 'Your Muse allowance is used up',
+      action: `It resets ${error.quota.resetsAtMs > now ? new Date(error.quota.resetsAtMs).toLocaleString() : 'soon'}. Send the task again after that, or check Account & usage.`,
+    };
+  switch (error.kind) {
+    case 'authRequired':
+      return {
+        title: 'Muse needs you to sign in again',
+        action: 'Open Muse account and sign in, then send the task again.',
+      };
+    case 'modelError':
+      return transport
+        ? {
+            title: 'Muse could not reach the model',
+            action: 'Check your internet connection, then send the task again.',
+          }
+        : {
+            title: 'The model returned an error',
+            action: error.retryable
+              ? 'Sending the task again may work.'
+              : 'Try a different model or effort in Session model & effort, or rephrase the task.',
+          };
+    case 'stepLimit':
+      return {
+        title: 'The task stopped at its step limit',
+        action: 'Review what was done, then send a follow-up task to continue.',
+      };
+    case 'mcpLinkError':
+      return {
+        title: 'A tool connection failed',
+        action: 'Send the task again; if it keeps failing, start a new session.',
+      };
+    case 'configError':
+    case 'environmentError':
+    case 'launchError':
+    case 'workflowLaunchError':
+      return {
+        title: 'Muse could not set up this task',
+        action:
+          'Check the session folder still exists and is accessible, then send the task again.',
+      };
+    default:
+      return {
+        title: 'Muse stopped this task with an error',
+        action: error.retryable ? 'Sending the task again may work.' : 'See the details below.',
+      };
+  }
+}

@@ -57,6 +57,7 @@ import {
   runningTasks,
   outcomeNotice,
   skillRequest,
+  taskFailure,
 } from './model';
 import type {
   Status,
@@ -2285,15 +2286,14 @@ export function App() {
                       )}
                     {task?.error && (
                       <section className="revision-badge stale" aria-label="Native task failure">
-                        <strong>Muse error: {task.error.kind}</strong>
-                        <span>{task.error.message}</span>
-                        {task.error.kind === 'authRequired' && (
-                          <p>
-                            Sign in with <code>muse login</code> or configure a provider API key
-                            locally, then start a new turn. The failed turn is retained for
-                            inspection.
-                          </p>
-                        )}
+                        <strong>{taskFailure(task.error).title}</strong>
+                        <span>{taskFailure(task.error).action}</span>
+                        <details>
+                          <summary>Details from Muse</summary>
+                          <small>
+                            {task.error.kind}: {task.error.message}
+                          </small>
+                        </details>
                       </section>
                     )}
                   </div>

@@ -602,3 +602,30 @@ test('a requested skill is shown apart from what Muse reported about loading it'
   ])
     assert.equal(skillRequest(item, [read('completed')], settled), null);
 });
+
+test('failed tasks are explained with a plain title and a next step', async () => {
+  const { taskFailure } = await import('../ui/model.ts');
+  const offline = taskFailure({
+    kind: 'modelError',
+    message: 'transport error: error sending request for url (http://127.0.0.1:1/responses)',
+    retryable: false,
+  });
+  assert.equal(offline.title, 'Muse could not reach the model');
+  assert.match(offline.action, /internet connection/);
+  assert.match(taskFailure({ kind: 'authRequired', message: 'x' }).action, /Muse account/);
+  const quota = taskFailure(
+    { kind: 'modelError', message: 'quota', quota: { resetsAtMs: 2_000 } },
+    1_000,
+  );
+  assert.equal(quota.title, 'Your Muse allowance is used up');
+  assert.match(taskFailure({ kind: 'stepLimit', message: '' }).action, /follow-up task/);
+  assert.match(
+    taskFailure({ kind: 'modelError', message: 'bad', retryable: true }).action,
+    /again may work/,
+  );
+  // Unknown kinds never show the raw kind as the headline.
+  assert.equal(
+    taskFailure({ kind: 'somethingNew', message: 'm' }).title,
+    'Muse stopped this task with an error',
+  );
+});
