@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- When a task fails, the task inspector now says what happened and what to do (for example, check your connection or sign in again) instead of showing an error code; Muse's own message is under Details. Session limits say how to free a slot.
+
 - If Lascoria's data file is damaged, Lascoria now starts with empty data instead of refusing to open, keeps the damaged file, and offers to restore your newest backup. When the background service cannot start, the app shows the reason.
 
 - If the disk holding Lascoria's data fills up, Muse keeps working: Lascoria says it cannot save, refuses new tasks with that reason, and saves what is waiting as soon as space is free.
