@@ -143,10 +143,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          codesign --force --timestamp --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
-            --entitlements src-tauri/entitlements/node.plist .dev/bundle-runtime/node
-          codesign --force --timestamp --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
-            .dev/bundle-runtime/constellation-supervisor
+          node scripts/sign-macos-runtime.js
       - name: Build, sign and notarize the desktop bundles
         shell: bash
         run: |
@@ -154,6 +151,9 @@ jobs:
           # The runtime is already prepared (and signed on macOS); do not rebuild it here.
           config='{"build":{"beforeBuildCommand":"npm run ui:build"},"bundle":{"active":true,"createUpdaterArtifacts":true},"plugins":{"updater":{"pubkey":"'"$LASCORIA_UPDATER_PUBKEY"'"}}}'
           npx tauri build --bundles "${{ matrix.bundles }}" --config "$config"
+      - name: Verify signed runtime provenance after bundling
+        if: runner.os == 'macOS'
+        run: node scripts/sign-macos-runtime.js --verify "src-tauri/target/release/bundle/macos/Lascoria.app/Contents/Resources/runtime"
       - name: Stage packages under release names
         shell: bash
         run: node scripts/release-artifacts.js stage "${{ matrix.target }}" "$VERSION" dist-release

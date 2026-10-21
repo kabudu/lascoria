@@ -47,3 +47,17 @@ Windows packages are not Authenticode-signed yet, so Windows may show a SmartScr
 6. In-app updates read `latest.json`: stable installs from the latest non-prerelease, beta installs from the rolling `updater-beta` prerelease, which every release refreshes. The app verifies each bundle's signature, and the signed version, before installing.
 
 If a run fails after the draft was created, rerunning the workflow deletes that unpublished draft and starts again. A published release is never overwritten; fix it by hand and cut a new version.
+
+
+### Local macOS signing acceptance
+
+Use an existing local Developer ID identity and its ten-character team ID in `APPLE_SIGNING_IDENTITY` and `LASCORIA_APPLE_TEAM_ID`, without exporting private keys. Run:
+
+```sh
+node scripts/package-macos-qa.js --developer-id
+node testing/macos-signing-smoke.js
+```
+
+The QA app keeps its isolated identity/path, compiles the supervisor's team requirement, signs the Node runtime with its V8 entitlements and the supervisor without extra entitlements, then seals the app with hardened runtime. It does not submit for notarization, configure updater signing, install globally or publish. The default QA command remains ad hoc and removes the release-team variable for its build. Both modes suppress inherited notarization credentials for the local QA bundler.
+
+The smoke uses disposable state and a minimal native socket peer. It proves signed-peer acceptance, token-only interpreter refusal, same-path ad hoc refusal and acceptance after restoring the valid signature, without restarting the supervisor or making model calls. It checks that runtime provenance matches the signed bytes. The release workflow uses the same runtime signer before sealing/notarizing the production app; provenance describes the final signed executables, rather than their pre-signing hashes. This check does not establish notarization, installed-app accessibility or N-to-N+1 updates.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- macOS runtime provenance now records signed executable hashes. Local Developer ID QA builds can verify the supervisor rejects ad hoc re-signed clients at the same allowed path.
+
 - Storage-outage recovery deduplicates bounded command receipts, rejects oversized batches without replacing retained updates, and warns that unsaved updates are lost if the background service stops before saving.
 
 - Canvas cards say what they are in plain words (Task, Helper agent, Workflow, Background check) instead of internal names.
