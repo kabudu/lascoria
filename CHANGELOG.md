@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep Open in editor from running repository files through default OS associations. The default file-manager option opens folders only; choose an editor for files.
+
 - Centre the workspace film’s permission-button label using measured glyph bounds.
 
 - Update certificate validation and bundled roots for RUSTSEC-2026-0382 and RUSTSEC-2026-0383.

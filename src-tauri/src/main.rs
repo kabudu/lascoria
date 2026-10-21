@@ -323,13 +323,39 @@ async fn open_browser(url: String) -> Result<(), String> {
     }
     Ok(())
 }
-/// Opens a local folder or file with the operating system's default handler, without a shell.
+#[cfg(not(windows))]
+fn system_folder_command(target: &std::path::Path) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(if cfg!(target_os = "macos") {
+        "/usr/bin/open"
+    } else {
+        "xdg-open"
+    });
+    #[cfg(target_os = "macos")]
+    // Reveal rather than open: application-bundle directories must never launch.
+    command.arg("-R");
+    command.arg(target);
+    command
+}
+
+/// Generic file associations can execute repository files. Only folders may use this fallback.
+pub(crate) fn validate_system_folder(target: &std::path::Path) -> Result<(), String> {
+    if !target.is_dir() {
+        return Err(
+            "Choose an editor in Settings to open files. The file manager opens folders only"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+/// Opens a local folder in the file manager, never a document's default handler.
 pub(crate) async fn open_with_system(target: &std::path::Path) -> Result<(), String> {
+    validate_system_folder(target)?;
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
         let path: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
-        let verb: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
+        let verb: Vec<u16> = "explore".encode_utf16().chain(Some(0)).collect();
         let result = unsafe {
             windows_sys::Win32::UI::Shell::ShellExecuteW(
                 std::ptr::null_mut(),
@@ -341,28 +367,22 @@ pub(crate) async fn open_with_system(target: &std::path::Path) -> Result<(), Str
             )
         } as isize;
         if result <= 32 {
-            return Err("Could not open it with the system default app".into());
+            return Err("Could not open the folder in your file manager".into());
         }
         Ok(())
     }
     #[cfg(not(windows))]
     {
+        let mut command = system_folder_command(target);
         let status = tokio::time::timeout(
             std::time::Duration::from_secs(10),
-            tokio::process::Command::new(if cfg!(target_os = "macos") {
-                "/usr/bin/open"
-            } else {
-                "xdg-open"
-            })
-            .arg(target)
-            .kill_on_drop(true)
-            .status(),
+            command.kill_on_drop(true).status(),
         )
         .await
         .map_err(|_| "Opening it timed out")?
-        .map_err(|_| "Could not open it with the system default app")?;
+        .map_err(|_| "Could not open the folder in your file manager")?;
         if !status.success() {
-            return Err("Could not open it with the system default app".into());
+            return Err("Could not open the folder in your file manager".into());
         }
         Ok(())
     }

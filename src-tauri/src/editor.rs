@@ -165,7 +165,8 @@ fn custom(app: &tauri::AppHandle) -> Option<PathBuf> {
 /// Editors Lascoria can open, for the Settings list. `system` is always available.
 #[tauri::command]
 pub fn list_editors(app: tauri::AppHandle) -> Value {
-    let mut editors = vec![json!({"id":"system","name":"System default","available":true})];
+    let mut editors =
+        vec![json!({"id":"system","name":"File manager (folders only)","available":true})];
     for preset in PRESETS {
         editors.push(json!({"id":preset.id,"name":preset.name,"available":installed(preset)}));
     }
@@ -336,6 +337,44 @@ pub async fn open_in_editor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn system_fallback_refuses_files_and_missing_paths_before_os_dispatch() {
+        let root =
+            std::env::temp_dir().join(format!("lascoria-editor-policy-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("Example.app")).unwrap();
+        assert!(crate::validate_system_folder(&root).is_ok());
+        for name in [
+            "program.exe",
+            "script.cmd",
+            "script.sh",
+            "shortcut.lnk",
+            "note.txt",
+        ] {
+            let path = root.join(name);
+            std::fs::write(&path, b"synthetic inert fixture").unwrap();
+            assert!(
+                crate::validate_system_folder(&path)
+                    .unwrap_err()
+                    .contains("Choose an editor")
+            );
+            assert!(
+                crate::open_with_system(&path)
+                    .await
+                    .unwrap_err()
+                    .contains("Choose an editor")
+            );
+        }
+        assert!(crate::validate_system_folder(&root.join("missing")).is_err());
+        #[cfg(target_os = "macos")]
+        {
+            let target = root.join("Example.app");
+            let command = crate::system_folder_command(&target);
+            let args: Vec<_> = command.as_std().get_args().collect();
+            assert_eq!(args, vec![std::ffi::OsStr::new("-R"), target.as_os_str()]);
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn only_paths_inside_the_session_folder_can_be_opened() {

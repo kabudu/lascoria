@@ -1,6 +1,6 @@
 # Public-history cleanup plan
 
-Status: plan selected by the owner on 21 October 2026; execution is not authorised by this document. No commit, branch, tag, pull request or remote history has been rewritten or deleted. The existing stacked draft PR remains intact until its delivery is resolved. Public opening stays blocked by PL03 in [public-launch.md](public-launch.md).
+Status: plan selected by the owner on 21 October 2026; execution is not authorised by this document. No commit, branch, tag, pull request or remote history has been rewritten or deleted. The owner authorised retargeting draft PR #1 to master on 21 October. Its head/history remain intact and delivery is still unresolved; this does not authorise merge or cleanup execution. Public opening stays blocked by PL03 in [public-launch.md](public-launch.md).
 
 ## Findings and scope
 
@@ -17,7 +17,7 @@ The public plan deliberately contains no private session URL, session identifier
 
 ## Before any rewrite
 
-- [ ] Resolve delivery of the current stacked draft PR with the owner. Merge, close, retarget or replace it only under the corresponding explicit authority; this plan selects none of those actions automatically.
+- [ ] Resolve delivery of the current draft PR with the owner. Retargeting to master was authorised and completed on 21 October; merging/closing remains separate. Merge, close, retarget or replace it only under the corresponding explicit authority; this plan selects none of those actions automatically.
 - [ ] Obtain separate, explicit approval for the exact history rewrite and remote ref replacements, including any necessary protection changes. Commit/push permission for feature work is not force-push or branch-deletion permission.
 - [ ] Freeze writes during cleanup and inventory all local/remote branches, tags, PR refs and collaborators' clones. Record the chosen public ref set and every historical location of the findings.
 - [ ] Save a verified, access-restricted archive of the original Git refs outside the future public checkout. Do not include ignored runtime credentials or live captures in a repository archive. Keep original-to-rewritten commit/ref mappings and any replacement-input files private; never add those inputs to the future public tree.

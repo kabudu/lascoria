@@ -680,3 +680,11 @@ The companion website now checks anonymous public source and stable-release down
 - [ ] Disclose unknown-publisher/reputation warnings and the unsupported case where Smart App Control or managed policy blocks unsigned apps in the curated release/install guidance. Do not advise disabling Windows protection.
 
 This decision narrows the earlier Windows signing gate; it does not waive native acceptance, signed updater verification, application privacy/security gates or public-opening approval.
+
+
+### Combined master review (21 October)
+
+- [x] Retarget draft PR #1 from codex/stage-c-memory to master under the owner’s explicit authority. Preserve the head, draft status, branch history and existing user sessions. No merge or history rewrite occurred.
+- [x] Review the combined 243-file inventory, existing review feedback (none), durable-state/trust/process boundaries and release surfaces. Prior incremental review evidence remains scoped to its source revision.
+- [x] Fix F10: Open in editor must not execute a repository file through its default OS association. File-manager fallback accepts folders only; individual files require a selected editor, and macOS folders, including .app directories, are revealed in Finder. Add native-boundary regressions and Settings/Help explanation. Final validation and delivery are recorded in PR #1.
+- [ ] Complete the remaining native platform, signed-updater, security/accessibility/resource and public-history opening gates. Retargeting and local CI do not close them.

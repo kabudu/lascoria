@@ -208,7 +208,8 @@ export function EditorSettings({
       <p>
         <strong>Open in editor</strong> in the task inspector opens the session&apos;s folder, or a
         changed file, in this editor. Lascoria passes only the path; it does not change your
-        editor&apos;s settings.
+        editor&apos;s settings. With File manager selected, only folders open; choose an editor here
+        to open individual files.
       </p>
       {error && <p role="alert">{error}</p>}
       <fieldset>
