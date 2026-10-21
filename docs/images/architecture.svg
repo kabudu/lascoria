@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1060" viewBox="0 0 1600 1060" role="img" aria-labelledby="title description">
+<title id="title">Lascoria architecture: a spatial workspace, durable Rust control and official Muse execution</title>
+<desc id="description">The Tauri and React desktop exchanges commands and observed state with a local Rust supervisor. Rust owns the journal, recovery, session lanes, local session relay, worktrees and evidence. An official Node SDK broker connects independent contexts to one Muse Code host per session. SQLite holds local state; the operating-system vault holds credentials. Muse connects to the user's model provider. Optional decision APIs require a separate key and workspace consent. The desktop window and runtime have separate lifetimes.</desc>
+<defs>
+ <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fffefb"/><stop offset="1" stop-color="#f0eef8"/></linearGradient>
+ <radialGradient id="glow"><stop stop-color="#dcd7f4" stop-opacity=".8"/><stop offset="1" stop-color="#dcd7f4" stop-opacity="0"/></radialGradient>
+ <linearGradient id="core" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#31304d"/><stop offset="1" stop-color="#23283d"/></linearGradient>
+ <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#b5b0cd" opacity=".28"/></pattern>
+ <filter id="shadow" x="-15%" y="-12%" width="130%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="13" flood-color="#30294d" flood-opacity=".065"/></filter>
+ <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="m1 1 5 3-5 3" fill="none" stroke="#8275d6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker>
+ <marker id="return" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="m1 1 5 3-5 3" fill="none" stroke="#9793ab" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker>
+ <style>
+  text{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#23283d} .eyebrow{font-size:14px;font-weight:600;letter-spacing:2px;fill:#646779}.heading{font-size:27px;font-weight:650;letter-spacing:-.7px}.body{font-size:18px;fill:#646779}.small{font-size:15px;fill:#646779}.label{font-size:16px;font-weight:600}.white{fill:#fffefb}.light{fill:#cbc8df}.card{fill:#fffefb;stroke:#dddde5;stroke-width:1.3;filter:url(#shadow)}.control{fill:none;stroke:#8275d6;stroke-width:2;marker-end:url(#arrow)}.observed{fill:none;stroke:#9793ab;stroke-width:1.6;stroke-dasharray:3 5;marker-end:url(#return)}
+ </style>
+</defs>
+<rect width="1600" height="1060" rx="32" fill="url(#canvas)"/>
+<ellipse cx="800" cy="390" rx="610" ry="450" fill="url(#glow)"/>
+<rect x="35" y="205" width="1530" height="746" rx="28" fill="url(#dots)"/>
+<g transform="translate(59 46) scale(.62)"><g fill="#8275d6"><path d="M28 17C21 11 12 7 4 7c0 15 5 28 19 37l5-27Z"/><path d="M36 17C43 11 52 7 60 7c0 15-5 28-19 37l-5-27Z"/></g><path d="m24 49 8-17 8 17-8 8Z" fill="#5950a8"/><circle cx="32" cy="12" r="3" fill="#5950a8"/></g>
+<text x="116" y="75" class="eyebrow">LASCORIA / ARCHITECTURE</text>
+<text x="60" y="142" font-size="44" font-weight="650" letter-spacing="-1.6">A map for you. A durable runtime for the work.</text>
+<text x="61" y="181" class="body">Clear ownership from the desktop to each independent Muse session.</text>
+<text x="61" y="237" class="eyebrow">ON YOUR COMPUTER</text>
+<path d="M302 232h1238" stroke="#dddde5"/>
+<!-- Commands travel right; observed state travels left. -->
+<path d="M380 420C408 420 419 442 445 442" class="control"/>
+<path d="M447 485C421 485 407 507 382 507" class="observed"/>
+<path d="M767 420C795 420 806 442 832 442" class="control"/>
+<path d="M834 485C808 485 794 507 769 507" class="observed"/>
+<path d="M1154 420C1182 420 1193 442 1219 442" class="control"/>
+<path d="M1221 485C1195 485 1181 507 1156 507" class="observed"/>
+<!-- Presentation -->
+<rect x="60" y="278" width="320" height="370" rx="22" class="card"/>
+<text x="86" y="318" class="eyebrow">01 / PRESENTATION</text>
+<text x="86" y="362" class="heading">Spatial workspace</text>
+<text x="86" y="394" class="body">Tauri · React · TypeScript</text>
+<path d="M218 452C218 480 155 481 155 510M218 452C218 481 279 481 279 510" fill="none" stroke="#aaa2d6" stroke-width="1.6"/>
+<rect x="143" y="425" width="150" height="47" rx="12" fill="#eeecf8" stroke="#c8c1e9"/>
+<circle cx="162" cy="449" r="4" fill="#8275d6"/><text x="177" y="455" class="label">Build API</text>
+<rect x="87" y="511" width="134" height="47" rx="12" fill="#f6f5f2" stroke="#dddde5"/>
+<circle cx="105" cy="535" r="4" fill="#8275d6"/><text x="120" y="541" class="label">Review</text>
+<rect x="237" y="511" width="117" height="47" rx="12" fill="#f6f5f2" stroke="#dddde5"/>
+<circle cx="255" cy="535" r="4" fill="#8275d6"/><text x="270" y="541" class="label">Tests</text>
+<text x="86" y="600" class="small">Arrange tasks. Notice attention.</text>
+<text x="86" y="623" class="small">Inspect changes and evidence.</text>
+<!-- Durable control -->
+<rect x="447" y="278" width="320" height="370" rx="22" fill="url(#core)" filter="url(#shadow)"/>
+<text x="473" y="318" class="eyebrow light">02 / DURABLE CONTROL</text>
+<text x="473" y="362" class="heading white">Rust supervisor</text>
+<text x="473" y="394" class="body light">Authenticated local IPC</text>
+<path d="M473 420h268" stroke="#55536b"/>
+<g font-size="18" fill="#fffefb">
+ <text x="473" y="458" class="white">Command journal &amp; recovery</text>
+ <text x="473" y="493" class="white">Session lanes &amp; local relay</text>
+ <text x="473" y="528" class="white">Worktrees, tests &amp; evidence</text>
+ <text x="473" y="563" class="white">Account policy &amp; approvals</text>
+</g>
+<rect x="473" y="590" width="268" height="33" rx="9" fill="#48415f"/>
+<text x="607" y="612" text-anchor="middle" font-size="14" fill="#eeebff" class="white">Persist → dispatch → reconcile</text>
+<!-- Official integration -->
+<rect x="834" y="278" width="320" height="370" rx="22" class="card"/>
+<text x="860" y="318" class="eyebrow">03 / MUSE INTEGRATION</text>
+<text x="860" y="362" class="heading">Official Node SDK</text>
+<text x="860" y="394" class="body">One shared broker</text>
+<g><rect x="860" y="428" width="268" height="43" rx="10" fill="#eeecf8"/><circle cx="881" cy="450" r="10" fill="#d7d1ee"/><text x="881" y="455" font-size="12" font-weight="600" text-anchor="middle">A</text><text x="902" y="456" class="label">Session context</text></g>
+<g><rect x="860" y="480" width="268" height="43" rx="10" fill="#f1eff6"/><circle cx="881" cy="502" r="10" fill="#dfdce9"/><text x="881" y="507" font-size="12" font-weight="600" text-anchor="middle">B</text><text x="902" y="508" class="label">Session context</text></g>
+<g><rect x="860" y="532" width="268" height="43" rx="10" fill="#f6f5f2"/><circle cx="881" cy="554" r="10" fill="#e7e4e9"/><text x="881" y="559" font-size="12" font-weight="600" text-anchor="middle">C</text><text x="902" y="560" class="label">Session context</text></g>
+<text x="860" y="606" class="small">SDK state &amp; stream recovery</text>
+<text x="860" y="629" class="small">Private, bounded worker protocol</text>
+<!-- Execution -->
+<rect x="1221" y="278" width="320" height="370" rx="22" class="card"/>
+<text x="1247" y="318" class="eyebrow">04 / EXECUTION</text>
+<text x="1247" y="362" class="heading">Muse Code</text>
+<text x="1247" y="394" class="body">One host per session</text>
+<g fill="#f6f5f2" stroke="#dddde5"><rect x="1247" y="428" width="268" height="43" rx="10"/><rect x="1247" y="480" width="268" height="43" rx="10"/><rect x="1247" y="532" width="268" height="43" rx="10"/></g>
+<g fill="none" stroke="#8275d6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m1267 443 7 7-7 7m15 0h10"/><path d="m1267 495 7 7-7 7m15 0h10"/><path d="m1267 547 7 7-7 7m15 0h10"/></g>
+<text x="1307" y="456" class="label">Muse host A</text><text x="1307" y="508" class="label">Muse host B</text><text x="1307" y="560" class="label">Muse host C</text>
+<text x="1247" y="606" class="small">Tools · permissions · agents</text>
+<text x="1247" y="629" class="small">Muse's own durable history</text>
+<!-- Independent lifetime and state -->
+<path d="M607 648C607 687 607 695 607 730" class="control"/>
+<path d="M738 648C738 700 862 684 900 731" class="control" stroke-dasharray="5 6"/>
+<text x="795" y="705" class="small">explicit opt-in</text>
+<path d="M1381 648C1381 687 1381 695 1381 730" class="control"/>
+<text x="1397" y="698" class="small">model calls</text>
+<rect x="60" y="734" width="320" height="195" rx="20" fill="#eeecf8" stroke="#dcd7ed"/>
+<text x="86" y="774" class="eyebrow">SEPARATE LIFETIMES</text>
+<text x="86" y="811" font-size="23" font-weight="600" letter-spacing="-.5">Close the window.</text>
+<text x="86" y="841" font-size="23" font-weight="600" letter-spacing="-.5">Keep work running.</text>
+<text x="86" y="879" class="small">When chosen; logging out pauses work.</text>
+<text x="86" y="902" class="small">Reopen to see the current state.</text>
+<rect x="447" y="734" width="320" height="195" rx="20" class="card"/>
+<text x="473" y="774" class="eyebrow">LOCAL STORAGE</text>
+<text x="473" y="811" class="label">SQLite</text><text x="473" y="836" class="small">Journal, drafts, captures &amp; evidence</text>
+<path d="M473 854h268" stroke="#e3e0eb"/>
+<text x="473" y="882" class="label">OS credential vault</text><text x="473" y="907" class="small">Keys, kept out of the command journal</text>
+<rect x="834" y="734" width="320" height="195" rx="20" fill="#fffefb" stroke="#c4bcdf" stroke-width="1.5" stroke-dasharray="5 5"/>
+<text x="860" y="774" class="eyebrow">OPTIONAL / EXTERNAL</text>
+<text x="860" y="811" font-size="23" font-weight="600" letter-spacing="-.5">Decision advice APIs</text>
+<text x="860" y="840" class="small">Jev / TypeSafe · SubQ · OpenAI</text>
+<text x="860" y="878" class="small">Your API key. Scoped consent.</text>
+<text x="860" y="902" class="small">Advice never grants approval.</text>
+<rect x="1221" y="734" width="320" height="195" rx="20" class="card"/>
+<text x="1247" y="774" class="eyebrow">YOUR MODEL / EXTERNAL</text>
+<text x="1247" y="811" font-size="23" font-weight="600" letter-spacing="-.5">Muse model provider</text>
+<text x="1247" y="846" class="small">Muse subscription first.</text>
+<text x="1247" y="873" class="small">API billing only when chosen.</text>
+<text x="1247" y="902" class="small">No automatic paid fallback.</text>
+<path d="M60 974h1481" stroke="#d9d5e5"/>
+<path d="M63 1010h35" class="control"/><text x="111" y="1016" class="small">Commands &amp; control</text>
+<path d="M364 1010h35" class="observed"/><text x="412" y="1016" class="small">Observed state</text>
+<text x="1541" y="1016" text-anchor="end" class="small">Local relay · Explicit permissions · Revision-bound evidence</text>
+</svg>

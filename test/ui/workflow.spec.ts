@@ -1,0 +1,791 @@
+import AxeBuilder from '@axe-core/playwright';
+import { test, expect } from '@playwright/test';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { provider } from '../../testing/provider.js';
+import { request } from '../../src/client.js';
+const exec = promisify(execFile);
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+test('real Muse implementation, tests and review through React and the native Rust bridge', async ({
+  browser,
+}, testInfo) => {
+  const root = await mkdtemp(join(tmpdir(), 'sch-stage-b-'));
+  const workspace = join(root, 'workspace');
+  const directory = join(root, 'state');
+  await mkdir(workspace);
+  await exec('git', ['init', '-q', workspace]);
+  await writeFile(join(workspace, 'README.md'), 'Stage B test repository\n');
+  await exec('git', ['-C', workspace, 'add', '.']);
+  await exec('git', [
+    '-C',
+    workspace,
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '-qm',
+    'Initial',
+  ]);
+  const model = await provider(root, { stageB: true, modelSettings: true });
+  const env = {
+    ...process.env,
+    MUSE_BIN: process.env.MUSE_BIN ?? 'muse',
+    SCH_STATE_DIR: directory,
+    SCH_PROVIDER: 'meta',
+    ...model.env, // Environment-only fake credential; never migrate into the user's Keychain.
+    XDG_CONFIG_HOME: join(root, 'config'),
+    XDG_DATA_HOME: join(root, 'data'),
+    XDG_CACHE_HOME: join(root, 'cache'),
+  };
+  let daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
+    env,
+    stdio: 'ignore',
+  });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const bridge = resolve('src-tauri/target/debug/spatial-constellation-desktop');
+  let emptyCatalog = false;
+  let failCatalog = false;
+  let holdTranscript = false;
+  let failStatus = false;
+  let releaseTranscript: (() => void) | undefined;
+  let transcriptHeld = false;
+  let transcriptReturned = false;
+  await context.exposeBinding('nativeBridge', async (_source, command, args) => {
+    const input =
+      command === 'connect_supervisor'
+        ? { operation: 'status', params: {}, id: 'ui-connect' }
+        : args;
+    try {
+      if (input.operation === 'models' && failCatalog)
+        throw new Error('Fixture catalog unavailable');
+      if (input.operation === 'status' && failStatus) throw new Error('Fixture connection lost');
+      const { stdout } = await exec(bridge, ['--bridge-json', JSON.stringify(input)], {
+        env,
+        timeout: 35000,
+        maxBuffer: 40 * 1024 * 1024,
+      });
+      const data = JSON.parse(stdout);
+      if (data.error) throw new Error(data.error);
+      if (input.operation === 'transcript' && holdTranscript) {
+        transcriptHeld = true;
+        await new Promise<void>((resolve) => {
+          releaseTranscript = resolve;
+        });
+        transcriptReturned = true;
+      }
+      if (input.operation === 'models' && emptyCatalog) return { ...data.result, models: [] };
+      return data.result;
+    } catch (e: any) {
+      if (e.stdout) {
+        const data = JSON.parse(e.stdout);
+        throw new Error(data.error);
+      }
+      throw e;
+    }
+  });
+  await context.addInitScript(() => {
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => (window as any).nativeBridge(command, args),
+    };
+  });
+  let page = await context.newPage();
+  const status = () => request(directory, 'status');
+  const ready = async () => {
+    for (let i = 0; i < 100; i++) {
+      try {
+        const s = await status();
+        if (s.pid === daemon.pid) return;
+      } catch {}
+      await delay(100);
+    }
+    throw new Error('Supervisor not ready');
+  };
+  const stop = async () => {
+    if (daemon.exitCode !== null) return;
+    const done = new Promise((r) => daemon.once('exit', r));
+    daemon.kill('SIGTERM');
+    await done;
+  };
+  try {
+    await ready();
+    await page.goto('/');
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
+    await page.getByLabel('Workspace menu', { exact: true }).click();
+    await page.getByRole('button', { name: 'Diagnostics', exact: true }).focus();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.workspace-menu')).toHaveJSProperty('open', false);
+    await expect(page.getByLabel('Workspace menu', { exact: true })).toBeFocused();
+    await page.getByLabel('Workspace menu', { exact: true }).click();
+    await page.getByText('Background service connected', { exact: true }).click();
+    await expect(page.locator('.workspace-menu')).toHaveJSProperty('open', false);
+    failStatus = true;
+    await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toBeVisible();
+    failStatus = false;
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toHaveCount(0);
+    const beforeInvalid = (await status()).sessions.length;
+    await expect(
+      request(directory, 'start', { workspace, modelId: '../bad model' }),
+    ).rejects.toThrow('Invalid model ID');
+    expect((await status()).sessions.length).toBe(beforeInvalid);
+    const diagnostic = await request(directory, 'diagnostics');
+    expect(diagnostic.failures).toBeGreaterThanOrEqual(1);
+    expect(diagnostic.sampleLimit).toBe(256);
+    const sessions: string[] = [];
+    for (const marker of ['STAGE_B_IMPLEMENT', 'STAGE_B_TEST', 'STAGE_B_DELEGATE']) {
+      await page
+        .getByRole('button', {
+          name: marker === 'STAGE_B_IMPLEMENT' ? 'Start your first session' : 'New session',
+          exact: true,
+        })
+        .click();
+      await page.getByLabel('Existing repository path').fill(workspace);
+      await page.getByRole('checkbox', { name: 'Create an isolated task worktree' }).uncheck();
+      if (marker === 'STAGE_B_IMPLEMENT')
+        await page.getByLabel('Model', { exact: true }).selectOption('muse-wonder-1.0');
+      await page.getByLabel('Initial task').fill(marker);
+      await page.getByRole('button', { name: 'Start session', exact: true }).click();
+      await expect.poll(async () => (await status()).sessions.length).toBe(sessions.length + 1);
+      const createdSession = (await status()).sessions.at(-1).id;
+      await expect
+        .poll(
+          async () =>
+            (await status()).commands.find(
+              (c: any) => c.operation === 'start' && c.sessionId === createdSession,
+            )?.result?.session?.modelId,
+        )
+        .toBe(marker === 'STAGE_B_IMPLEMENT' ? 'muse-wonder-1.0' : 'stage-a-fixture');
+      const startReceipt = (await status()).commands.find(
+        (c: any) => c.operation === 'start' && c.sessionId === createdSession,
+      );
+      expect(startReceipt.result.session.providerId).toBe('meta');
+      expect((await status()).sessions.at(-1).state.modelRoute.modelId).toBe(
+        marker === 'STAGE_B_IMPLEMENT' ? 'muse-wonder-1.0' : 'stage-a-fixture',
+      );
+
+      if (marker === 'STAGE_B_IMPLEMENT') {
+        await expect(
+          page.getByRole('heading', { name: 'Permission decision', exact: true }),
+        ).toBeVisible({ timeout: 20000 });
+        const s = await status();
+        const row = s.sessions.find((row: any) => row.id === createdSession);
+        const approval = row.state.approvals[0].requested;
+        const choice = approval.availableChoices.find((c: any) => c.decision === 'approved');
+        await page
+          .getByRole('button', {
+            name: choice.label ?? choice.decision ?? choice.choiceId,
+            exact: true,
+          })
+          .click();
+      }
+      await expect
+        .poll(
+          async () => {
+            const s = await status();
+            const row = s.sessions.find((row: any) => row.id === createdSession);
+            const turn = row.state.turns?.at(-1);
+            if (turn?.terminal === 'failed')
+              throw new Error('Native fixture turn failed: ' + JSON.stringify(turn));
+            return turn?.terminal;
+          },
+          { timeout: 25000 },
+        )
+        .toBe('completed');
+      sessions.push(createdSession);
+    }
+    failStatus = true;
+    await expect(page.getByText(/Disconnected:.*Fixture connection lost/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Recover session', exact: true })).toBeVisible();
+    const errorBounds = await page
+      .locator('.notification-stack .banner.error')
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const box = element.getBoundingClientRect();
+          return { top: box.top, bottom: box.bottom };
+        }),
+      );
+    expect(errorBounds).toHaveLength(2);
+    expect(errorBounds[0].bottom).toBeLessThanOrEqual(errorBounds[1].top);
+    failStatus = false;
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Recover session', exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Expand canvas controls', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Recenter canvas', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand canvas controls', exact: true }).click();
+    // Position on screen is the contract; the toolbar now shares the heading's layout owner.
+    await expect
+      .poll(async () => {
+        const tools = await page
+          .getByRole('region', { name: 'Canvas controls', exact: true })
+          .boundingBox();
+        const header = await page.locator('.topbar').boundingBox();
+        return (
+          !!tools &&
+          !!header &&
+          tools.y >= header.y + header.height &&
+          tools.y <= header.y + header.height + 20
+        );
+      })
+      .toBe(true);
+    await page.getByRole('button', { name: 'Collapse canvas controls', exact: true }).click();
+    await expect
+      .poll(
+        async () => (await request(directory, 'presentation/get')).value.canvasControlsCollapsed,
+      )
+      .toBe(true);
+    await page.reload();
+    await expect(page.locator('.session-card').nth(2)).toHaveClass(/selected/);
+    await expect(
+      page.getByRole('button', { name: 'Expand canvas controls', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Expand canvas controls', exact: true }).click();
+    await expect
+      .poll(
+        async () => {
+          const value = await status();
+          const workflow = value.sessions[2].state.items?.find(
+            (item: any) => item.kind === 'workflow',
+          );
+          return workflow?.status === 'completed' ? workflow.children?.[0]?.terminal : undefined;
+        },
+        { timeout: 25000 },
+      )
+      .toBe('completed');
+    await expect(
+      page.getByRole('button', { name: /Workflow child.*completed, Workflow step/ }).first(),
+    ).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Sessions panel', exact: true })).toBeVisible();
+    const inspectorWindow = page.getByRole('region', { name: 'Task inspector panel', exact: true });
+    const beforeMove = (await inspectorWindow.boundingBox())!;
+    await page.getByRole('button', { name: 'Move Task inspector panel', exact: true }).focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(async () => (await inspectorWindow.boundingBox())!.x).toBe(beforeMove.x - 20);
+    await page.getByRole('button', { name: 'Collapse Task inspector panel', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toBeHidden();
+    await page.getByRole('button', { name: 'Expand Task inspector panel', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toBeVisible();
+    await page.getByLabel('Workspace menu', { exact: true }).click();
+    await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
+    const sessionsHandle = page.getByRole('button', { name: 'Move Sessions panel', exact: true });
+    const handleBounds = (await sessionsHandle.boundingBox())!;
+    await page.mouse.move(handleBounds.x + 30, handleBounds.y + 15);
+    await page.mouse.down();
+    await page.mouse.move(handleBounds.x + 60, handleBounds.y + 35, { steps: 6 });
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.panels?.sessions?.x)
+      .toBe(46);
+    await page.getByRole('button', { name: 'Collapse Sessions panel', exact: true }).click();
+    await expect
+      .poll(
+        async () =>
+          (await request(directory, 'presentation/get')).value.panels?.sessions?.collapsed,
+      )
+      .toBe(true);
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Expand Sessions panel', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Sessions panel', exact: true })).toHaveCSS(
+      'left',
+      '46px',
+    );
+    await page.getByRole('button', { name: 'Expand Sessions panel', exact: true }).click();
+    await page.setViewportSize({ width: 800, height: 700 });
+    await expect
+      .poll(async () => {
+        const smallPanel = (await inspectorWindow.boundingBox())!;
+        return smallPanel.x >= 8 && smallPanel.x + smallPanel.width <= 792;
+      })
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByLabel('Workspace menu', { exact: true }).click();
+    await page.getByRole('button', { name: 'Reset panels', exact: true }).click();
+
+    const canvas = page.getByRole('region', { name: 'Constellation canvas', exact: true });
+    const cameraState = () =>
+      page.locator('.task-map').evaluate((element) => {
+        const style = (element as HTMLElement).style;
+        return {
+          zoom: Number(style.transform.match(/scale\(([^)]+)\)/)![1]),
+          x: parseFloat(style.left),
+          y: parseFloat(style.top),
+        };
+      });
+    const beforeWheel = await cameraState();
+    const anchor = { x: 600, y: 500 };
+    const wheelCanvasBounds = (await canvas.boundingBox())!;
+    await canvas.dispatchEvent('wheel', {
+      ctrlKey: true,
+      deltaY: -100,
+      clientX: anchor.x + wheelCanvasBounds.x,
+      clientY: anchor.y + wheelCanvasBounds.y,
+      bubbles: true,
+      cancelable: true,
+    });
+    await expect.poll(async () => (await cameraState()).zoom).toBeGreaterThan(beforeWheel.zoom);
+    const afterWheel = await cameraState();
+    expect((anchor.x - afterWheel.x) / afterWheel.zoom).toBeCloseTo(
+      (anchor.x - beforeWheel.x) / beforeWheel.zoom,
+      2,
+    );
+    expect((anchor.y - afterWheel.y) / afterWheel.zoom).toBeCloseTo(
+      (anchor.y - beforeWheel.y) / beforeWheel.zoom,
+      2,
+    );
+    await canvas.dispatchEvent('wheel', {
+      deltaX: 25,
+      deltaY: 35,
+      bubbles: true,
+      cancelable: true,
+    });
+    await expect.poll(async () => (await cameraState()).x).toBeCloseTo(afterWheel.x - 25, 5);
+    expect((await cameraState()).zoom).toBe(afterWheel.zoom);
+    const beforeBurst = await cameraState();
+    await canvas.evaluate((element) => {
+      for (let index = 0; index < 50; index++)
+        element.dispatchEvent(
+          new WheelEvent('wheel', { deltaX: 1, deltaY: 2, bubbles: true, cancelable: true }),
+        );
+    });
+    await expect.poll(async () => (await cameraState()).x).toBeCloseTo(beforeBurst.x - 50, 2);
+    expect((await cameraState()).y).toBeCloseTo(beforeBurst.y - 100, 2);
+    const beforePinch = await cameraState();
+    await canvas.evaluate((element, anchor) => {
+      const bounds = element.getBoundingClientRect();
+      for (const [type, scale] of [
+        ['gesturestart', 1],
+        ['gesturechange', 1.25],
+      ] as const) {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.assign(event, {
+          scale,
+          clientX: anchor.x + bounds.left,
+          clientY: anchor.y + bounds.top,
+        });
+        element.dispatchEvent(event);
+      }
+      // A duplicate wheel stream during WebKit pinch must not zoom twice.
+      element.dispatchEvent(
+        new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, bubbles: true, cancelable: true }),
+      );
+      window.dispatchEvent(new Event('gestureend', { cancelable: true }));
+    }, anchor);
+    await expect
+      .poll(async () => (await cameraState()).zoom)
+      .toBeCloseTo(beforePinch.zoom * 1.25, 5);
+    const pinched = await cameraState();
+    expect((anchor.x - pinched.x) / pinched.zoom).toBeCloseTo(
+      (anchor.x - beforePinch.x) / beforePinch.zoom,
+      2,
+    );
+    const inspectorCamera = await cameraState();
+    await page
+      .locator('.inspector-body')
+      .dispatchEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+    expect(await cameraState()).toEqual(inspectorCamera);
+    await page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }).click();
+    await page.getByRole('button', { name: 'Recenter canvas', exact: true }).click();
+    const draggedNode = page.locator('.task-node').first();
+    const nodeId = (await draggedNode.getAttribute('id'))!.slice(5);
+    const originalNodeBounds = (await draggedNode.boundingBox())!;
+    await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }),
+    ).toHaveText('80%');
+    const zoomedBounds = (await draggedNode.boundingBox())!;
+    expect(zoomedBounds.width).toBeCloseTo(originalNodeBounds.width * 0.8, 1);
+    const oldPin = (await request(directory, 'presentation/get')).value.positions?.[nodeId];
+    const natural = await draggedNode.evaluate((element) => ({
+      x: parseFloat((element as HTMLElement).style.left),
+      y: parseFloat((element as HTMLElement).style.top),
+    }));
+    await page.mouse.move(zoomedBounds.x + 60, zoomedBounds.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(zoomedBounds.x + 100, zoomedBounds.y + 64, { steps: 6 });
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.positions?.[nodeId]?.x)
+      .toBeCloseTo((oldPin?.x ?? natural.x) + 50, 1);
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.positions?.[nodeId]?.y)
+      .toBeCloseTo((oldPin?.y ?? natural.y) + 30, 1);
+    await draggedNode.focus();
+    await page.keyboard.press('Shift+ArrowRight');
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.positions?.[nodeId]?.x)
+      .toBeCloseTo((oldPin?.x ?? natural.x) + 70, 1);
+    await page.getByRole('button', { name: 'Fit to view', exact: true }).click();
+    const canvasBounds = (await page.locator('.map-scroll').boundingBox())!;
+    for (const node of await page.locator('.task-node').all()) {
+      const bounds = (await node.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(canvasBounds.x);
+      expect(bounds.y).toBeGreaterThanOrEqual(canvasBounds.y);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(canvasBounds.x + canvasBounds.width + 1);
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(
+        canvasBounds.y + canvasBounds.height + 1,
+      );
+      for (const panel of await page
+        .locator('.floating-panel, .surface-toolbar, .surface-foot, .layout-controls')
+        .all()) {
+        const box = (await panel.boundingBox())!;
+        expect(
+          bounds.x + bounds.width <= box.x ||
+            bounds.x >= box.x + box.width ||
+            bounds.y + bounds.height <= box.y ||
+            bounds.y >= box.y + box.height,
+        ).toBe(true);
+      }
+    }
+    const fittedZoom = await page
+      .locator('.task-map')
+      .evaluate((element) =>
+        Number((element as HTMLElement).style.transform.match(/scale\(([^)]+)\)/)![1]),
+      );
+    await expect
+      .poll(async () => (await request(directory, 'presentation/get')).value.zoom)
+      .toBe(fittedZoom);
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }),
+    ).toHaveText(Math.round(fittedZoom * 100) + '%');
+    await expect
+      .poll(async () => (await draggedNode.boundingBox())!.width)
+      .toBeCloseTo(220 * fittedZoom, 1);
+    await page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }).click();
+    await page.getByRole('button', { name: 'Recenter canvas', exact: true }).click();
+    await expect(page.locator('.native-edge').first()).toHaveAttribute('d', / C /);
+    const mapBounds = (await page.locator('.map-scroll').boundingBox())!;
+    expect(mapBounds.width).toBe(1440);
+    expect(mapBounds.height).toBeGreaterThan(850);
+    for (const node of await page.locator('.task-node').all()) {
+      const bounds = (await node.boundingBox())!;
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(mapBounds.x + mapBounds.width);
+    }
+    await page
+      .getByRole('button', { name: /Workflow child.*completed, Workflow step/ })
+      .first()
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Native workflow child', exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('.command-area textarea')).toBeDisabled();
+    await page.getByRole('button', { name: 'Mark completion inspected', exact: true }).click();
+    await expect(
+      page
+        .getByRole('region', { name: 'Attention' })
+        .getByRole('button', { name: /Inspect completion: Workflow child/ }),
+    ).toHaveCount(0);
+    await page.getByRole('button', { name: 'Open owning turn', exact: true }).click();
+
+    expect(await readFile(join(workspace, 'sum.mjs'), 'utf8')).toContain('a + b');
+    const s = await status();
+    const testItem = s.sessions[1].state.items.find(
+      (i: any) => i.tool === 'bash' && i.status === 'completed',
+    );
+    expect(testItem.visibleOutput).toContain('PASS sum(2,3)=5');
+    await page.locator('.session-card').first().click();
+    await request(directory, 'setEffort', { sessionId: sessions[0], reasoningEffort: 'low' });
+    emptyCatalog = true;
+    await page.getByRole('button', { name: 'Session model & effort', exact: true }).click();
+    await expect(page.getByText(/This session has no selectable models/)).toBeVisible();
+    await expect(page.getByLabel('Session model', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    emptyCatalog = false;
+    failCatalog = true;
+    await page.getByRole('button', { name: 'Session model & effort', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('Fixture catalog unavailable');
+    await expect(page.getByText('Loading available models...')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    failCatalog = false;
+    await page.getByRole('button', { name: 'Session model & effort', exact: true }).click();
+    await page.getByLabel('Session model', { exact: true }).selectOption('stage-b-alternate');
+    const settingsCatalog = await request(directory, 'models', { sessionId: sessions[0] });
+    const alternate = settingsCatalog.models.find(
+      (model: any) => model.modelId === 'stage-b-alternate',
+    );
+    await expect(
+      page.getByRole('slider', { name: 'Reasoning effort', exact: true }),
+    ).toHaveAttribute('aria-valuetext', alternate.defaultReasoningEffort ?? 'medium');
+    await expect(page.getByRole('button', { name: 'Apply effort', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Apply model', exact: true }).click();
+    await expect
+      .poll(async () => (await status()).sessions[0].state.modelRoute.modelId)
+      .toBe('stage-b-alternate');
+    await expect(
+      page.getByRole('slider', { name: 'Reasoning effort', exact: true }),
+    ).toHaveAttribute('aria-valuetext', alternate.defaultReasoningEffort ?? 'medium');
+    await page.setViewportSize({ width: 390, height: 844 });
+    const settingsDialog = page.getByRole('dialog');
+    expect(
+      await settingsDialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).toBe(true);
+    const settingsAccessibility = await new AxeBuilder({ page }).include('dialog').analyze();
+    expect(settingsAccessibility.violations).toEqual([]);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByRole('slider', { name: 'Reasoning effort', exact: true }).focus();
+    await page.getByRole('slider', { name: 'Reasoning effort', exact: true }).press('Home');
+    await page.getByRole('slider', { name: 'Reasoning effort', exact: true }).press('ArrowRight');
+    await expect(page.getByLabel('Reasoning effort', { exact: true })).toHaveAttribute(
+      'aria-valuetext',
+      'low',
+    );
+    await page.getByRole('slider', { name: 'Reasoning effort', exact: true }).press('ArrowRight');
+    await page.getByRole('button', { name: 'Apply effort', exact: true }).click();
+    await expect
+      .poll(async () => (await status()).sessions[0].state.reasoningEffort)
+      .toBe('medium');
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+
+    holdTranscript = true;
+    await page.getByRole('button', { name: 'Browse history', exact: true }).click();
+    await expect.poll(() => transcriptHeld).toBe(true);
+    await page.locator('.session-card').nth(1).click();
+    await expect(page.locator('.inspector-body')).toContainText('STAGE_B_TEST');
+    releaseTranscript!();
+    await expect.poll(() => transcriptReturned).toBe(true);
+    await expect(page.locator('.inspector-body')).toContainText('STAGE_B_TEST');
+    holdTranscript = false;
+    await page.locator('.session-card').first().click();
+    await page.getByRole('tab', { name: 'diff', exact: true }).click();
+    await writeFile(
+      join(workspace, 'unsafe.txt'),
+      '<img src=x onerror=window.untrustedExecuted=true>',
+    );
+    await page.getByRole('button', { name: 'Save snapshot', exact: true }).click();
+    await expect(page.getByText('Untracked: sum.mjs', { exact: false })).toBeVisible();
+    await expect(page.getByText('Current captured content', { exact: true })).toBeVisible();
+    const captures = await request(directory, 'review/list', { sessionId: sessions[0] });
+    const artifact = captures.artifacts[0];
+    expect(await page.evaluate(() => (window as any).untrustedExecuted)).toBeUndefined();
+    await expect(page.locator('.inspector-body img')).toHaveCount(0);
+    expect(artifact.fingerprint).toMatch(/^sha256:/);
+    await page.getByRole('tab', { name: 'evidence', exact: true }).click();
+    await page.getByLabel('Native source item').selectOption(testItem.itemId);
+    await page.getByLabel('Attesting user').fill('Lifecycle verifier');
+    await page.getByLabel('Command or review scope').fill('node --input-type=module -e import sum');
+    await page.getByLabel('Observed exit code').fill('0');
+    await page.getByLabel('Execution environment').fill('macOS arm64 / Node 24 / real Muse bash');
+    await page
+      .getByLabel('Findings / result notes')
+      .fill('Observed PASS sum(2,3)=5 in native tool output.');
+    await page.getByRole('button', { name: 'Save revision-bound attestation' }).click();
+    await expect(page.getByText('test: passed', { exact: true })).toBeVisible();
+    await page.getByLabel('Evidence type').selectOption('review');
+    await page
+      .getByLabel('Native source item')
+      .selectOption(
+        s.sessions[2].state.items.find(
+          (i: any) => i.kind === 'workflow' && i.status === 'completed',
+        ).itemId,
+      );
+    await page.getByLabel('Reviewer', { exact: true }).fill('Human reviewer');
+    await page.getByLabel('Command or review scope').fill('Inspected captured sum.mjs');
+    await page
+      .getByLabel('Findings / result notes')
+      .fill('Addition implementation inspected at the displayed fingerprint.');
+    await page.getByRole('button', { name: 'Save revision-bound attestation' }).click();
+    await expect(page.getByText('review: approved', { exact: true })).toBeVisible();
+    const savedEvidence = (
+      await request(directory, 'review/list', { sessionId: sessions[0] })
+    ).evidence.find((entry: any) => entry.params.kind === 'test');
+    const evidenceId = savedEvidence.id.slice('evidence_'.length);
+    expect((await request(directory, 'evidence/record', savedEvidence.params, evidenceId)).id).toBe(
+      savedEvidence.id,
+    );
+    await expect(
+      request(
+        directory,
+        'evidence/record',
+        { ...savedEvidence.params, notes: 'Changed' },
+        evidenceId,
+      ),
+    ).rejects.toThrow(/different payload/);
+    await expect(
+      request(
+        directory,
+        'evidence/record',
+        { ...savedEvidence.params, sourceRevision: 999 },
+        'obsolete-source',
+      ),
+    ).rejects.toThrow(/Source item changed/);
+    await expect(
+      request(
+        directory,
+        'evidence/record',
+        { ...savedEvidence.params, exitCode: 1 },
+        'wrong-outcome',
+      ),
+    ).rejects.toThrow(/does not match exit code/);
+    const presentation = await request(directory, 'presentation/get');
+    await expect(
+      request(
+        directory,
+        'presentation/save',
+        { expectedRevision: presentation.revision - 1, value: {} },
+        'stale-layout',
+      ),
+    ).rejects.toThrow(/Presentation changed/);
+
+    const retryParams = { expectedRevision: presentation.revision, value: presentation.value };
+    const written = await request(directory, 'presentation/save', retryParams, 'layout-retry');
+    expect(await request(directory, 'presentation/save', retryParams, 'layout-retry')).toEqual(
+      written,
+    );
+    await expect(
+      request(directory, 'presentation/save', { ...retryParams, value: {} }, 'layout-retry'),
+    ).rejects.toThrow(/retry payload changed/);
+    // Restore UI's expected revision by reloading through its normal bootstrap.
+    await page.reload();
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
+    await page.getByText('Task label, notes and relationships', { exact: true }).click();
+    await page.getByRole('button', { name: 'Rename session', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByLabel('Session name', { exact: true })
+      .fill('Implementation');
+    await page.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await page.getByLabel('Task label', { exact: true }).fill('Implement addition');
+    await expect
+      .poll(
+        async () =>
+          (await request(directory, 'presentation/get')).value.labels?.[
+            `${sessions[0]}:${(await status()).sessions.find((s: any) => s.id === sessions[0]).state.turns[0].turnId}`
+          ],
+      )
+      .toBe('Implement addition');
+    await page.getByRole('button', { name: 'Pin / move right' }).click();
+    await page
+      .getByLabel('Target task')
+      .selectOption(`${sessions[1]}:${s.sessions[1].state.turns[0].turnId}`);
+    await page.getByRole('button', { name: 'Record user assertion' }).click();
+    await expect(page.getByText(/depends on STAGE_B_TEST/)).toBeVisible();
+
+    const semanticColors = await page.evaluate(() => {
+      const completed = document.querySelector('.status-dot.completed')!;
+      const selection = document.querySelector('.session-card.selected')!;
+      const connected = document.querySelector('.connection.live')!;
+      return {
+        success: getComputedStyle(completed).backgroundColor,
+        selection: getComputedStyle(selection).borderColor,
+        connected: getComputedStyle(connected).color,
+      };
+    });
+    expect(semanticColors.success).not.toBe(semanticColors.selection);
+    expect(semanticColors.connected).toBe(semanticColors.success);
+    await page.getByRole('button', { name: 'List', exact: true }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect
+      .poll(async () => {
+        const p = await request(directory, 'presentation/get');
+        return p.value.view;
+      })
+      .toBe('list');
+    expect(
+      (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze())
+        .violations,
+    ).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath('stage-b-light.png'), fullPage: true });
+    await page.close();
+    page = await context.newPage();
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Task map', exact: true })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.getByRole('button', { name: /Implement addition/ }).first()).toBeVisible();
+    await expect(page.locator('.session-card').first()).toContainText('Implementation');
+    expect((await status()).pid).toBe(daemon.pid);
+    await page.getByRole('tab', { name: 'transcript', exact: true }).focus();
+    await page.keyboard.press('End');
+    await expect(page.getByRole('tab', { name: 'workspace', exact: true })).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByRole('tab', { name: 'evidence', exact: true })).toBeFocused();
+    await expect(page.getByText('test: passed', { exact: true })).toBeVisible();
+    await writeFile(join(workspace, 'sum.mjs'), 'export const sum = (a, b) => a - b;\n');
+    await expect(page.getByText('Stale: repository changed', { exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(
+      page.getByRole('button', { name: 'Save revision-bound attestation' }),
+    ).toBeDisabled();
+    const evidence = (await request(directory, 'review/list', { sessionId: sessions[0] })).evidence;
+    expect(evidence).toHaveLength(2);
+    await expect(
+      request(
+        directory,
+        'evidence/record',
+        { ...evidence[0].params, notes: 'New stale attestation' },
+        'stale-evidence',
+      ),
+    ).rejects.toThrow(/Artifact changed/);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    await page.getByRole('button', { name: 'Open command palette' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('stage-b-200-percent.png'), fullPage: true });
+    await page.close();
+    await stop();
+    daemon = spawn(resolve('supervisor/target/debug/constellation-supervisor'), [], {
+      env,
+      stdio: 'ignore',
+    });
+    await ready();
+    await expect
+      .poll(
+        async () => {
+          const value = await status();
+          return value.sessions.every((s: any) => s.state.current);
+        },
+        { timeout: 25000 },
+      )
+      .toBe(true);
+    expect(
+      (await request(directory, 'review/list', { sessionId: sessions[0] })).evidence,
+    ).toHaveLength(2);
+    expect((await request(directory, 'presentation/get')).value.view).toBe('list');
+    page = await context.newPage();
+    await page.goto('/');
+    await expect(page.getByText('Background service connected', { exact: true })).toBeVisible();
+    await page.locator('.session-card').first().click();
+    await page.locator('.command-area textarea').fill('Follow-up acknowledgement check');
+    await page.locator('.session-card').nth(1).click();
+    await page.locator('.command-area textarea').fill('Independent unsent draft');
+    await page.locator('.session-card').first().click();
+    await expect(page.locator('.command-area textarea')).toHaveValue(
+      'Follow-up acknowledgement check',
+    );
+    await page.getByRole('button', { name: 'Start turn', exact: true }).click();
+    await expect(page.locator('.command-area textarea')).toHaveValue('');
+    await page.locator('.session-card').nth(1).click();
+    await expect(page.locator('.command-area textarea')).toHaveValue('Independent unsent draft');
+    await page.getByLabel('Workspace menu', { exact: true }).click();
+    await page.getByRole('button', { name: 'Log out…', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('What should happen?');
+    await page.getByRole('radio', { name: /Pause work and quit/ }).check();
+    await page.getByRole('button', { name: 'Pause and quit', exact: true }).click();
+    await expect(page.getByText('Disconnected', { exact: true })).toBeVisible();
+    await expect.poll(() => daemon.exitCode, { timeout: 10000 }).toBe(0);
+  } finally {
+    releaseTranscript?.();
+    try {
+      await context.close();
+    } finally {
+      try {
+        await stop();
+      } finally {
+        await model.close();
+        await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      }
+    }
+  }
+});

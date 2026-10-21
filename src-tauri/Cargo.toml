@@ -1,0 +1,35 @@
+[package]
+name = "spatial-constellation-desktop"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.97"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+lascoria-runtime = { path = "../runtime-support" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "=2.8.3"
+tauri-plugin-notification = "=2.7.0"
+# Updates are signed installers (.exe, .app.tar.gz, AppImage), never zip archives, so the
+# zip extractor (RUSTSEC-2026-0367, -0368, -0369 in zip 4.x) is left out.
+tauri-plugin-updater = { version = "=2.13.1", default-features = false, features = ["rustls-tls", "system-proxy"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.13", features = ["json", "stream"] }
+sha2 = "0.11"
+dunce = "1"
+tokio = { version = "1", features = ["net", "io-util", "time", "process", "fs", "sync", "macros", "rt-multi-thread"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+# Local, isolated signed updater trials only; never enabled by release builds.
+update-acceptance = []
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

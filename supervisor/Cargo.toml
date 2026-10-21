@@ -1,0 +1,27 @@
+[package]
+name = "constellation-supervisor"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.97"
+
+[dependencies]
+lascoria-runtime = { path = "../runtime-support" }
+anyhow = "1"
+fs2 = "0.4"
+libc = "0.2"
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+futures-util = { version = "0.3", features = ["sink"] }
+uuid = { version = "1", features = ["v4", "v7"] }
+sha2 = "0.11"
+dunce = "1.0"
+reqwest = { version = "0.13", features = ["json", "stream"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+keyring = "4.2"

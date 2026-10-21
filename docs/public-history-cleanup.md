@@ -1,0 +1,42 @@
+# Public-history cleanup plan
+
+Status: plan selected by the owner on 21 October 2026; execution is not authorised by this document. No commit, branch, tag, pull request or remote history has been rewritten or deleted. The owner authorised retargeting draft PR #1 to master on 21 October. Its head/history remain intact and delivery is still unresolved; this does not authorise merge or cleanup execution. Public opening stays blocked by PL03 in [public-launch.md](public-launch.md).
+
+## Findings and scope
+
+The read-only inventory covered 136 reachable commits, 1,220 unique text blobs (about 35.2 MB), commit messages, the tracked planning document's XML/metadata, and image metadata. The reachable path inventory contained no private runtime directory or log/database/key-shaped artifact path; the text checks found no credential-shaped match. These are scoped inventory results, not complete privacy clearance or proof that no secret ever existed.
+
+| Finding | Treatment to prepare |
+| --- | --- |
+| Nine historical commits contain private `Claude-Session` links and AI co-author trailers. | Remove those trailers from the affected historical messages. Preserve legitimate human author/committer attribution; do not re-author unrelated work. Keep the exact affected-commit map private. |
+| Historical `docs/stage-c-memory.md` contains one real native session identifier. | Replace the identifier with a generic description while retaining the tested behaviour, runtime and result. The current document has already been minimised; older versions still need treatment. |
+| Historical `docs/rust-sdk-assessment.md` and `docs/implementation-progress.md` contain absolute owner paths and local remote-desktop aliases. | Replace only the reviewed local references with home-relative, repository-relative or generic references. Current-document cleanup does not remove the historical versions. |
+| Synthetic fixture emails, device codes, UUIDs and redaction-test paths matched the inventory patterns. | Retain reviewed fixtures. Do not weaken tests or remove useful synthetic evidence merely because it resembles an identifier. |
+
+The public plan deliberately contains no private session URL, session identifier, owner path, credential value or affected-commit lookup table. The owner's normal public Git attribution is separate from private runtime/capture data. A future finding that is an actual credential requires revocation or rotation first; rewriting history alone is not credential remediation.
+
+## Before any rewrite
+
+- [ ] Resolve delivery of the current draft PR with the owner. Retargeting to master was authorised and completed on 21 October; merging/closing remains separate. Merge, close, retarget or replace it only under the corresponding explicit authority; this plan selects none of those actions automatically.
+- [ ] Obtain separate, explicit approval for the exact history rewrite and remote ref replacements, including any necessary protection changes. Commit/push permission for feature work is not force-push or branch-deletion permission.
+- [ ] Freeze writes during cleanup and inventory all local/remote branches, tags, PR refs and collaborators' clones. Record the chosen public ref set and every historical location of the findings.
+- [ ] Save a verified, access-restricted archive of the original Git refs outside the future public checkout. Do not include ignored runtime credentials or live captures in a repository archive. Keep original-to-rewritten commit/ref mappings and any replacement-input files private; never add those inputs to the future public tree.
+- [ ] Confirm the approved replacement rules against a fresh private clone and a current supported `git-filter-repo`. Do not operate on the active development checkout or the user's running Lascoria state.
+
+## Local preparation after approval
+
+- [ ] Apply narrowly scoped message and file replacements in the disposable clone. Remove the reviewed private-session and AI trailers; sanitise the reviewed historical documentation. Do not remove arbitrary source trees, disable secret rules or discard unrelated history to make a scan pass.
+- [ ] Review the resulting code/tree changes against the original. Only the approved message/document minimisation should differ; identify unexpected changes before proceeding.
+- [ ] Re-inventory every intended public ref, including commit messages and document metadata. Run full-history secret scanning plus the broader privacy checks; a secret scanner alone cannot validate session-link or environment minimisation.
+- [ ] Reconcile changed commit/tag identities and invalidated signatures. Update public evidence references so they do not guide readers to removed identifiers in old cached revisions. Keep any necessary old-to-new evidence mapping private and rerun final-head local CI on the exact proposed public tree.
+- [ ] Present the exact ref-change plan, validation result, backup location and rollback/recovery procedure for owner approval before replacing remote refs. Do not publish existing QA artifacts as releases from a rewritten revision; build distribution artifacts from the final reviewed source.
+
+## Remote and clone cleanup after approval
+
+- [ ] Replace only the approved refs, then verify the remote's advertised branches/tags and a fresh clone. Preserve or reinstate the reviewed branch-protection policy through separately authorised changes.
+- [ ] Review affected PR refs, cached commit/diff views, releases/artifacts and any forks. Ask GitHub Support for eligible cached/PR-reference removal when necessary; record the result rather than assuming a force push removed those copies.
+- [ ] Give collaborators a specific clean-clone/rebase procedure. Prevent an old branch, tag, bundle or merge from reintroducing the original objects.
+- [ ] If server-side refs or other copies cannot be removed, record the residual disclosure for an explicit owner decision. Do not silently treat the selected cleanup plan as acceptance of retained private identifiers or automatically create/delete repositories as a workaround.
+- [ ] Repeat PL03 against the actual public candidate and obtain the separate PL04 public-opening decision. Repository visibility, hosted Actions activation, protection application and release publication remain separately recorded actions.
+
+GitHub documents that rewriting history changes downstream commit identities, can invalidate signatures and disrupt PRs, and does not erase copies in clones, forks, cached views or PR references. Its support policy also limits removal assistance; a cleanup cannot promise universal erasure. See [GitHub's sensitive-data removal guidance](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository) before executing this plan.

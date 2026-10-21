@@ -1,0 +1,53 @@
+{
+  "name": "lascoria",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.",
+  "scripts": {
+    "build": "cargo build --manifest-path supervisor/Cargo.toml && node scripts/package-runtime.js --debug",
+    "test": "npm run build && cargo test --manifest-path supervisor/Cargo.toml && node --test --test-concurrency=1 test/*.test.js",
+    "start": "node src/cli.js",
+    "supply-chain": "node scripts/check-supply-chain.js",
+    "check": "cargo fmt --manifest-path runtime-support/Cargo.toml --check && cargo fmt --manifest-path supervisor/Cargo.toml --check && cargo clippy --manifest-path runtime-support/Cargo.toml --all-targets -- -D warnings && cargo clippy --manifest-path supervisor/Cargo.toml --all-targets -- -D warnings && prettier --check src testing test scripts package.json .prettierrc.json && prettier --check ui vite.config.ts playwright.config.ts tsconfig.json src-tauri/*.json src-tauri/capabilities/*.json",
+    "format": "cargo fmt --manifest-path runtime-support/Cargo.toml && cargo fmt --manifest-path supervisor/Cargo.toml && prettier --write src testing test scripts package.json .prettierrc.json ui vite.config.ts playwright.config.ts tsconfig.json src-tauri/*.json src-tauri/capabilities/*.json",
+    "ui:dev": "vite",
+    "ui:build": "tsc && vite build",
+    "desktop:dev": "npm run build && tauri dev",
+    "desktop:build": "npm run build && tauri build --no-bundle",
+    "test:ui": "npm run build && cargo build --manifest-path src-tauri/Cargo.toml && playwright test",
+    "check:ui": "tsc && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "benchmark:runtime": "npm run build && node testing/stage-c-benchmark.js",
+    "benchmark:ui": "playwright test test/ui/benchmark.spec.ts",
+    "benchmark:concurrent": "npm run build && node testing/concurrent-trial.js",
+    "desktop:prepare": "npm run ui:build && node scripts/package-runtime.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kabudu/lascoria.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/kabudu/lascoria/issues"
+  },
+  "homepage": "https://github.com/kabudu/lascoria#readme",
+  "dependencies": {
+    "@muse-code/sdk": "1.4.10",
+    "@tauri-apps/api": "2.12.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "private": true,
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
+    "@tauri-apps/cli": "2.12.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "prettier": "3.9.10",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

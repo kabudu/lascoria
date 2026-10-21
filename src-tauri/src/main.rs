@@ -1,0 +1,478 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod drops;
+mod editor;
+mod folder_picker;
+mod muse_setup;
+mod notifications;
+mod updates;
+use serde_json::{Value, json};
+use std::{path::PathBuf, process::Stdio};
+use tauri::{Emitter, Manager};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    time::{Duration, timeout},
+};
+
+fn directory() -> PathBuf {
+    lascoria_runtime::state_dir()
+}
+async fn request(operation: &str, params: Value, id: String) -> Result<Value, String> {
+    if ![
+        "decision/status",
+        "decision/result",
+        "decision/configure",
+        "decision/setKey",
+        "decision/forgetKey",
+        "decision/preview",
+        "decision/evaluate",
+        "decision/test",
+        "decision/cancel",
+        "decision/configureMode",
+        "decision/feedback",
+        "decision/metrics",
+        "account/status",
+        "account/login",
+        "account/cancel",
+        "account/logout",
+        "account/setKey",
+        "account/useKey",
+        "account/forgetKey",
+        "workspace/inspect",
+        "workspace/files",
+        "workspace/file",
+        "workspace/run",
+        "workspace/reusable",
+        "workspace/commit",
+        "workspace/discard",
+        "session/archive",
+        "session/rename",
+        "project/list",
+        "project/save",
+        "status",
+        "diagnostics",
+        "models",
+        "usage",
+        "usage/latest",
+        "skills",
+        "setModel",
+        "setEffort",
+        "compact",
+        "start",
+        "turn",
+        "steer",
+        "cancel",
+        "decide",
+        "answer",
+        "resume",
+        "stop",
+        "transcript",
+        "output",
+        "presentation/get",
+        "presentation/save",
+        "relay/get",
+        "relay/markViewed",
+        "relay/draftsGet",
+        "relay/draftSave",
+        "relay/connect",
+        "relay/disconnect",
+        "relay/send",
+        "relay/deliver",
+        "drafts/get",
+        "drafts/save",
+        "artifact/capture",
+        "artifact/check",
+        "artifact/read",
+        "review/list",
+        "evidence/record",
+        "data/summary",
+        "data/backup",
+        "data/export",
+        "data/import",
+        "data/restore",
+        "data/cancelRestore",
+        "data/dismissRecovery",
+        "data/removeArchived",
+        "data/compact",
+        "data/transcript",
+        "search",
+        "attachment/begin",
+        "attachment/append",
+        "attachment/finish",
+        "attachment/discard",
+        "attachment/list",
+        "support/preview",
+        "support/save",
+    ]
+    .contains(&operation)
+    {
+        return Err("Unsupported operation".into());
+    }
+    let root = directory();
+    let token = tokio::fs::read_to_string(root.join("token"))
+        .await
+        .map_err(|e| e.to_string())?;
+    let payload = json!({"version":1,"token":token,"id":id,"operation":operation,"params":params})
+        .to_string()
+        + "\n";
+    if payload.len() > 65536 {
+        return Err("Request exceeds budget".into());
+    }
+    let duration = if operation == "status" {
+        Duration::from_millis(500)
+    } else if ["decision/evaluate", "decision/test"].contains(&operation) {
+        // Vault (10s), two capture checks (10s each) and HTTP (20s), plus IPC overhead.
+        Duration::from_secs(65)
+    } else if operation.starts_with("data/") && operation != "data/summary" {
+        // Backups copy the whole journal; the supervisor bounds this at 280 seconds.
+        Duration::from_secs(300)
+    } else {
+        Duration::from_secs(30)
+    };
+    let result = timeout(duration, async {
+        let mut stream = lascoria_runtime::platform::connect(&root).await?;
+        stream.write_all(payload.as_bytes()).await?;
+        let mut data = Vec::new();
+        stream
+            .take(40 * 1024 * 1024 + 1)
+            .read_to_end(&mut data)
+            .await?;
+        if data.len() > 40 * 1024 * 1024 {
+            return Err(std::io::Error::other("Response exceeds budget"));
+        }
+        Ok::<_, std::io::Error>(data)
+    })
+    .await
+    .map_err(|_| {
+        "Operation timed out; outcome unknown. Refresh the command journal before retrying."
+            .to_string()
+    })?
+    .map_err(|e| e.to_string())?;
+    let response: Value = serde_json::from_slice(&result).map_err(|e| e.to_string())?;
+    if let Some(error) = response["error"].as_str() {
+        return Err(error.into());
+    }
+    Ok(response["result"].clone())
+}
+#[tauri::command]
+async fn supervisor_request(operation: String, params: Value, id: String) -> Result<Value, String> {
+    request(&operation, params, id).await
+}
+#[tauri::command]
+async fn connect_supervisor(app: tauri::AppHandle) -> Result<Value, String> {
+    match request("status", json!({}), "desktop-connect".into()).await {
+        Ok(status) => return Ok(status),
+        // A running supervisor bound to another copy of the app: starting a second one cannot help.
+        Err(error) if error.contains("Only the Lascoria app") => return Err(error),
+        Err(_) => {}
+    }
+    let resources = app
+        .path()
+        .resource_dir()
+        .map(|path| dunce::simplified(&path).to_owned())
+        .map_err(|e| e.to_string())?
+        .join("runtime");
+    let binary = resources.join(lascoria_runtime::executable("constellation-supervisor"));
+    if !binary.is_file() {
+        return Err("Installed Lascoria runtime is missing. Reinstall Lascoria or rebuild the runtime bundle.".into());
+    }
+    let mut cmd = std::process::Command::new(binary);
+    // Binds supervisor control to this executable (security finding F1).
+    let desktop = std::env::current_exe().map_err(|e| e.to_string())?;
+    cmd.env("SCH_RESOURCES", &resources)
+        .env("SCH_DESKTOP_EXE", dunce::simplified(&desktop))
+        .env(
+            "SCH_NODE",
+            resources.join(lascoria_runtime::executable("node")),
+        )
+        .env("SCH_AUTH_MANAGED", "1")
+        .env("SCH_PROVIDER", "meta")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // Explicit local updater acceptance uses isolated Echo/controlled-provider state after
+    // restart too. Production builds never honor this fixture authentication bypass.
+    #[cfg(feature = "update-acceptance")]
+    {
+        let provider = std::env::var("SCH_PROVIDER").unwrap_or_else(|_| "echo".into());
+        if !matches!(provider.as_str(), "echo" | "meta") {
+            return Err("Unsupported local acceptance provider".into());
+        }
+        cmd.env("SCH_AUTH_MANAGED", "0")
+            .env("SCH_PROVIDER", provider);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc_setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x00000008 | 0x00000200);
+    }
+    let spawned_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Could not start the installed supervisor: {e}"))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if let Ok(status) = request("status", json!({}), "desktop-connect".into()).await {
+            return Ok(status);
+        }
+    }
+    Err(startup_failure(spawned_at).unwrap_or_else(|| {
+        "Lascoria's background service did not start. Quit and reopen Lascoria; if it keeps happening, restart your computer.".into()
+    }))
+}
+
+/// R7: the reason the supervisor gave for not starting, if it wrote one after `since`.
+fn startup_failure(since: u128) -> Option<String> {
+    let path = lascoria_runtime::state_dir().join("startup-error.json");
+    let text = std::fs::read_to_string(path).ok()?;
+    if text.len() > 4096 {
+        return None;
+    }
+    let note: Value = serde_json::from_str(&text).ok()?;
+    if note["atMillis"].as_u64()? < since as u64 {
+        return None;
+    }
+    let message: String = note["message"].as_str()?.chars().take(500).collect();
+    Some(format!(
+        "Lascoria's background service could not start: {message}"
+    ))
+}
+#[tauri::command]
+async fn open_account_browser(url: String) -> Result<(), String> {
+    // The host-provided verification URL is untrusted input, never a general shell command.
+    if !url.starts_with("https://auth.meta.com/oauth/device/")
+        || url.len() > 2048
+        || !url.is_ascii()
+        || url.contains(['\n', '\r', '\0'])
+    {
+        return Err("Muse returned an unsupported browser login address".into());
+    }
+    open_browser(url).await
+}
+
+#[tauri::command]
+async fn open_provider_policy(url: String) -> Result<(), String> {
+    if ![
+        "https://help.typesafe.ai/articles/5974925716-how-is-submitted-data-used-or-retained",
+        "https://docs.subq.ai/using-the-api/data-retention/",
+        "https://developers.openai.com/api/docs/guides/your-data",
+    ]
+    .contains(&url.as_str())
+    {
+        return Err("Unsupported provider policy address".into());
+    }
+    open_browser(url).await
+}
+
+async fn open_browser(url: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        // ShellExecute opens the registered HTTPS handler without cmd.exe or Explorer parsing.
+        let address: Vec<u16> = url.encode_utf16().chain(Some(0)).collect();
+        let verb: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
+        let result = unsafe {
+            windows_sys::Win32::UI::Shell::ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                address.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+            )
+        } as isize;
+        if result <= 32 {
+            return Err("Could not open your browser. Open the address manually".into());
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::process::Command::new(if cfg!(target_os = "macos") {
+                "/usr/bin/open"
+            } else {
+                "xdg-open"
+            })
+            .arg(url)
+            .kill_on_drop(true)
+            .status(),
+        )
+        .await
+        .map_err(|_| "Opening your browser timed out")?
+        .map_err(|_| "Could not open your browser")?;
+        if !result.success() {
+            return Err("Could not open your browser".into());
+        }
+    }
+    Ok(())
+}
+#[cfg(not(windows))]
+fn system_folder_command(target: &std::path::Path) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(if cfg!(target_os = "macos") {
+        "/usr/bin/open"
+    } else {
+        "xdg-open"
+    });
+    #[cfg(target_os = "macos")]
+    // Reveal rather than open: application-bundle directories must never launch.
+    command.arg("-R");
+    command.arg(target);
+    command
+}
+
+/// Generic file associations can execute repository files. Only folders may use this fallback.
+pub(crate) fn validate_system_folder(target: &std::path::Path) -> Result<(), String> {
+    if !target.is_dir() {
+        return Err(
+            "Choose an editor in Settings to open files. The file manager opens folders only"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+/// Opens a local folder in the file manager, never a document's default handler.
+pub(crate) async fn open_with_system(target: &std::path::Path) -> Result<(), String> {
+    validate_system_folder(target)?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let path: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+        let verb: Vec<u16> = "explore".encode_utf16().chain(Some(0)).collect();
+        let result = unsafe {
+            windows_sys::Win32::UI::Shell::ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                path.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+            )
+        } as isize;
+        if result <= 32 {
+            return Err("Could not open the folder in your file manager".into());
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let mut command = system_folder_command(target);
+        let status = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            command.kill_on_drop(true).status(),
+        )
+        .await
+        .map_err(|_| "Opening it timed out")?
+        .map_err(|_| "Could not open the folder in your file manager")?;
+        if !status.success() {
+            return Err("Could not open the folder in your file manager".into());
+        }
+        Ok(())
+    }
+}
+#[cfg(unix)]
+unsafe extern "C" {
+    #[link_name = "setsid"]
+    fn libc_setsid() -> i32;
+}
+#[tauri::command]
+fn finish_quit(app: tauri::AppHandle) {
+    app.exit(0);
+}
+fn main() {
+    // Diagnostic entry point exercises the exact native bridge without a WebView. Debug builds
+    // only: in a release build it would let any program borrow the app's control authority.
+    if cfg!(debug_assertions) && std::env::args().nth(1).as_deref() == Some("--bridge-json") {
+        let input: Value = serde_json::from_str(&std::env::args().nth(2).expect("JSON required"))
+            .expect("Invalid JSON");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = runtime.block_on(request(
+            input["operation"].as_str().unwrap(),
+            input["params"].clone(),
+            input["id"].as_str().unwrap_or("bridge-read").into(),
+        ));
+        match result {
+            Ok(result) => println!("{}", json!({"result":result})),
+            Err(error) => {
+                println!("{}", json!({"error":error}));
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        // No capability grants its IPC commands; only notifications.rs can show one.
+        .plugin(tauri_plugin_notification::init())
+        // Its own IPC commands are not granted to the WebView; updates.rs drives it.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::Updates::default())
+        .manage(notifications::Notifier::default())
+        .manage(folder_picker::FolderPicker::default())
+        .manage(muse_setup::Setup::default())
+        .manage(drops::Drops::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(drop) = event {
+                drops::on_event(window, &window.state::<drops::Drops>(), drop);
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            drops::read_dropped,
+            supervisor_request,
+            connect_supervisor,
+            folder_picker::pick_workspace_folder,
+            folder_picker::pick_backup_destination,
+            folder_picker::pick_backup_file,
+            folder_picker::pick_transcript_destination,
+            folder_picker::pick_support_report_destination,
+            editor::list_editors,
+            editor::pick_editor_application,
+            editor::open_in_editor,
+            updates::update_status,
+            updates::update_check,
+            updates::update_download,
+            updates::update_cancel,
+            updates::update_install,
+            open_account_browser,
+            open_provider_policy,
+            notifications::notify_attention,
+            notifications::notify_test,
+            finish_quit,
+            muse_setup::runtime_status,
+            muse_setup::runtime_select,
+            muse_setup::runtime_install,
+            muse_setup::runtime_cancel
+        ])
+        .build(tauri::generate_context!())
+        .expect("Tauri application failed")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event
+                && code.is_none()
+                && !app.webview_windows().is_empty()
+            {
+                api.prevent_exit();
+                let _ = app.emit("lascoria-before-quit", ());
+            }
+        });
+}

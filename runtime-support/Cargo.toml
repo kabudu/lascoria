@@ -1,0 +1,16 @@
+[package]
+name = "lascoria-runtime"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.97"
+[dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["net", "time", "signal", "process"] }
+libc = "0.2"
+getrandom = "0.4"
+dunce = "1"
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Diagnostics_ToolHelp", "Win32_Storage_FileSystem"] }
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util"] }

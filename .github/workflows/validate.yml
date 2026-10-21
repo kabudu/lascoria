@@ -1,0 +1,57 @@
+name: Validate native foundations
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    # Hosted Actions are deferred until the user makes the repository public.
+    if: github.event.repository.private == false
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: '1.97'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.17.0'
+          cache: npm
+      - name: Install Linux native libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.97 --profile minimal --component rustfmt,clippy
+      - run: npm ci
+      - name: Stage runtime resources for native checks
+        run: npm run build
+      - run: npm run check
+      - run: npm run check:ui
+      - run: cargo test --manifest-path runtime-support/Cargo.toml
+      - run: cargo test --manifest-path supervisor/Cargo.toml
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Portable projection and provider tests
+        run: node --test test/presentation.test.js test/diagnostics.test.js test/provider.test.js test/release.test.js test/release-version.test.js test/publish-release.test.js
+      - name: Build installed desktop runtime
+        run: npm run desktop:build
+      - name: Browser policy independent of optional credential storage
+        run: |
+          node scripts/package-native-qa.js
+          node .dev/native-qa/testing/subscription-smoke.js .dev/native-qa
+      - name: Windows native control, process-tree and vault integration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node scripts/package-native-qa.js
+          & .dev/native-qa/runtime/node.exe .dev/native-qa/testing/windows-smoke.js .dev/native-qa --fixture
