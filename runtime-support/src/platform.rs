@@ -8,7 +8,10 @@ use std::{
 };
 
 pub fn private_dir(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
     fs::create_dir_all(path)?;
+    #[cfg(windows)]
+    windows::create_private_dir(path)?;
     let meta = fs::symlink_metadata(path)?;
     if !meta.is_dir() || meta.is_symlink() {
         return Err(io::Error::other("Private directory cannot be a link"));
@@ -27,6 +30,8 @@ pub fn private_dir(path: &Path) -> io::Result<()> {
     Ok(())
 }
 pub fn private_file(path: &Path, truncate: bool) -> io::Result<File> {
+    #[cfg(windows)]
+    let created = windows::create_private_file(path)?;
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(true).truncate(false);
     #[cfg(unix)]
@@ -37,7 +42,13 @@ pub fn private_file(path: &Path, truncate: bool) -> io::Result<File> {
         // Opening the reparse point itself prevents following a pre-existing file link.
         options.custom_flags(0x00200000);
     }
+    #[cfg(unix)]
     let file = options.open(path)?;
+    #[cfg(windows)]
+    let file = match created {
+        Some(file) => file,
+        None => options.open(path)?,
+    };
     let meta = file.metadata()?;
     if !meta.is_file() {
         return Err(io::Error::other("Private file must be regular"));
@@ -476,7 +487,7 @@ mod windows {
                 len += 1;
             }
             let sid = String::from_utf16_lossy(std::slice::from_raw_parts(sid_string, len));
-            let text: Vec<u16> = format!("D:P(A;OICI;FA;;;{sid})(A;OICI;FA;;;SY)")
+            let text: Vec<u16> = format!("O:{sid}D:P(A;OICI;FA;;;{sid})(A;OICI;FA;;;SY)")
                 .encode_utf16()
                 .chain(Some(0))
                 .collect();
@@ -492,6 +503,67 @@ mod windows {
             }
             Ok(Local(descriptor))
         }
+    }
+    // Elevated tokens can default new objects to the Administrators group. Set the
+    // actual user's owner SID and restrictive DACL at creation, without taking over
+    // existing objects that belong to someone else.
+    pub fn create_private_dir(path: &Path) -> io::Result<()> {
+        use windows_sys::Win32::{
+            Foundation::ERROR_ALREADY_EXISTS, Storage::FileSystem::CreateDirectoryW,
+        };
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            fs::create_dir_all(parent)?;
+        }
+        let descriptor = descriptor()?;
+        let attrs = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor.0,
+            bInheritHandle: 0,
+        };
+        let name: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        if unsafe { CreateDirectoryW(name.as_ptr(), &attrs) } == 0 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() != Some(ERROR_ALREADY_EXISTS as i32) {
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+    pub fn create_private_file(path: &Path) -> io::Result<Option<File>> {
+        use std::os::windows::io::FromRawHandle;
+        use windows_sys::Win32::{
+            Foundation::{ERROR_FILE_EXISTS, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE},
+            Storage::FileSystem::{
+                CREATE_NEW, CreateFileW, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
+                FILE_SHARE_READ, FILE_SHARE_WRITE,
+            },
+        };
+        let descriptor = descriptor()?;
+        let attrs = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor.0,
+            bInheritHandle: 0,
+        };
+        let name: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let handle = unsafe {
+            CreateFileW(
+                name.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                &attrs,
+                CREATE_NEW,
+                FILE_FLAG_OPEN_REPARSE_POINT,
+                null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(ERROR_FILE_EXISTS as i32) {
+                return Ok(None);
+            }
+            return Err(error);
+        }
+        Ok(Some(unsafe { File::from_raw_handle(handle) }))
     }
     pub fn protect(path: &Path) -> io::Result<()> {
         if fs::symlink_metadata(path)?.file_attributes() & 0x400 != 0 {
@@ -606,10 +678,14 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let root = std::env::temp_dir().join(format!("lascoria-platform-{}", std::process::id()));
         private_dir(&root)?;
+        private_dir(&root)?; // Existing owned state remains usable.
         let result = async {
             let mut file = private_file(&root.join("token"), true)?;
             use std::io::Write;
             file.write_all(b"fixture")?;
+            drop(file);
+            drop(private_file(&root.join("token"), false)?);
+            assert_eq!(fs::read(root.join("token"))?, b"fixture");
             let mut listener = Listener::bind(&root)?;
             let server = tokio::spawn(async move {
                 let mut stream = listener.accept().await?;

@@ -702,6 +702,9 @@ mod tests {
     async fn repo(path: &Path, file: &str) -> Result<()> {
         std::fs::create_dir_all(path)?;
         git(path, &["init", "-q"]).await?;
+        // Worktrees share this fixture identity; never depend on global Git settings.
+        git(path, &["config", "user.name", "Fixture"]).await?;
+        git(path, &["config", "user.email", "fixture@example.invalid"]).await?;
         std::fs::write(path.join(file), "one\n")?;
         git(path, &["add", "."]).await?;
         git(

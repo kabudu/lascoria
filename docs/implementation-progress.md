@@ -714,3 +714,13 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Resolve the identified original PR-history residual by explicit owner acceptance on 21 October. Full mirror scans distinguish the known historical prose false positive from privacy identifiers; neither scanning nor branch rewriting removes retained history. The acceptance does not cover unknown credentials.
 
 - [ ] Obtain the separate public-opening/Actions decision after the current metadata/template follow-up passes validation. Public source opening and installer publication remain different steps; required native release acceptance is still open.
+
+
+### Public release execution, 21 October
+
+- [x] Owner authorised completing release gates, publishing the versioned GitHub binaries/curated notes and deploying the website with www canonical and apex redirect. This does not waive failed checks or change master protection.
+- [x] Reproduce the first Ubuntu CI failure with global Git configuration disabled; give fixture repositories a local identity shared by their worktrees. The original focused test now passes.
+- [x] Fix fresh Windows private-state creation to specify the current user's owner SID and restrictive DACL atomically, including elevated-token environments. Existing foreign-owned state remains refused; Windows cross-compilation passes. Native hosted validation remains pending.
+- [ ] Pass the corrected three-OS hosted matrix and final reviewed-head local CI.
+- [ ] Complete required installer/update acceptance, publish reconciled versioned artifacts and inspect canonical release metadata.
+- [ ] Deploy and verify the canonical website, both domains, HTTPS, consent and apex redirect.
