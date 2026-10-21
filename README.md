@@ -1,95 +1,131 @@
-# Lascoria
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="ui/public/brand/lascoria-lockup-dark.svg">
+    <img src="ui/public/brand/lascoria-lockup.svg" alt="Lascoria" width="420" height="98">
+  </picture>
+</h1>
 
 **The spatial coding workspace.** Give your agents room to work.
 
-Understand, steer, and review parallel coding work from one live map of tasks, dependencies, changes, and evidence.
+[![SPDX licence: Apache-2.0](docs/images/license-apache-2.0.svg)](LICENSE)
 
-[Release policy and local CI](docs/RELEASE.md) defines private validation and public-opening authority. [Release-readiness backlog](docs/release-readiness.md) tracks Muse installation onboarding, signed GitHub updates, repository rename/publication preparation and remaining product gates.
+Lascoria is a desktop workspace for coding with Muse Code. Each session has an interactive map of its tasks, with your other sessions and the work that needs attention close at hand. See what is running, what needs your answer, and what changed across your repositories.
 
-[Lascoria identity](docs/branding.md) documents the folded-wing mark, light-first palette, assets and compatibility boundaries.
+Arrange tasks and their relationships, move between parallel sessions, answer questions and approvals, then inspect the resulting code and test evidence. Each task still has a transcript; the canvas gives you a view of the whole piece of work.
 
-[Daily coding workflow](docs/daily-coding-workflow.md) describes isolated task worktrees, repository context, direct test execution, guarded commits/discard and session archival. Existing state and internal binary paths remain compatible with the former harness name.
+[Features](#features) · [Architecture](#architecture) · [Decisions](#decisions) · [Run from source](#run-from-source) · [Documentation](#documentation)
 
-Stage A implements a local Rust supervisor, a Node worker using the official Muse SDK, and a diagnostic CLI. Stage B adds a Tauri desktop client with React and TypeScript, using light mode by default. A native Rust MSP SDK is a possible follow-up after the concept is proven; the current `muse-codes` crate wraps headless CLI output and does not replace this interactive MSP integration.
+> **Development preview.** Lascoria is preparing for an open-source release. macOS, Windows and Linux are required release targets; the remaining signing, update, platform, security and accessibility gates are tracked in the [release checklist](docs/implementation-progress.md). Public downloads are not ready yet.
 
-## Run the desktop client
+## See it in motion
+
+[![Watch the Lascoria workspace film](docs/media/lascoria-workspace-poster.webp)](docs/media/lascoria-workspace.mp4)
+
+[Watch the 24-second video](docs/media/lascoria-workspace.mp4) · [Read the transcript](docs/media/lascoria-workspace-transcript.md)
+
+## Features
+
+These workflows are implemented. Their platform-by-platform release acceptance is recorded separately in the [release-readiness backlog](docs/release-readiness.md).
+
+| Work                         | What Lascoria provides                                                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Arrange your workspace**   | A full canvas with curved connections, direct node dragging, fit-to-view, cursor-centred zoom, trackpad gestures and floating, collapsible panels.                                                                  |
+| **Work across repositories** | Named standalone sessions and reusable Projects with multiple folder references. Isolated tasks can use separate Git worktrees, including one per repository in a Project.                                          |
+| **Notice what needs you**    | An attention queue for questions, approvals, failures and completed work, plus busy-node feedback and optional desktop notifications.                                                                               |
+| **Inspect the result**       | Task transcripts, saved diffs, direct test runs, file browsing and evidence tied to the captured file contents. Open files in your editor or make a guarded local commit.                                           |
+| **Use Muse naturally**       | Native model and effort selection, a searchable skill picker, staged image/video/text attachments, subscription usage and token counters where Muse reports them.                                                   |
+| **Keep and recover work**    | Durable drafts, conflict handling, backups, restore, archive browsing, retained-transcript search and export. Background execution and explicit pause/logout flows keep window closure separate from stopping work. |
+| **Connect local sessions**   | An opt-in relay between Muse sessions on the same computer, with explicit connections, local conversations, read state and scoped agent tools.                                                                      |
+| **Add optional advice**      | Separate-key adapters for Jev/TypeSafe, SubQ and OpenAI Decisions: snapshot reviews, background triage or a Muse-callable tool, with workspace consent and inspectable request metrics.                             |
+
+Lascoria is not a complete IDE. The first-release scope uses your existing editor and a bounded, non-interactive command runner. Guarded commits include all Git-visible changes and do not push; hooks and commit signing are disabled for that operation. Selected-hunk staging, push/pull requests, an embedded terminal and plugin/MCP management are on the [roadmap](ROADMAP.md).
+
+## Architecture
+
+![Architecture showing the Tauri/React workspace, durable Rust supervisor, official Node SDK broker and independent Muse Code hosts, with local storage and explicit external provider boundaries.](docs/images/architecture.svg)
+
+[Open the architecture diagram at full size](docs/images/architecture.svg).
+
+The **Tauri/React desktop** presents the workspace and sends narrow local requests. The **Rust supervisor** owns durable commands, recovery, session coordination, local sharing and developer-operated workspace actions. A shared **Node worker using the official Muse SDK** maintains independent session contexts and authoritative SDK state; a separate SDK account host handles sign-in observations. **Muse Code** runs the tools and agents, enforces its permissions and retains its own session history.
+
+Local control uses an owner-restricted Unix socket on macOS/Linux or a local named pipe on Windows. SQLite holds Lascoria's journal, drafts and evidence; API keys belong in the operating-system credential vault. There is no remote control server or cross-machine session relay. Model requests still go to the selected provider, and separately enabled decision integrations send only within their disclosed scope.
+
+The [protocol and design notes](docs/architecture.md) retain the original architecture decisions and their development history. Current behaviour and acceptance evidence are recorded in the [running checklist](docs/implementation-progress.md).
+
+## Decisions
+
+These choices shape the product, its trust boundaries and the first-release scope.
+
+| Decision                                                              | Why it matters                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A spatial overview, with transcripts for detail**                   | Parallel work has relationships and waiting points. The canvas makes those visible while transcripts remain available for the exact conversation.                                                                                                                                               |
+| **Muse subscription first**                                           | Browser subscription login takes precedence over a saved API key. An expired subscription asks you to reconnect; it never silently switches to paid API billing. [Account policy](docs/accounts.md).                                                                                            |
+| **Rust owns durable control; the official SDK owns Muse integration** | Recovery, command identity and local policy belong in one supervisor. The official SDK remains responsible for Muse's interactive state and protocol; a future Rust adapter would have to prove parity first. [SDK assessment](docs/rust-sdk-assessment.md).                                    |
+| **A quiet default workspace**                                         | Collapsible panels, contextual controls and progressively disclosed diagnostics keep detailed metrics and settings available without filling the canvas with them. Light mode is the default; both themes share the same hierarchy. [Identity and design](docs/branding.md).                    |
+| **The window and the work have separate lifetimes**                   | When chosen, work continues while the UI is closed, and reopening shows its current state. Explicit logout pauses work and blocks authenticated recovery until sign-in. Uncertain operations are never silently replayed. [Lifecycle](docs/accounts.md#active-work-window-closure-and-updates). |
+| **Session sharing is local and explicit**                             | The relay connects selected sessions on one machine. A connection does not share filesystem authority, approve a tool or grant access to another project automatically. [Session communication](docs/session-communication.md).                                                                 |
+| **Completion is not acceptance**                                      | A completed model turn is not proof that its code is correct. Captures, test results and human evidence retain their revision and provenance; changed content can make earlier evidence stale. [Coding workflow](docs/daily-coding-workflow.md).                                                |
+| **Decision APIs are optional advice**                                 | They use separate keys and consent, remain off by default, and cannot approve tools or accept evidence. Their costs and observations stay separate from Muse subscription usage. [Decision assistance](docs/decision-assistance.md).                                                            |
+| **Bounded work, visible failure**                                     | Sessions, queues, retained history, downloads and retries have explicit limits. An unavailable result or unknown outcome stays visible rather than becoming success. [Release requirements](docs/release-readiness.md).                                                                         |
+| **Three operating systems, verified individually**                    | macOS, Windows and Linux are first-release requirements. A successful cross-build does not count as native acceptance, and a QA bundle does not count as a public release. [Native acceptance](docs/native-acceptance.md).                                                                      |
+
+## Run from source
+
+Development needs the pinned Rust toolchain (1.97), Node.js 24 or newer, Git and the native Tauri dependencies for your operating system. The currently tested Muse/SDK version is **1.4.10**. See [validation setup](docs/RELEASE.md) for the exact policy and dependencies.
 
 ```sh
 npm ci
 npm run desktop:dev
 ```
 
-Start a session from an existing Git repository, then inspect the task map/list, attention queue, transcript, captured diffs and revision-bound human evidence. Closing the GUI leaves the supervisor running. [Stage B scope, trust model and validation](docs/stage-b.md) describe the current development client and remaining release gates.
+On first launch, choose a compatible Muse installation or use onboarding to install the tested version. Continue with your Muse account in the browser, or explicitly configure an API key. Create a session from an existing Git repository, or create a named Project with its folder references.
 
-## Installed-runtime preview
+`npm run desktop:build` produces a native development binary with installed worker resources. Packaging and signing instructions are in the [release policy](docs/RELEASE.md); development and QA builds are not supported public downloads.
 
-Desktop builds package the supervisor, Node runtime, official Muse SDK and workers. First launch detects Muse and offers a private, pinned installation from Meta or an existing compatible binary. Downloads have size/checksum verification and a real protocol handshake; Muse installation and account sign-in are separate steps.
+### Validate changes
 
-macOS packaged onboarding has passed native install/cancel/retry/reopen checks. The Windows port includes local-only named pipes with a user/SYSTEM DACL, Credential Manager storage and test process-tree cleanup. Windows native launch and 11 runtime checks passed on a Windows 10 laptop, including a real Muse echo turn, Credential Manager, draft restart and descendant cleanup after timeout and supervisor crash. The user restored the official Muse binary after antivirus quarantine. A real browser-subscription Muse Wonder task also read a disposable repository, asked a question, survived UI replacement, and completed after the answer. Linux native validation and signed installers/updaters remain release blockers. See the [running checklist](docs/implementation-progress.md) for current evidence, rather than treating compilation as platform acceptance.
-
-For a native development build, run `npm run desktop:build`. Native acceptance runs follow [the native acceptance checklist](docs/native-acceptance.md). Cross-built Windows validation packages use `scripts/package-windows-qa.js`, which explicitly enables the embedded frontend. No unsigned QA archive is a public release.
-
-## Run the diagnostic client
-
-Development prerequisites: Rust 1.97+, Node.js 24+, Git, and Muse Code 1.4.10 available as `muse` or through `MUSE_BIN`. The SDK is pinned to 1.4.10 (`src/muse-version.js`, `runtime-support` and `package.json` must agree; the repository check enforces it) and the worker checks the binary version and schema fingerprint. Compatibility changes require rerunning the lifecycle suite.
+Bootstrap dependencies separately, then run:
 
 ```sh
-npm ci
+./scripts/ci-local.sh
+```
+
+Local CI is authoritative while the repository is private and hosted Actions is disabled. It checks repository/privacy rules, formatting, static analysis, Rust tests, real Muse integration with controlled local providers and the React/native-bridge workflows. It installs no dependencies and makes no paid-provider calls. Native installation, live-provider and accessibility acceptance are separate checks, not implied by a green suite.
+
+For the repeatable runtime and synthetic UI benchmarks, use `npm run benchmark:runtime` and `npm run benchmark:ui`. Measurements, workloads and limitations are recorded in [Stage C](docs/stage-c.md) and [resource efficiency](docs/resource-efficiency.md).
+
+### Diagnostic client
+
+The diagnostic CLI is for development and recovery inspection. Give independent runs separate state directories; do not start one against a running user installation for testing.
+
+```sh
 npm run build
 npm start -- up
 npm start -- start '{"workspace":"/absolute/path/to/repository"}' session-one
 npm start -- status
 ```
 
-`up` launches the Rust service independently and reconnects if it already exists. `supervisor` runs it in the foreground for diagnostics. The default provider is credential-free `echo`; set `SCH_PROVIDER=meta` before launching the service to use your configured provider. Live sessions explicitly select the provider and default model advertised by Muse's native catalog, so workflow children have a recorded parent route. The desktop offers explicit model selection for new sessions and model/effort settings for existing sessions; the diagnostic start command uses the catalog default unless `modelId` is supplied. Existing sessions retain their recorded route. Muse owns credentials, permissions, and its sandbox. The harness does not disable them.
+Its default provider is credential-free Echo. Select `SCH_PROVIDER=meta` before starting an isolated service for live work; its unmanaged credential rules differ from the desktop's subscription-first policy. Keep a stable request ID when retrying, and inspect an unknown outcome before issuing a new mutation. [Protocol and recovery](docs/architecture.md#protocol-and-recovery) explain the command contract.
 
-### Muse account and API key
+## Documentation
 
-The desktop offers browser subscription login and secure API-key configuration on first launch and from **Muse account** in the header/menu. Browser login takes precedence over a saved key. A subscription failure never silently activates API billing. Logout stops Muse hosts and remains logged out after restart; **Forget API key** separately removes the secure credential entry. See [account policy, lifecycle and validation](docs/accounts.md).
+| Guide                                                                                                         | Start here for                                                                   |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| [Daily coding workflow](docs/daily-coding-workflow.md)                                                        | Worktrees, test execution, captured changes, commits and archive/continuation.   |
+| [Accounts](docs/accounts.md)                                                                                  | Subscription versus API billing, login, credentials and background work.         |
+| [Projects](docs/projects.md) and [attachments](docs/attachments.md)                                           | Folder context, multi-repository ownership and staged inputs.                    |
+| [Local session communication](docs/session-communication.md)                                                  | Explicit connections, local conversations and agent interaction.                 |
+| [Decision assistance](docs/decision-assistance.md)                                                            | Optional providers, disclosure, consent, advice and metrics.                     |
+| [Release readiness](docs/release-readiness.md) and [implementation progress](docs/implementation-progress.md) | Requirements, completed increments, validation evidence and open gates.          |
+| [Security review](docs/security-review.md) and [public-opening gates](docs/public-launch.md)                  | Threat boundaries, known findings, privacy review and distribution requirements. |
+| [Roadmap](ROADMAP.md) and [changelog](CHANGELOG.md)                                                           | Accepted later scope and the implemented change history.                         |
 
-The supervisor retains an account host independently of the window, restores persisted login before session recovery and observes credential state in the background. Muse owns OAuth and supported renewal; revoked or expired access can still require **Reconnect Muse**. An open window is not a guarantee of indefinite provider authorization.
+## Contributing and project status
 
-Unmanaged diagnostic runs still use Muse's ordinary browser/environment credential rules. For those runs, `muse login` refreshes the CLI credential, and `resume` restarts the affected host. Muse's default environment/stored-key precedence differs from Lascoria's managed subscription-first policy; an API-key billing error is not a subscription billing result. Existing diagnostic supervisors are not silently migrated when a window attaches.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before implementation or validation. Keep changes scoped, preserve existing sessions and questions, use isolated QA state, and include behavioural evidence for recovery, security and native-platform claims. Keep credentials and raw live captures out of source control and issue reports.
 
-Copy the returned session ID into the next request:
+For help and non-sensitive reports, see [SUPPORT.md](SUPPORT.md). Report suspected vulnerabilities through [SECURITY.md](SECURITY.md), not public issue details. Public-opening and reporting-channel verification remain in the [public-launch checklist](docs/public-launch.md).
 
-```sh
-npm start -- turn '{"sessionId":"SESSION_ID","text":"Explain this repository"}' turn-one
-npm start -- status
-npm start -- steer '{"sessionId":"SESSION_ID","turnId":"CURRENT_TURN_ID","text":"Focus on the tests"}' steer-one
-npm start -- cancel '{"sessionId":"SESSION_ID","turnId":"CURRENT_TURN_ID"}' cancel-one
-```
+## Licence
 
-For an approval, inspect `sessions[].state.approvals[].requested`, then send `decide` with the exact `sessionId`, `approvalId`, `currentRequirementId` as `requirementId`, and one offered `choiceId`. For structured questions, use `answer` with the current `userInputId` and the runtime's question IDs and answer format. Old turn targets and resolved approvals are rejected.
-
-Use a stable request ID when retrying. The CLI prints an automatically generated ID before submission if one was not supplied. Reusing an ID returns its journaled outcome; changing its payload is rejected. `outcomeUnknown` does not authorize retrying with a new ID: inspect the recovered session and its effects first.
-
-```sh
-npm start -- resume '{"sessionId":"SESSION_ID"}' recover-one
-npm start -- stop '{"sessions":["SESSION_ID"]}' stop-one
-```
-
-`stop` must name every registered session in the order shown by `status`. A changed set is rejected. It drains all workers and stops the supervisor. Closing an ordinary client only closes its socket.
-
-State lives in `~/.spatial-constellation`, or `SCH_STATE_DIR`. Use separate directories for independent diagnostic runs. The directory is private, the authenticated Unix socket (macOS/Linux), Windows named pipe and token are owner-restricted, and an OS lock prevents duplicate supervisors. No network control API is exposed. `SCH_NODE` selects Node; `SCH_WORKER` is a private development/test override. Launch-time environment changes take effect on the next supervisor start.
-
-## Verify Stage A
-
-```sh
-npm run check
-npm test
-```
-
-The suite requires the real Muse 1.4.10 binary. Muse's own launcher can update itself and remove the pinned binary; point `MUSE_BIN` at a pinned native binary when that happens. It uses temporary repositories and isolated XDG configuration/data directories. Its scripted model binds only to loopback, uses a dummy credential, and exercises real Muse tools and approvals without a paid provider. It also uses explicit fault fixtures for lost acknowledgements and incompatible handshakes. Test-owned processes and temporary data are cleaned up.
-
-[Stage A requirements, evidence, and limits](docs/stage-a.md) distinguish real runtime proof from injected scenarios. [Architecture decisions](docs/architecture.md) describe the Rust/Node boundary and later SDK replacement option. [Revised product plan](docs/Spatial_Constellation_Harness_Revised_Plan.docx) remains the source plan; the Rust ownership decision in the architecture document supersedes its provisional Node supervisor choice.
-
-The constellation canvas fills the workspace. Drag empty canvas space to pan, or focus the canvas and use arrow keys. Sessions, Attention and Task inspector are floating panels: drag their headers or focus a move handle and use arrow keys, collapse each panel independently, and use Reset panels to restore defaults. Positions and collapse state persist. Transcript, Diff and Evidence remain tabs within the task inspector. Attention counts remain visible when its panel is collapsed.
-
-Use Zoom in/out or the percentage button to reset to 100%. Fit to view frames visible nodes in the largest free area around the current panels and controls. Drag any map node to pin its position, or focus it and use Shift+arrow keys to move it; plain arrow keys still navigate between nodes. Zoom, camera and pinned positions persist across reopening.
-
-Two-finger scrolling pans the canvas. Pinch, or hold Ctrl/Cmd while using the wheel, to zoom around the cursor. Canvas input is coalesced to animation frames; native trackpad momentum is preserved without an extra inertial animation. Scroll over a floating panel to scroll that panel instead.
-
-Stage C has started with local diagnostics, repeatable runtime/UI benchmarks and explicit Muse Wonder selection for new sessions. See [Stage C measurements and remaining gates](docs/stage-c.md). Run `npm run benchmark:runtime` for the five-minute runtime observation or `npm run benchmark:ui` for the synthetic projection benchmark. Resource budget misses remain visible in the JSON report.
-
-The default SDK transport shares one bounded Node broker across ten contexts while keeping Muse hosts independent. Use **Session model & effort** in the root-task inspector to change the model at the next model-call boundary or effort for subsequent turns. [Memory measurements, recovery and settings](docs/stage-c-memory.md) describe the tradeoffs and native GUI benchmark.
+Lascoria is licensed under the [Apache License, Version 2.0](LICENSE), with copyright and attribution in [NOTICE](NOTICE). Third-party components keep their own licences and notices, including the official Muse SDK's [MIT notice](third-party/MUSE-SDK-LICENSE).

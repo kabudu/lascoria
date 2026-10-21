@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Full-runtime updates pause safely on every operating system, retain unsaved checkpoints before stopping, bound and verify downloads, and support retry after installation fails. Release preparation validates the complete platform inventory and reconciles immutable publication outcomes.
+
+- Add the Apache-2.0 licence, branded project introduction, architecture and design decisions, contribution/security/support guidance and a captioned workspace film.
+
 - macOS runtime provenance now records signed executable hashes. Local Developer ID QA builds can verify the supervisor rejects ad hoc re-signed clients at the same allowed path.
 
 - Storage-outage recovery deduplicates bounded command receipts, rejects oversized batches without replacing retained updates, and warns that unsaved updates are lost if the background service stops before saving.
