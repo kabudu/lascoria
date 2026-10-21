@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { test, expect } from '@playwright/test';
 
 // R7: while the data folder refuses writes (a full disk), the background service keeps Muse
@@ -34,6 +35,18 @@ test('a full data disk is explained and clears once updates are saved', async ({
   const alert = page.getByRole('alert', { name: 'Changes not saved' });
   await expect(alert).toContainText('the disk is full. Free some space');
   await expect(alert).toContainText('One session is waiting to be saved');
+  // Both themes and a narrow window keep the notice readable (WCAG 2.1 AA).
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
+    for (const width of [1280, 820]) {
+      await page.setViewportSize({ width, height: 800 });
+      const audit = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+        .analyze();
+      expect(audit.violations.map((v) => `${theme} ${width}: ${v.id}`)).toEqual([]);
+    }
+  }
+  await page.evaluate(() => (document.documentElement.dataset.theme = 'light'));
   status.storage = null;
   status.version = 'v2';
   await expect(alert).toHaveCount(0, { timeout: 6000 });
