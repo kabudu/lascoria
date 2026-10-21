@@ -258,7 +258,7 @@ test('real Muse implementation, tests and review through React and the native Ru
       )
       .toBe('completed');
     await expect(
-      page.getByRole('button', { name: /Workflow child.*completed, native/ }).first(),
+      page.getByRole('button', { name: /Workflow child.*completed, Workflow step/ }).first(),
     ).toBeVisible();
     await expect(page.getByRole('region', { name: 'Sessions panel', exact: true })).toBeVisible();
     const inspectorWindow = page.getByRole('region', { name: 'Task inspector panel', exact: true });
@@ -469,7 +469,7 @@ test('real Muse implementation, tests and review through React and the native Ru
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(mapBounds.x + mapBounds.width);
     }
     await page
-      .getByRole('button', { name: /Workflow child.*completed, native/ })
+      .getByRole('button', { name: /Workflow child.*completed, Workflow step/ })
       .first()
       .click();
     await expect(
