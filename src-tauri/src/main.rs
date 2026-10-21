@@ -90,6 +90,7 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "data/import",
         "data/restore",
         "data/cancelRestore",
+        "data/dismissRecovery",
         "data/removeArchived",
         "data/compact",
         "data/transcript",
@@ -205,6 +206,10 @@ async fn connect_supervisor(app: tauri::AppHandle) -> Result<Value, String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x00000008 | 0x00000200);
     }
+    let spawned_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Could not start the installed supervisor: {e}"))?;
@@ -217,7 +222,24 @@ async fn connect_supervisor(app: tauri::AppHandle) -> Result<Value, String> {
             return Ok(status);
         }
     }
-    Err("Supervisor unavailable. Run the diagnostic supervisor to inspect startup.".into())
+    Err(startup_failure(spawned_at).unwrap_or_else(|| {
+        "Lascoria's background service did not start. Quit and reopen Lascoria; if it keeps happening, restart your computer.".into()
+    }))
+}
+
+/// R7: the reason the supervisor gave for not starting, if it wrote one after `since`.
+fn startup_failure(since: u128) -> Option<String> {
+    let path = lascoria_runtime::state_dir().join("startup-error.json");
+    let text = std::fs::read_to_string(path).ok()?;
+    if text.len() > 4096 {
+        return None;
+    }
+    let note: Value = serde_json::from_str(&text).ok()?;
+    if note["atMillis"].as_u64()? < since as u64 {
+        return None;
+    }
+    let message: String = note["message"].as_str()?.chars().take(500).collect();
+    Some(format!("Lascoria's background service could not start: {message}"))
 }
 #[tauri::command]
 async fn open_account_browser(url: String) -> Result<(), String> {

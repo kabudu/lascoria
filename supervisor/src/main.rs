@@ -56,7 +56,6 @@ const FEATURES: &[&str] = &[
 ];
 
 use anyhow::{Context, Result, bail, ensure};
-use db::Db;
 use fs2::FileExt;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
@@ -350,7 +349,7 @@ impl Actor {
             let commands = db.recent_commands(100)?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands,"storage":unsaved::report()}),
+                json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands,"storage":unsaved::report(),"dataRecovery":data::recovery(&db)?}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -1078,7 +1077,7 @@ async fn connection(
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?,"storage":storage}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?,"storage":storage,"dataRecovery":data::recovery(&db)?}));
         }
         // R7 support report: counts and states only, previewed before anything is saved.
         if request["operation"] == "support/preview" || request["operation"] == "support/save" {
@@ -1205,7 +1204,25 @@ fn main() -> Result<()> {
             .build()?
             .block_on(relay_mcp::run(&args[2]));
     }
-    supervisor_main()
+    // R7: a startup failure is written where the desktop app can read and explain it, since
+    // the app starts this process without a console.
+    let started = supervisor_main();
+    let note = lascoria_runtime::state_dir().join("startup-error.json");
+    match &started {
+        Ok(()) => {}
+        Err(error) => {
+            let message = unsaved::user_message(error);
+            if let Ok(mut file) = lascoria_runtime::platform::private_file(&note, true) {
+                use std::io::Write;
+                let _ = file.write_all(
+                    json!({"message":message.chars().take(500).collect::<String>(),"atMillis":db::now_ms() as u64})
+                        .to_string()
+                        .as_bytes(),
+                );
+            }
+        }
+    }
+    started
 }
 
 #[tokio::main]
@@ -1224,7 +1241,10 @@ async fn supervisor_main() -> Result<()> {
     if let Some(outcome) = data::apply_pending_restore(&directory, &database_path)? {
         eprintln!("Data restore: {}", outcome["status"]);
     }
-    let db = Arc::new(Mutex::new(Db::open(&database_path)?));
+    let db = Arc::new(Mutex::new(data::open_or_recover(
+        &directory,
+        &database_path,
+    )?));
     {
         let db = db.lock().unwrap();
         for mut command in db.commands_matching(
@@ -1255,6 +1275,7 @@ async fn supervisor_main() -> Result<()> {
         "supervisor.sock"
     });
     let mut listener = lascoria_runtime::platform::Listener::bind(&directory)?;
+    let _ = fs::remove_file(directory.join("startup-error.json"));
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let mut token_file = lascoria_runtime::platform::private_file(&directory.join("token"), true)?;
     use std::io::Write;

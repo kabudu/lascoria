@@ -56,6 +56,12 @@ export type StatusReply = Status | { unchanged: true; version: string; pid: numb
 export interface Status {
   /** R7: session updates waiting because the data folder refused a write (a full disk). */
   storage?: { unsaved: number; message: string; sinceMillis: number } | null;
+  /** R7: a damaged data file was set aside at startup; the newest backup can be restored. */
+  dataRecovery?: {
+    keptAs: string;
+    atMillis: number;
+    latestBackup?: { id: string; createdAtMillis: number } | null;
+  } | null;
   relayConnections?: { sessions: string[]; allowAgentMessages: boolean }[];
   relayUnread?: { sessionId: string; peerId: string; count: number }[];
   version?: string;
