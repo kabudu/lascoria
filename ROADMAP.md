@@ -30,3 +30,7 @@ The first release opens a session's folder or a changed file in the user's own e
 - A Rust-native Muse protocol adapter, only after it passes the parity gates in the [SDK assessment](docs/rust-sdk-assessment.md).
 - A dependency-aware task scheduler and automatic evidence acceptance, once their meaning and trust boundaries are agreed.
 - Optional passphrase encryption for backups and exports (security finding F5).
+
+## Windows publisher signing
+
+- [ ] Add Authenticode publisher signing for the Windows app and installer, with secure key/service ownership and native validation. The owner approved unsigned Windows installers for the first release on 21 October; signed updater artifacts remain required. Smart App Control and managed policies that refuse unsigned apps remain an explicit distribution limitation until validated support is available.

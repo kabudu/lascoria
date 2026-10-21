@@ -22,14 +22,14 @@ Reference: [official Muse installation documentation](https://dev.meta.ai/docs/m
 - [ ] Package the Rust supervisor, frontend assets and official SDK worker resources with installed-resource paths. Bundle or explicitly provision the required Node runtime; a normal user must not need Rust, npm, Node development setup or this source checkout. Muse setup is covered by R1.
 - [ ] Decide and publish an OS/architecture matrix. First release requires macOS, Windows and Linux, per the user's 15 October decision. Windows IPC, secure storage and process-control implementations now exist alongside the Unix paths; Linux secure storage uses Secret Service. All three still need their complete packaged acceptance matrix. Assess each architecture separately. Tauri build targets alone are not platform support.
 - [ ] Preserve stable application/state identities through branding and updates, or provide a tested migration. The repository rename must not reset accounts, sessions, worktrees, evidence or update identity.
-- [ ] Produce signed application/installer artifacts, macOS notarization where applicable, updater signatures, dependency/license notices and version/provenance metadata. Keep signing keys in release infrastructure, never in source or downloadable apps.
+- [ ] Produce application/installer artifacts with macOS Developer ID signing/notarization, signed updater artifacts on all targets, dependency/license notices and version/provenance metadata. The owner approved unsigned Windows publisher identity for the first release on 21 October; disclose unknown-publisher warnings and unsupported policies that block unsigned applications. Keep signing keys in release infrastructure, never in source or downloadable apps.
 - [ ] Validate fresh install, launch, permissions, uninstall/retained-data behaviour and reinstall on every advertised platform/architecture without developer tools installed.
 
 21 October signing substeps (do not close R2):
 
 - [x] Configure the Apple signing/notarization names and production updater key/password secrets with the matching public variable, without committing private values.
 - [x] macOS arm64 owned QA notarization: the signed app based on `25e6902` was accepted, its ticket stapled/validated, and Gatekeeper accepted it. Its real local Echo follow-up and private transcript Save-panel check passed. This is scoped QA evidence, not a signed public release.
-- [ ] Complete signed/notarized distribution and installed-platform acceptance for the supported target matrix; Windows Authenticode remains open.
+- [ ] Complete distribution and installed-platform acceptance for the supported target matrix under the approved signing policy. Windows Authenticode is deferred, not a first-release blocker; Windows installer and signed updater acceptance remain open.
 
 ### R3 - In-app updates from GitHub Releases
 
