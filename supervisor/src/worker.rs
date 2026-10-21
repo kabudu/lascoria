@@ -112,8 +112,11 @@ impl Broker {
                         if !alive.load(Ordering::SeqCst) {
                             continue;
                         }
+                        // A refused write (a full disk) waits in unsaved and is retried;
+                        // only an exceeded backlog stops the hosts.
                         if let Some((session, generation)) = target
-                            && let Err(error) = database.state(
+                            && let Err(error) = crate::unsaved::state(
+                                &database,
                                 &session,
                                 generation,
                                 frame["state"].clone(),
@@ -133,15 +136,12 @@ impl Broker {
                     }
                     Some("death") => {
                         if let Some((session, generation)) = target {
-                            if let Err(error) = db.lock().unwrap().interrupt(
+                            crate::unsaved::interruption(
+                                &db.lock().unwrap(),
                                 &session,
                                 generation,
                                 frame["exit"].clone(),
-                            ) {
-                                reason =
-                                    json!({"kind":"persistenceFailure","error":error.to_string()});
-                                break;
-                            }
+                            );
                             pending.lock().unwrap().retain(|_, (slot, _)| slot != key);
                         }
                     }
@@ -156,13 +156,12 @@ impl Broker {
             reason["stderrTail"] =
                 json!(String::from_utf8_lossy(&tail.lock().unwrap()).to_string());
             for (session, generation) in slots.lock().unwrap().values() {
-                if let Err(error) =
-                    db.lock()
-                        .unwrap()
-                        .interrupt(session, *generation, reason.clone())
-                {
-                    eprintln!("Persist broker interruption: {error}");
-                }
+                crate::unsaved::interruption(
+                    &db.lock().unwrap(),
+                    session,
+                    *generation,
+                    reason.clone(),
+                );
             }
             if let Some(broker) = dead_broker.upgrade() {
                 broker.stop().await;
@@ -220,13 +219,12 @@ impl Broker {
         if self.alive.swap(false, Ordering::SeqCst) {
             self.pending.lock().unwrap().clear();
             for (session, generation) in self.slots.lock().unwrap().values() {
-                if let Err(error) = self.db.lock().unwrap().interrupt(
+                crate::unsaved::interruption(
+                    &self.db.lock().unwrap(),
                     session,
                     *generation,
                     json!({"kind":"brokerStopping"}),
-                ) {
-                    eprintln!("Persist broker shutdown: {error}");
-                }
+                );
             }
         }
         self.stdin.lock().await.take();
@@ -374,13 +372,12 @@ impl Worker {
                         broker.stop().await;
                     }
                 }
-                if let Err(error) = broker.db.lock().unwrap().interrupt(
+                crate::unsaved::interruption(
+                    &broker.db.lock().unwrap(),
                     session,
                     *generation,
                     json!({"kind":"contextClosed"}),
-                ) {
-                    eprintln!("Persist context close: {error}");
-                }
+                );
                 broker.slots.lock().unwrap().remove(key);
             }
         }
