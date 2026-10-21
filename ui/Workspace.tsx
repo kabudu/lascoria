@@ -36,7 +36,7 @@ export function Workspace({
   mutate: (operation: string, params: Json) => Promise<Json>;
   attach: (text: string) => void;
   /** D2: open a repository-relative path in the user's editor. */
-  openInEditor?: (path: string) => void;
+  openInEditor?: (path: string, folderId?: string) => void;
 }) {
   const [preview, setPreview] = useState<Json>(null);
   const [reuse, setReuse] = useState<Json>(null);
@@ -57,6 +57,8 @@ export function Workspace({
     ? session.managedWorkspaces.find((m) => m.folderId === folderId)
     : session.managedWorkspace;
   const folderName = (id?: string) => folders?.find((f) => f.id === id)?.name;
+  const selectedRoot =
+    managed?.path ?? folders?.find((f) => f.id === folderId)?.path ?? session.workspace;
   const [discarding, setDiscarding] = useState<Json[] | null>(null);
   const generation = useRef(0);
   const runs = commands.filter(
@@ -120,9 +122,7 @@ export function Workspace({
           </label>
         )}
         <h3>{managed?.branch ?? 'Existing checkout'}</h3>
-        <code className="workspace-path">
-          {managed?.path ?? folders?.find((f) => f.id === folderId)?.path ?? session.workspace}
-        </code>
+        <code className="workspace-path">{selectedRoot}</code>
         {folders && (
           <p className="muted">
             Each folder is a separate repository: changes, tests and commits here apply to{' '}
@@ -155,7 +155,7 @@ export function Workspace({
                   <summary>{f.path}</summary>
                   <pre>{f.text ?? 'Binary content'}</pre>
                   {openInEditor && !removed && (
-                    <button onClick={() => openInEditor(f.path)}>Open in editor</button>
+                    <button onClick={() => openInEditor(f.path, folderId)}>Open in editor</button>
                   )}
                 </details>
               ))}
@@ -216,12 +216,16 @@ export function Workspace({
               <pre>{file.text}</pre>
               <button
                 disabled={busy || archived}
-                onClick={() => attach(`\nRepository context: ${file.path}\n\n${file.text}\n`)}
+                onClick={() =>
+                  attach(
+                    `\nRepository context${folderId ? ` (${folderName(folderId)})` : ''}: ${file.path}\n${folderId ? `Folder: ${selectedRoot}\n` : ''}\n${file.text}\n`,
+                  )
+                }
               >
                 Add file to task draft
               </button>
               {openInEditor && (
-                <button onClick={() => openInEditor(file.path)}>Open in editor</button>
+                <button onClick={() => openInEditor(file.path, folderId)}>Open in editor</button>
               )}
             </details>
           )}

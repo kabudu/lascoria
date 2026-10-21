@@ -979,13 +979,14 @@ export function App() {
     }
   }
   // D2: hand a folder or file to the user's editor; the native side checks containment.
-  async function openInEditor(row: SessionRow, path = '') {
+  async function openInEditor(row: SessionRow, path = '', folderId?: string) {
     setEditorError('');
     try {
       await invoke('open_in_editor', {
         sessionId: row.id,
         path,
         editor: prefs.editor ?? 'system',
+        ...(folderId ? { folderId, projectRevision: row.projectContext?.revision } : {}),
       });
     } catch (e) {
       setEditorError(`Could not open in your editor: ${String(e).replace(/^Error: /, '')}`);
@@ -2402,7 +2403,9 @@ export function App() {
                         commands={status.commands}
                         busy={busy}
                         mutate={mutate}
-                        openInEditor={(path) => void openInEditor(session, path)}
+                        openInEditor={(path, folderId) =>
+                          void openInEditor(session, path, folderId)
+                        }
                         attach={(value) => {
                           if ((drafts[session.id] ?? '').length + value.length > 16000) {
                             setError(

@@ -128,3 +128,110 @@ test('settings are grouped and searchable, and Open in editor uses the chosen ed
   await page.getByRole('button', { name: 'Dismiss editor error' }).click();
   await expect(failure).toHaveCount(0);
 });
+
+test('Project editor handoff keeps the selected folder with identical file names', async ({
+  page,
+}) => {
+  const session = {
+    id: 'project-session',
+    workspace: '/repo/web',
+    generation: 1,
+    lifecycle: 'connected',
+    projectContext: {
+      id: 'project',
+      name: 'Two repositories',
+      revision: 1,
+      folders: [
+        { id: 'web', name: 'Web', path: '/repo/web' },
+        { id: 'api', name: 'API', path: '/repo/api' },
+      ],
+    },
+    interruptions: [],
+    state: { current: true, items: [], totalItems: 0, turns: [], approvals: [], userInputs: [] },
+  };
+  const status = {
+    pid: 1,
+    version: 'v1',
+    features: ['taskWorkspaces'],
+    commands: [],
+    sessions: [session],
+  };
+  const opened: any[] = [];
+  await page.exposeFunction('projectEditorBridge', async (command: string, args: any) => {
+    if (command === 'connect_supervisor') return status;
+    if (command === 'open_in_editor') {
+      opened.push(args);
+      return null;
+    }
+    switch (args?.operation) {
+      case 'status':
+        return args.params?.since === status.version
+          ? { unchanged: true, version: status.version }
+          : status;
+      case 'presentation/get':
+        return { revision: 1, value: { sessionId: session.id, editor: 'vscode' } };
+      case 'presentation/save':
+        return { revision: 2, value: args.params.value };
+      case 'workspace/files':
+        return { paths: ['same.txt'] };
+      case 'workspace/file':
+        return { path: 'same.txt', text: `Content from ${args.params.folderId}` };
+      case 'workspace/inspect':
+        return {
+          branch: 'task',
+          head: 'abc',
+          patch: '',
+          fingerprint: 'fixture',
+          untracked: [{ path: 'new.txt', text: 'new' }],
+        };
+      case 'review/list':
+        return { artifacts: [], evidence: [] };
+      default:
+        return {};
+    }
+  });
+  await page.addInitScript(() => {
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (c: string, a: any) => (window as any).projectEditorBridge(c, a),
+    };
+  });
+  await page.goto('/');
+  await page.getByRole('tab', { name: 'workspace', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Folder', exact: true }).selectOption('api');
+  await page.getByRole('button', { name: 'same.txt', exact: true }).click();
+  const file = page
+    .locator('details')
+    .filter({ has: page.locator('summary', { hasText: /^same.txt$/ }) });
+  await expect(file).toContainText('Content from api');
+  await file.getByRole('button', { name: 'Open in editor', exact: true }).click();
+  await expect.poll(() => opened.length).toBe(1);
+  expect(opened[0]).toEqual({
+    sessionId: session.id,
+    path: 'same.txt',
+    editor: 'vscode',
+    folderId: 'api',
+    projectRevision: 1,
+  });
+  await file.getByRole('button', { name: 'Add file to task draft' }).click();
+  await expect(page.getByRole('textbox', { name: 'New task for this session' })).toHaveValue(
+    /Repository context \(API\): same.txt/,
+  );
+  await expect(page.getByRole('textbox', { name: 'New task for this session' })).toHaveValue(
+    /Folder: \/repo\/api/,
+  );
+  await page.getByRole('tab', { name: 'workspace', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Folder', exact: true }).selectOption('api');
+  await page.getByRole('button', { name: 'Refresh change preview' }).click();
+  await page.getByText('New files (1)', { exact: true }).click();
+  const newFile = page.getByText('new.txt', { exact: true }).locator('..');
+  await page.getByText('new.txt', { exact: true }).click();
+  await newFile.getByRole('button', { name: 'Open in editor', exact: true }).click();
+  await expect.poll(() => opened.length).toBe(2);
+  expect(opened[1]).toEqual({
+    sessionId: session.id,
+    path: 'new.txt',
+    editor: 'vscode',
+    folderId: 'api',
+    projectRevision: 1,
+  });
+});
