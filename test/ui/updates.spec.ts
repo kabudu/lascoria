@@ -243,3 +243,93 @@ test('a background service from an older version is restarted only when safe', a
   await expect(banner).toHaveCount(0, { timeout: 15000 });
   expect(stops).toBe(1);
 });
+
+// A native listener can be installed before its asynchronous registration reply reaches the
+// WebView. Leaving Updates during that gap must dispose it, not retain it for the window's life.
+test('late update listener registration is disposed after leaving Settings', async ({ page }) => {
+  const status = {
+    pid: 1,
+    version: 'v1',
+    features: [],
+    commands: [],
+    sessions: [],
+  };
+  let reads = 0;
+  let nextListener = 100;
+  let pending: { id: number; callback: number; resolve: (id: number) => void } | undefined;
+  const unlistened: number[] = [];
+  await page.exposeFunction('listenerBridge', async (command: string, args: any) => {
+    if (command === 'connect_supervisor') return status;
+    if (command === 'plugin:event|listen' && args.event === 'update-progress') {
+      const id = ++nextListener;
+      return new Promise<number>((resolve) => {
+        pending = { id, callback: args.handler, resolve };
+      });
+    }
+    if (command === 'plugin:event|unlisten') {
+      unlistened.push(args.eventId);
+      return null;
+    }
+    if (command.startsWith('plugin:event|')) return 1;
+    if (command === 'listener_barrier') return reads;
+    if (command === 'update_status') {
+      reads++;
+      return {
+        configured: true,
+        currentVersion: '0.1.0',
+        installStopsWork: true,
+        available: null,
+        downloaded: false,
+        downloading: false,
+        progress: null,
+      };
+    }
+    if (args?.operation === 'status') return status;
+    if (args?.operation === 'presentation/get')
+      return { revision: 0, value: { updates: { automatic: false } } };
+    return {};
+  });
+  await page.addInitScript(() => {
+    const callbacks = new Map<number, (event: unknown) => void>();
+    let next = 0;
+    (window as any).__updateCallbacks = callbacks;
+    // Keep the callback reference available to model an event already queued at disposal.
+    (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
+    (window as any).__TAURI_INTERNALS__ = {
+      invoke: (command: string, args: any) => (window as any).listenerBridge(command, args),
+      transformCallback: (callback: (event: unknown) => void) => {
+        callbacks.set(++next, callback);
+        return next;
+      },
+    };
+  });
+  await page.goto('/');
+  await page.getByLabel('Workspace menu', { exact: true }).click();
+  await page.getByRole('button', { name: 'Settings…', exact: true }).click();
+  const sections = page.getByRole('navigation', { name: 'Settings sections' });
+  for (let i = 0; i < 2; i++) {
+    await sections.getByRole('button', { name: 'Updates', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Update settings' })).toBeVisible();
+    await expect.poll(() => pending?.id).toBe(101 + i);
+    const registration = pending!;
+    await sections.getByRole('button', { name: 'General', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Update settings' })).toHaveCount(0);
+    registration.resolve(registration.id);
+    await expect.poll(() => unlistened.includes(registration.id)).toBe(true);
+    const before = reads;
+    // The bridge barrier is ordered after the callback's possible invoke; no timing sleep.
+    const after = await page.evaluate(
+      async ({ callback, id }) => {
+        (window as any).__updateCallbacks.get(callback)({
+          event: 'update-progress',
+          id,
+          payload: {},
+        });
+        return (window as any).__TAURI_INTERNALS__.invoke('listener_barrier', {});
+      },
+      { callback: registration.callback, id: registration.id },
+    );
+    expect(after).toBe(before);
+  }
+  expect(unlistened.filter((id) => id >= 101)).toEqual([101, 102]);
+});

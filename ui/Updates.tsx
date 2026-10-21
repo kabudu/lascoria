@@ -44,11 +44,21 @@ export function UpdateSettings({
   const reload = () => invoke<UpdateStatus>('update_status').then(setStatus, () => {});
   useEffect(() => {
     void reload();
+    let disposed = false;
     let unlisten: (() => void) | undefined;
-    void listen('update-progress', () => void reload())
-      .then((stop) => (unlisten = stop))
+    const release = (stop: () => void) => void Promise.resolve(stop()).catch(() => {});
+    void listen('update-progress', () => {
+      if (!disposed) void reload();
+    })
+      .then((stop) => {
+        if (disposed) release(stop);
+        else unlisten = stop;
+      })
       .catch(() => {});
-    return () => unlisten?.();
+    return () => {
+      disposed = true;
+      if (unlisten) release(unlisten);
+    };
   }, []);
   const failure = (e: unknown) => String(e).replace(/^Error: /, '');
   async function check() {
