@@ -4,61 +4,11 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
-use tokio::{
-    io::AsyncReadExt,
-    time::{Duration, timeout},
-};
+use tokio::{io::AsyncReadExt, time::Duration};
 use uuid::Uuid;
 
 async fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
-    let mut child = lascoria_runtime::command("git")
-        .args([
-            "-c",
-            "core.fsmonitor=false",
-            "-c",
-            lascoria_runtime::hooks_config(),
-        ])
-        .arg("-C")
-        .arg(dunce::simplified(root))
-        .args(args)
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    let result = timeout(Duration::from_secs(5), async {
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let mut out_reader = stdout.take(1024 * 1024 + 1);
-        let mut err_reader = stderr.take(8193);
-        let (a, b) = tokio::join!(
-            out_reader.read_to_end(&mut out),
-            err_reader.read_to_end(&mut err)
-        );
-        a?;
-        b?;
-        ensure!(
-            out.len() <= 1024 * 1024 && err.len() <= 8192,
-            "Git diagnostic output exceeds budget"
-        );
-        let status = child.wait().await?;
-        ensure!(
-            status.success(),
-            "Git inspection failed: {}",
-            String::from_utf8_lossy(&err)
-        );
-        Ok::<_, anyhow::Error>(out)
-    })
-    .await
-    .context("Git inspection deadline exceeded")?;
-    if result.is_err() {
-        let _ = child.kill().await;
-    }
-    result
+    crate::git::run(root, args, Duration::from_secs(5), true).await
 }
 
 fn hex(bytes: &[u8]) -> String {

@@ -40,50 +40,9 @@ pub fn idle(db: &SharedDb, row: &Value) -> Result<()> {
 }
 
 pub async fn git(root: &Path, args: &[&str]) -> Result<String> {
-    let mut child = lascoria_runtime::command("git")
-        .args([
-            "-c",
-            "core.fsmonitor=false",
-            "-c",
-            lascoria_runtime::hooks_config(),
-            "-c",
-            "commit.gpgsign=false",
-        ])
-        .arg("-C")
-        .arg(dunce::simplified(root))
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
-    let mut stdout = child.stdout.take().unwrap().take(1024 * 1024 + 1);
-    let mut stderr = child.stderr.take().unwrap().take(8193);
-    let result = timeout(Duration::from_secs(8), async {
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let (a, b) = tokio::join!(stdout.read_to_end(&mut out), stderr.read_to_end(&mut err));
-        a?;
-        b?;
-        ensure!(
-            out.len() <= 1024 * 1024 && err.len() <= 8192,
-            "Git output exceeds budget"
-        );
-        let status = child.wait().await?;
-        ensure!(
-            status.success(),
-            "Git operation failed: {}",
-            String::from_utf8_lossy(&err)
-        );
-        Ok(String::from_utf8(out)?)
-    })
-    .await
-    .context("Git operation timed out")?;
-    if result.is_err() {
-        let _ = child.kill().await;
-    }
-    result
+    Ok(String::from_utf8(
+        crate::git::run(root, args, Duration::from_secs(8), false).await?,
+    )?)
 }
 
 pub async fn create(source: &Path, target: &Path, session: &str) -> Result<Value> {
@@ -100,11 +59,43 @@ pub async fn create(source: &Path, target: &Path, session: &str) -> Result<Value
     let target_text = dunce::simplified(target)
         .to_str()
         .context("Workspace path must be UTF-8")?;
-    git(
-        source,
-        &["worktree", "add", "-b", &branch, "--", target_text, &base],
-    )
-    .await?;
+    ensure!(
+        std::fs::symlink_metadata(target).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
+        "Task workspace destination already exists or cannot be inspected"
+    );
+    // Own the new branch before checkout, so failure can only clean up what we created.
+    git(source, &["branch", &branch, &base]).await?;
+    let checkout = async {
+        git(
+            source,
+            &[
+                "worktree",
+                "add",
+                "--no-checkout",
+                "--",
+                target_text,
+                &branch,
+            ],
+        )
+        .await?;
+        // Discover filters in the target branch's own configuration before reading files.
+        git(target, &["reset", "--hard", &base]).await?;
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    if let Err(error) = checkout {
+        let _ = git(
+            source,
+            &["worktree", "remove", "--force", "--", target_text],
+        )
+        .await;
+        let cleanup = git(source, &["branch", "-D", "--", &branch]).await;
+        return Err(error.context(if cleanup.is_ok() {
+            "Task checkout refused; the new task branch was removed"
+        } else {
+            "Task checkout failed; inspect retained task worktrees and branches before retrying"
+        }));
+    }
     Ok(json!({"source":source,"path":target,"branch":branch,"base":base}))
 }
 
@@ -727,6 +718,145 @@ mod tests {
         )
         .await?;
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn configured_git_filters_cannot_execute_during_capture_or_checkout() -> Result<()> {
+        let base = std::fs::canonicalize(std::env::temp_dir())?
+            .join(format!("lascoria-filter-{}", uuid::Uuid::new_v4()));
+        let source = base.join("source");
+        let target = base.join("task");
+        let marker = base.join("filter-ran");
+        let result = async {
+            repo(&source, "code.txt").await?;
+            // An unused configured driver must not prevent ordinary repositories working.
+            let trap = format!("echo ran > '{}'; cat", marker.display());
+            git(&source, &["config", "filter.marker.clean", &trap]).await?;
+            std::fs::write(source.join("code.txt"), "two\n")?;
+            assert!(review::capture(&source).await.is_ok());
+            assert!(!marker.exists());
+            std::fs::write(source.join(".gitattributes"), "*.txt filter=marker\n")?;
+            assert!(review::capture(&source).await.is_err());
+            assert!(
+                !marker.exists(),
+                "a snapshot must never execute a clean filter"
+            );
+            git(&source, &["config", "filter.marker.process", &trap]).await?;
+            assert!(review::capture(&source).await.is_err());
+            assert!(!marker.exists(), "process filters must not execute either");
+            git(&source, &["config", "--unset", "filter.marker.process"]).await?;
+            git(&source, &["config", "--unset", "filter.marker.clean"]).await?;
+            git(&source, &["add", "."]).await?;
+            git(
+                &source,
+                &[
+                    "-c",
+                    "user.name=F",
+                    "-c",
+                    "user.email=f@example.test",
+                    "commit",
+                    "-qm",
+                    "Attributes",
+                ],
+            )
+            .await?;
+            git(&source, &["config", "filter.marker.smudge", &trap]).await?;
+            assert!(create(&source, &target, "filter-test").await.is_err());
+            assert!(
+                !marker.exists(),
+                "checkout must never execute a smudge filter"
+            );
+            assert!(!target.exists(), "failed checkout must remove its worktree");
+            assert!(
+                git(
+                    &source,
+                    &["show-ref", "--verify", "refs/heads/lascoria/filter-test"]
+                )
+                .await
+                .is_err()
+            );
+            assert_eq!(
+                git(&source, &["worktree", "list", "--porcelain"])
+                    .await?
+                    .matches("worktree ")
+                    .count(),
+                1
+            );
+            assert_eq!(std::fs::read_to_string(source.join("code.txt"))?, "two\n");
+            // A branch-conditional driver is invisible from the source branch. Resolve it
+            // in the no-checkout target before materialising any files.
+            git(&source, &["config", "--unset", "filter.marker.smudge"]).await?;
+            std::fs::write(source.join(".gitattributes"), "*.txt filter=conditional\n")?;
+            git(&source, &["add", "."]).await?;
+            git(
+                &source,
+                &[
+                    "-c",
+                    "user.name=F",
+                    "-c",
+                    "user.email=f@example.test",
+                    "commit",
+                    "-qm",
+                    "Conditional attributes",
+                ],
+            )
+            .await?;
+            let extra = base.join("conditional-config");
+            git(
+                &source,
+                &[
+                    "config",
+                    "--file",
+                    extra.to_str().unwrap(),
+                    "filter.conditional.smudge",
+                    &trap,
+                ],
+            )
+            .await?;
+            git(
+                &source,
+                &[
+                    "config",
+                    "includeIf.onbranch:lascoria/conditional.path",
+                    extra.to_str().unwrap(),
+                ],
+            )
+            .await?;
+            assert!(create(&source, &target, "conditional").await.is_err());
+            assert!(!marker.exists());
+            assert!(!target.exists());
+            assert!(
+                git(
+                    &source,
+                    &["show-ref", "--verify", "refs/heads/lascoria/conditional"]
+                )
+                .await
+                .is_err()
+            );
+            // A pre-existing destination or branch never becomes ours to remove.
+            std::fs::create_dir(&target)?;
+            assert!(create(&source, &target, "existing-path").await.is_err());
+            assert!(target.is_dir());
+            std::fs::remove_dir(&target)?;
+            git(&source, &["branch", "lascoria/existing-branch", "HEAD"]).await?;
+            assert!(create(&source, &target, "existing-branch").await.is_err());
+            assert!(
+                git(
+                    &source,
+                    &[
+                        "show-ref",
+                        "--verify",
+                        "refs/heads/lascoria/existing-branch"
+                    ]
+                )
+                .await
+                .is_ok()
+            );
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        let _ = std::fs::remove_dir_all(&base);
+        result
     }
 
     #[tokio::test]
