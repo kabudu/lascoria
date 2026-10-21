@@ -21,6 +21,7 @@ test('settings are grouped and searchable, and Open in editor uses the chosen ed
     sessions: [session],
   };
   const opened: any[] = [];
+  let failEditor = false;
   let value: any = { sessionId: 'session-a' };
   let revision = 0;
   await page.exposeFunction('settingsBridge', async (command: string, args: any) => {
@@ -33,6 +34,7 @@ test('settings are grouped and searchable, and Open in editor uses the chosen ed
       ];
     if (command === 'open_in_editor') {
       opened.push(args);
+      if (failEditor) throw new Error('Choose an editor in Settings to open files');
       return null;
     }
     switch (args?.operation) {
@@ -113,4 +115,16 @@ test('settings are grouped and searchable, and Open in editor uses the chosen ed
   await page.getByRole('button', { name: 'Open in editor' }).first().click();
   await expect.poll(() => opened.length).toBe(1);
   expect(opened[0]).toEqual({ sessionId: 'session-a', path: '', editor: 'vscode' });
+  failEditor = true;
+  await page.getByRole('button', { name: 'Open in editor' }).first().click();
+  const failure = page.getByRole('alert').filter({ hasText: 'Could not open in your editor' });
+  await expect(failure).toBeVisible();
+  await expect(failure.getByRole('button', { name: 'Reconnect' })).toHaveCount(0);
+  await failure.getByRole('button', { name: 'Choose editor', exact: true }).click();
+  await expect(
+    page.getByRole('dialog').getByRole('heading', { name: 'Editor', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByRole('button', { name: 'Dismiss editor error' }).click();
+  await expect(failure).toHaveCount(0);
 });

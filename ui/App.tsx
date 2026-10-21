@@ -104,6 +104,7 @@ export function App() {
   const [connected, setConnected] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
+    [editorError, setEditorError] = useState(''),
     [busy, setBusy] = useState(false);
   const inspectorTabs = status.features?.includes('taskWorkspaces')
     ? ['transcript', 'diff', 'evidence', 'workspace']
@@ -979,6 +980,7 @@ export function App() {
   }
   // D2: hand a folder or file to the user's editor; the native side checks containment.
   async function openInEditor(row: SessionRow, path = '') {
+    setEditorError('');
     try {
       await invoke('open_in_editor', {
         sessionId: row.id,
@@ -986,7 +988,7 @@ export function App() {
         editor: prefs.editor ?? 'system',
       });
     } catch (e) {
-      setError(`Could not open in your editor: ${String(e).replace(/^Error: /, '')}`);
+      setEditorError(`Could not open in your editor: ${String(e).replace(/^Error: /, '')}`);
     }
   }
   async function mutate(operation: string, params: Json) {
@@ -1780,6 +1782,15 @@ export function App() {
             <div className="banner error" role="alert">
               {error}
               <button onClick={() => void boot()}>Reconnect</button>
+            </div>
+          )}
+          {editorError && (
+            <div className="banner error" role="alert">
+              {editorError}
+              <button onClick={() => setModal('editor')}>Choose editor</button>
+              <button aria-label="Dismiss editor error" onClick={() => setEditorError('')}>
+                ×
+              </button>
             </div>
           )}
           {status.dataRecovery && (

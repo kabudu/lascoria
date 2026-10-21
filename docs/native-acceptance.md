@@ -71,7 +71,7 @@ These checks cover commits `f6dfbc0`, `90ef03f`, `338864d` and the takeover upda
 | ID | Steps | Expected |
 | --- | --- | --- |
 | S1 | Open Settings, search for "theme", press Enter, then navigate sections with arrow keys. Resize the window narrower. | Matching section opens, navigation stays keyboard accessible, and the sidebar stacks without obscuring controls. |
-| S2 | In Editor choose a detected editor. Open the session folder, then a file from Workspace. | The chosen editor opens the correct folder/file. A missing editor produces recoverable feedback. |
+| S2 | With File manager selected, verify a folder is shown (on macOS, an .app folder is revealed without launching), a file is refused and Choose editor opens Editor settings. In Editor choose a detected editor. Open the session folder, then a file from Workspace. | The chosen editor opens the correct folder/file. A missing editor produces recoverable feedback. |
 | S3 | Open Updates in a development/QA build without a release key. | Updates are explicitly unavailable; no unsigned download or installation is offered. |
 | S4 | In Token efficiency set a budget and concurrency warning. Start controlled tasks, exercise the warning and cancel it. | Warnings explain the soft limit. Cancelling the concurrency question does not start work. Compaction is unavailable while a task runs. |
 | S5 | Run a Workspace test, offer its recorded result, then change the folder and ask again. | The result is labelled as not rerun, adding it only edits the draft, and changed content retires reuse. |
