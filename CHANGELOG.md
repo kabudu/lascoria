@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-10-21
+
 - Space and wrap file-context actions consistently in the Workspace inspector.
 
 - Open Project files in the selected folder or owned worktree, refuse stale folder selections, and identify the folder in added task context.

@@ -716,6 +716,14 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [ ] Obtain the separate public-opening/Actions decision after the current metadata/template follow-up passes validation. Public source opening and installer publication remain different steps; required native release acceptance is still open.
 
 
+### Public source opening (21 October)
+
+- [x] Owner approved the docs/template-only validation exception for PR #2, its merge, public repository visibility, Actions activation and the reviewed master protection. PR #2 merged at `faa1e67`; the source is public and the PR template is available on master. No binary, release or website publication was approved.
+- [x] Dispatch the real native macOS/Windows/Linux validation matrix and confirm emitted job names. Apply strict required contexts, one approving review, resolved conversations, linear history and disabled force pushes/deletions.
+- [ ] Inspect and resolve the first hosted matrix results; queued/running jobs do not count as passed. Continue native installer/update acceptance before binary release.
+- [x] Prepare first-release 0.1.1 changelog/version metadata and curated notes for review. No tag or release is created. Reconcile the final date/artifacts and obtain publication authority after the remaining native gates pass.
+
+
 ### Public release execution, 21 October
 
 - [x] Owner authorised completing release gates, publishing the versioned GitHub binaries/curated notes and deploying the website with www canonical and apex redirect. This does not waive failed checks or change master protection.
