@@ -27,7 +27,7 @@ test('settings are grouped and searchable, and Open in editor uses the chosen ed
     if (command === 'connect_supervisor') return status;
     if (command === 'list_editors')
       return [
-        { id: 'system', name: 'System default', available: true },
+        { id: 'system', name: 'File manager (folders only)', available: true },
         { id: 'vscode', name: 'Visual Studio Code', available: true },
         { id: 'zed', name: 'Zed', available: false },
       ];
@@ -103,6 +103,8 @@ test('settings are grouped and searchable, and Open in editor uses the chosen ed
   await page.keyboard.press('Tab');
   await expect(nav.locator(':focus')).toHaveCount(0);
   await expect(dialog.locator('.settings-section :focus')).toHaveCount(1);
+  await expect(dialog.getByRole('radio', { name: 'File manager (folders only)' })).toBeChecked();
+  await expect(dialog.getByText(/With File manager selected, only folders open/)).toBeVisible();
   await expect(dialog.getByRole('radio', { name: 'Visual Studio Code' })).toBeVisible();
   await expect(dialog.getByRole('radio', { name: /Zed/ })).toBeDisabled();
   await dialog.getByRole('radio', { name: 'Visual Studio Code' }).check();

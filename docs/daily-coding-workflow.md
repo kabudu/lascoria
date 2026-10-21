@@ -53,3 +53,7 @@ The live Wonder trial progressed beyond the prior authentication error after loa
 The supported Muse browser login completed and verified model access. After refreshing the retained trial host, Wonder successfully read the repository, asked a real structured question in native Attention, resumed after the answer, implemented the task and completed with nine passing tests. A second test run through Lascoria's native Workspace panel independently passed all nine with unchanged content fingerprints. Real native diff capture and evidence freshness inspection also passed. See [the subscription-account validation record](branding.md#subscription-account-follow-up-15-october-2026).
 
 For subscription use, prefer `muse login` and refresh the affected host. API keys override browser credentials; an API-key billing error must not be treated as a subscription billing failure. No harness code change or separate API billing setup was required for the successful account-backed workflow.
+
+## Opening work in another app
+
+Choose an editor in Settings to open individual changed files. The default File manager option opens folders only; it never sends a repository file to its default OS association, which could execute a program instead of editing it. On macOS folders are revealed in Finder, including application-bundle directories. Existing folder containment and explicit custom-editor selection still apply.
