@@ -37,6 +37,10 @@ Repository secrets and variables. Values never go in the repository or in the ap
 
 The owner approved unsigned Windows installers for the first release on 21 October. Publisher signing (Authenticode) is deferred; signed Tauri updater artifacts, checksums and native installer/update acceptance remain required. Windows may display an unknown-publisher or reputation warning. Smart App Control or managed policies can block unsigned applications, so installation is not supported under policies that refuse this build. Do not recommend disabling protection. See [Microsoft’s Smart App Control guidance](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions) and [Tauri’s Windows signing guidance](https://v2.tauri.app/distribute/sign/windows/).
 
+### Candidate artifact acceptance
+
+Run Release manually on the reviewed candidate branch to build and upload signed artifacts for native acceptance without creating a tag or GitHub Release. The version is read from the manifests and checked against the curated notes/changelog. Builds and the native matrix run in parallel; publication always depends on both. Download the exact candidate artifacts for the installed-platform checks before the version-tag publication run. Manual runs never enter the publisher.
+
 ### Each release
 
 1. `node scripts/release.js prepare X.Y.Z` (or `X.Y.Z-beta.N` for a beta). Strict SemVer and a complete version/lockfile preflight run before edits; malformed versions, missing entries and inconsistent versions are refused. It moves the `## Unreleased` entries in `CHANGELOG.md` under `## X.Y.Z - <date>`, leaves an empty `## Unreleased`, bumps every version field (npm, Tauri, the three Cargo packages and their lockfiles) and creates `docs/releases/vX.Y.Z.md`.

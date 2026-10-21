@@ -4,9 +4,9 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
-## 0.1.1 - 2026-10-21
+## 0.1.1 - 2026-10-22
 
-First release candidate.
+Initial release.
 
 ### Added
 
