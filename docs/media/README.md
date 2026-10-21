@@ -16,3 +16,5 @@ python3 scripts/media/render-promo.py
 ```
 
 The generator searches for installed system sans-serif and monospace fonts on macOS, Linux and Windows; use `--font` and `--mono-font` to select specific installed fonts. No font files are redistributed. `--frames-only --out .dev/promo/review` generates the seven review frames. The generator is not part of app runtime or local CI. Output is 1280 by 720, H.264, 30 frames per second, silent, with fast-start metadata for web playback.
+
+Button labels use measured visible glyph bounds for centring, rather than a fixed top offset. The permission frame is reviewed after decoding the encoded MP4.

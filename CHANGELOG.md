@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Centre the workspace film’s permission-button label using measured glyph bounds.
+
 - Update certificate validation and bundled roots for RUSTSEC-2026-0382 and RUSTSEC-2026-0383.
 
 - Closing Updates while its native listener is registering no longer leaves extra background listeners behind.

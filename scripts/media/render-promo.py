@@ -57,6 +57,15 @@ def center(draw, x, y, value, size, color='ink', weight='Regular'):
     text(draw, (x-width/2, y), value, size, color, weight)
 
 
+def button_label(draw, bounds, value, size=12, color='#ffffff', weight='Semibold'):
+    # Centre the visible glyph bounds, including the font's top bearing.
+    f = font(size, weight)
+    left, top, right, bottom = draw.textbbox((0, 0), value, font=f)
+    x1, y1, x2, y2 = box(bounds)
+    xy = ((x1+x2-left-right)/2, (y1+y2-top-bottom)/2)
+    draw.text(xy, value, font=f, fill=C.get(color, color))
+
+
 def rr(draw, bounds, radius=14, fill='panel', outline='line', width=1):
     draw.rounded_rectangle(box(bounds), radius=round(radius*SCALE), fill=C.get(fill, fill),
                            outline=C.get(outline, outline) if outline else None, width=round(width*SCALE))
@@ -230,7 +239,7 @@ def workspace(t):
         text(da,(82,558),'npm test',12,'ink',mono=True)
         approved=t>=9.6
         rr(da,(74,590,266,612),7,'success' if approved else 'accent',None)
-        center(da,170,594,'Allowed once' if approved else 'Allow once',12,'#ffffff','Semibold')
+        button_label(da,(74,590,266,612),'Allowed once' if approved else 'Allow once')
     im.alpha_composite(attention)
     # Inspector overlays the scene; the constellation remains a full canvas.
     if t>=11:
