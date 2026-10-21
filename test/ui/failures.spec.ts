@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { test, expect } from '@playwright/test';
 
 // R7/R13: a failed task says what happened and what to do, with Muse's own wording kept
@@ -68,6 +69,18 @@ test('a task that could not reach the model says to check the connection', async
   await expect(failure.getByText('Muse could not reach the model')).toBeVisible();
   await expect(failure).toContainText('Check your internet connection');
   await expect(failure.getByText(/transport error/)).toBeHidden();
+  // Both themes and a narrow window keep the notice readable (WCAG 2.1 AA).
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);
+    for (const width of [1280, 820]) {
+      await page.setViewportSize({ width, height: 800 });
+      const audit = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+        .analyze();
+      expect(audit.violations.map((v) => `${theme} ${width}: ${v.id}`)).toEqual([]);
+    }
+  }
+  await page.evaluate(() => (document.documentElement.dataset.theme = 'light'));
   await failure.getByText('Details from Muse').click();
   await expect(failure.getByText(/modelError: transport error/)).toBeVisible();
 });
