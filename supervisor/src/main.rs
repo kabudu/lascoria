@@ -428,7 +428,15 @@ impl Actor {
             let row = if ["workspace/discard", "session/archive"].contains(&operation) {
                 full.clone()
             } else {
-                workspace::scoped(&full, params["folderId"].as_str())?
+                let view = workspace::scoped(&full, params["folderId"].as_str())?;
+                // R7: a moved or deleted folder is named plainly, not as a Git failure.
+                if let Some(path) = view["workspace"].as_str() {
+                    ensure!(
+                        std::path::Path::new(path).is_dir(),
+                        "This session's folder is no longer there: {path}. Put it back, or start a new session for its new location"
+                    );
+                }
+                view
             };
             if operation == "workspace/files" || operation == "workspace/file" {
                 return workspace::files(&row, &params).await;
