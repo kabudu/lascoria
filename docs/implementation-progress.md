@@ -665,10 +665,18 @@ Remaining release gates are still explicit: Windows/Linux signed installed updat
 - [x] Correct the running R3 summary to match the validated full-runtime update lifecycle on every OS; the old retained-background description was obsolete.
 - [x] Reconcile the final local signed QA source with reviewed head `cf87233`; earlier `25e6902` notarization remains separate historical evidence.
 - [ ] Execute the separately approved public-history cleanup and reconcile refs/caches/clones after resolving the stacked draft PR. No cleanup execution or merge is authorised yet.
-- [ ] Finish Windows/Linux signed installed-update acceptance and the remaining platform, migration, accessibility, resource and security matrix. Windows Authenticode is not configured.
+- [ ] Finish Windows/Linux signed installed-update acceptance and the remaining platform, migration, accessibility, resource and security matrix. Windows Authenticode is deferred by the owner-approved first-release policy below.
 - [ ] At explicit public opening, enable and inspect the prepared hosted matrix, verify required check names, then apply approved branch protection.
 - [ ] Build and reconcile immutable release artifacts from the final reviewed public revision, validate production distribution and canonical notes, then obtain publication approval.
 
 The companion website now checks anonymous public source and stable-release download metadata before launch; this does not validate installers or replace the application gates. Website product copy does not contain internal opening notes.
 
 - [x] Promo permission-button alignment: replace the fixed text offset with measured glyph centring, regenerate the 24-second MP4 and inspect the decoded attention frame. The app uses separate HTML/CSS permission buttons; no native alignment defect was reproduced or product CSS changed.
+
+### First-release Windows signing decision (21 October)
+
+- [x] Owner approved unsigned Windows installers for the first release. Publisher signing moves to the roadmap; the lack of an Authenticode service alone does not block this release.
+- [ ] Verify Windows installation and signed N-to-N+1 updater replacement on the supported target. Record the actual publisher/security UI and retained-state behaviour; updater integrity remains mandatory.
+- [ ] Disclose unknown-publisher/reputation warnings and the unsupported case where Smart App Control or managed policy blocks unsigned apps in the curated release/install guidance. Do not advise disabling Windows protection.
+
+This decision narrows the earlier Windows signing gate; it does not waive native acceptance, signed updater verification, application privacy/security gates or public-opening approval.
