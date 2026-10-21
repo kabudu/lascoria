@@ -4,7 +4,8 @@
 # * the tag must point at a commit on the default branch, and every version field,
 #   the CHANGELOG.md section and the curated docs/releases/v<version>.md must agree
 #   (scripts/release.js verify);
-# * each supported OS/architecture is built natively, signed and, on macOS, notarized;
+# * each supported OS/architecture is built natively; updater artifacts are signed;
+#   macOS applications are signed/notarized; Windows publisher signing is deferred;
 # * updater bundles are signed with the maintainer's updater key, and a
 #   latest.json containing artifact signatures plus SHA256SUMS.txt are generated;
 # * a GitHub Release is created with the curated title and notes and every package.
