@@ -157,6 +157,8 @@ test('Project editor handoff keeps the selected folder with identical file names
     sessions: [session],
   };
   const opened: any[] = [];
+  let finishOldRead: (() => void) | undefined;
+  let holdRead = false;
   await page.exposeFunction('projectEditorBridge', async (command: string, args: any) => {
     if (command === 'connect_supervisor') return status;
     if (command === 'open_in_editor') {
@@ -174,8 +176,19 @@ test('Project editor handoff keeps the selected folder with identical file names
         return { revision: 2, value: args.params.value };
       case 'workspace/files':
         return { paths: ['same.txt'] };
-      case 'workspace/file':
-        return { path: 'same.txt', text: `Content from ${args.params.folderId}` };
+      case 'workspace/file': {
+        const revision = session.projectContext.revision;
+        if (holdRead) {
+          holdRead = false;
+          await new Promise<void>((resolve) => {
+            finishOldRead = resolve;
+          });
+        }
+        return {
+          path: 'same.txt',
+          text: `Content from ${args.params.folderId} revision ${revision}`,
+        };
+      }
       case 'workspace/inspect':
         return {
           branch: 'task',
@@ -234,4 +247,21 @@ test('Project editor handoff keeps the selected folder with identical file names
     folderId: 'api',
     projectRevision: 1,
   });
+
+  // A Project change must retire both cached previews and replies already in flight.
+  holdRead = true;
+  await page.getByRole('button', { name: 'same.txt', exact: true }).click();
+  await expect.poll(() => Boolean(finishOldRead)).toBe(true);
+  session.projectContext.revision = 2;
+  session.projectContext.folders[1].path = '/repo/api-next';
+  status.version = 'v2';
+  await expect(page.getByRole('combobox', { name: 'Folder', exact: true })).toHaveValue('web');
+  finishOldRead!();
+  await page.getByRole('combobox', { name: 'Folder', exact: true }).selectOption('api');
+  await expect(page.getByText('Content from api revision 1', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'same.txt', exact: true }).click();
+  await expect(file).toContainText('Content from api revision 2');
+  await file.getByRole('button', { name: 'Open in editor', exact: true }).click();
+  await expect.poll(() => opened.length).toBe(3);
+  expect(opened[2]).toMatchObject({ folderId: 'api', projectRevision: 2 });
 });
