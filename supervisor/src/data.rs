@@ -182,11 +182,13 @@ pub fn create(db: &Db, root: &Path, id: &str, reason: &str) -> Result<Value> {
     let target = backup_path(&dir, id);
     let temporary = dir.join(format!(".{id}.partial-{}", uuid::Uuid::new_v4().simple()));
     let made = (|| {
+        // VACUUM INTO accepts an existing empty file. Create it privately first so
+        // elevated Windows tokens cannot give the backup an Administrators owner.
+        drop(lascoria_runtime::platform::private_file(&temporary, false)?);
         db.0.execute(
             "VACUUM INTO ?1",
             [temporary.to_str().context("Non-UTF-8 state path")?],
         )?;
-        drop(lascoria_runtime::platform::private_file(&temporary, false)?);
         let details = inspect_file(&temporary)?;
         let digest = sha256_file(&temporary)?;
         fs::rename(&temporary, &target)?;
