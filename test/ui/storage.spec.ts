@@ -35,6 +35,7 @@ test('a full data disk is explained and clears once updates are saved', async ({
   const alert = page.getByRole('alert', { name: 'Changes not saved' });
   await expect(alert).toContainText('the disk is full. Free some space');
   await expect(alert).toContainText('One session is waiting to be saved');
+  await expect(alert).toContainText('Unsaved updates may be lost if its background service stops');
   // Both themes and a narrow window keep the notice readable (WCAG 2.1 AA).
   for (const theme of ['light', 'dark']) {
     await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme);

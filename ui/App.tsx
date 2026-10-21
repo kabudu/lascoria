@@ -1802,7 +1802,8 @@ export function App() {
               {status.storage.unsaved === 1
                 ? 'One session is waiting to be saved'
                 : `${status.storage.unsaved} sessions are waiting to be saved`}
-              ; Lascoria keeps trying and saves them as soon as it can.
+              ; Lascoria keeps trying and saves them as soon as it can. Keep Lascoria running until
+              this clears. Unsaved updates may be lost if its background service stops.
             </div>
           )}
           {serviceOutdated && (

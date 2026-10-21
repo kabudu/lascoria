@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Storage-outage recovery deduplicates bounded command receipts, rejects oversized batches without replacing retained updates, and warns that unsaved updates are lost if the background service stops before saving.
+
 - Canvas cards say what they are in plain words (Task, Helper agent, Workflow, Background check) instead of internal names.
 
 - When a task fails, the task inspector now says what happened and what to do (for example, check your connection or sign in again) instead of showing an error code; Muse's own message is under Details. Session limits say how to free a slot.
