@@ -3193,3 +3193,8 @@ button.link {
   pointer-events: none;
   white-space: nowrap;
 }
+
+.transcript-item[data-search-match='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
