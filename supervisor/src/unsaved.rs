@@ -1,19 +1,20 @@
 //! R7: session updates that could not be saved, for example while the disk holding Lascoria's
-//! data is full. Muse keeps its own durable log, so a missed state snapshot is not lost work;
-//! stopping every Muse host because one write failed was. The newest snapshot for each session
-//! host waits here, with every fact that marks a command applied, and is written as soon as the
-//! database accepts it again. Bounded: at most one snapshot per host and `MAX_FACTS` facts.
+//! data is full. Keep hosts running and retry the newest snapshot and command acknowledgements
+//! when storage returns. This buffer is volatile: Muse's own log is not a replacement for the
+//! supervisor journal if this process stops before flushing. Bounded per host: one snapshot,
+//! `MAX_FACTS` unique receipts, fixed receipt fields and bounded command identities.
 use crate::db::Db;
 use anyhow::{Result, bail};
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Mutex};
 
 const MAX_FACTS: usize = 2000;
+const MAX_COMMAND_ID_BYTES: usize = 256;
 
 #[derive(Default)]
 struct Pending {
     state: Option<Value>,
-    facts: Vec<Value>,
+    facts: HashMap<String, Value>,
     interruption: Option<Value>,
 }
 
@@ -38,7 +39,8 @@ fn note(error: &anyhow::Error) {
 }
 
 /// Save a host's state snapshot, or keep it for a later attempt if the database refuses it.
-/// Errors only when the backlog bound is exceeded, which stops that host as before.
+/// Rejects malformed or over-budget receipts. The caller stops the affected worker/broker.
+/// Callers serialize updates and flushes under the database lock.
 pub fn state(
     db: &Db,
     session: &str,
@@ -48,20 +50,40 @@ pub fn state(
     facts: &Value,
 ) -> Result<()> {
     let key = (session.to_owned(), generation);
-    let backlog = with(|s| {
-        let entry = s.pending.entry(key.clone()).or_default();
+    with(|s| -> Result<()> {
+        let entry = s.pending.entry(key).or_default();
+        let mut incoming = HashMap::new();
+        for fact in std::iter::once(event).chain(facts.as_array().into_iter().flatten()) {
+            // Db::state only needs these command acknowledgements. Never retain unrelated
+            // notifications or arbitrary payloads across a storage outage.
+            let Some(
+                method @ ("turn/started" | "turn/completed" | "turn/unqueued" | "approval/resolved"
+                | "userInput/settled"),
+            ) = fact["method"].as_str()
+            else {
+                continue;
+            };
+            let Some(id) = fact["commandId"].as_str() else {
+                continue;
+            };
+            if id.len() > MAX_COMMAND_ID_BYTES {
+                bail!("Unsaved command identity exceeds its storage budget");
+            }
+            if entry.facts.contains_key(id) || incoming.contains_key(id) {
+                continue;
+            }
+            if entry.facts.len() + incoming.len() == MAX_FACTS {
+                bail!(
+                    "Too many unsaved session updates while Lascoria's data folder is unavailable"
+                );
+            }
+            incoming.insert(id.to_owned(), json!({"method":method,"commandId":id}));
+        }
+        // Check the complete incoming batch before changing the retained snapshot/facts.
+        entry.facts.extend(incoming);
         entry.state = Some(state);
-        entry.facts.extend(
-            std::iter::once(event)
-                .chain(facts.as_array().into_iter().flatten())
-                .filter(|f| !f.is_null())
-                .cloned(),
-        );
-        entry.facts.len()
-    });
-    if backlog > MAX_FACTS {
-        bail!("Too many unsaved session updates while Lascoria's data folder is unavailable");
-    }
+        Ok(())
+    })?;
     flush(db);
     Ok(())
 }
@@ -91,7 +113,7 @@ pub fn flush(db: &Db) {
                     key.1,
                     state.clone(),
                     &Value::Null,
-                    &json!(entry.facts),
+                    &json!(entry.facts.values().collect::<Vec<_>>()),
                 )?;
             }
             if let Some(reason) = &entry.interruption {
@@ -107,9 +129,9 @@ pub fn flush(db: &Db) {
                 if slot.state.is_none() {
                     slot.state = entry.state;
                 }
-                let mut facts = entry.facts;
-                facts.append(&mut slot.facts);
-                slot.facts = facts;
+                for (id, fact) in entry.facts {
+                    slot.facts.entry(id).or_insert(fact);
+                }
                 if slot.interruption.is_none() {
                     slot.interruption = entry.interruption;
                 }
@@ -188,6 +210,46 @@ mod tests {
             &Value::Null,
             &done("second"),
         )?;
+        // Duplicate native receipts must not consume the outage budget or retain payloads.
+        let duplicate =
+            json!({"method":"turn/completed","commandId":"c-first","detail":"x".repeat(8192)});
+        state(
+            &db,
+            &session,
+            1,
+            json!({"current":true,"turns":["one","two"]}),
+            &Value::Null,
+            &json!(vec![duplicate; MAX_FACTS + 1]),
+        )?;
+        // An over-budget batch is refused atomically, retaining the last accepted snapshot.
+        let oversized: Vec<Value> = (0..MAX_FACTS)
+            .map(|i| {
+                json!({
+                    "method":"turn/completed","commandId":format!("new-{i}")
+                })
+            })
+            .collect();
+        assert!(
+            state(
+                &db,
+                &session,
+                1,
+                json!({"turns":["rejected"]}),
+                &Value::Null,
+                &json!(oversized)
+            )
+            .is_err()
+        );
+        with(|s| {
+            let pending = &s.pending[&(session.clone(), 1)];
+            assert_eq!(pending.facts.len(), 2);
+            assert!(
+                pending
+                    .facts
+                    .values()
+                    .all(|fact| fact.as_object().unwrap().len() == 2)
+            );
+        });
         let waiting = report().expect("updates wait");
         assert!(waiting["message"].as_str().unwrap().len() > 10);
         assert_eq!(
