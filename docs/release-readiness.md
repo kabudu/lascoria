@@ -228,6 +228,8 @@ Scope decided by the user on 18 October; later work is in the [roadmap](../ROADM
 - [ ] **D1 - Git delivery: guarded commit only.** The first release ships the existing guarded commit, which stages all Git-visible changes in the session's folder and does not push. The UI and Help must say so plainly. Selected-file/hunk staging, branches, push, pull requests, merge/conflict help and hooks/signing are on the roadmap.
 - [ ] **D2 - Editing: hand off to the user's editor.** Open a session's folder or a changed file in the user's own editor from the inspector, with validated paths and no shell. An embedded editor and an interactive terminal are on the roadmap; the present runner stays bounded and non-interactive.
 - [ ] **D3 - Find and retain work:** global/session transcript search, export, archive browsing and a continuation path for archived work without accidental duplication or deletion.
+21 October D3 increment: Search in now selects all sessions or one live/archived session; clear/scope changes invalidate late replies, temporary failures offer Retry search, and retained results select the matching task/message. Invalid or missing task targets are explained rather than misattributed. These workflow checks do not complete the native export/platform gate.
+
 - [ ] **D4 - Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
 - [x] **D5 - Muse capabilities management: roadmap.** Skill discovery, invocation and attribution remain a release requirement under R9. Activation management and the plugin/MCP/settings workflow are on the roadmap, not the first release.
 

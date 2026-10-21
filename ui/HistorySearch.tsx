@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { request } from './api';
 import type { SessionRow } from './types';
 
-type Result = {
+export type SearchResult = {
   sessionId: string;
   archived: boolean;
+  turnId?: string | null;
   itemId: string;
   kind: string;
   snippet: string;
@@ -18,42 +19,53 @@ export function HistorySearch({
 }: {
   sessions: SessionRow[];
   name: (session: SessionRow) => string;
-  open: (sessionId: string) => void;
+  open: (result: SearchResult) => string | undefined;
 }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Result[]>();
+  const [scope, setScope] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [results, setResults] = useState<SearchResult[]>();
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState('');
+  const [navigationError, setNavigationError] = useState('');
   const [busy, setBusy] = useState(false);
-  const latest = useRef(0);
+  const scopeAvailable = !scope || sessions.some((session) => session.id === scope);
   useEffect(() => {
     const text = query.trim();
-    if (!text) {
-      setResults(undefined);
-      setError('');
-      return;
-    }
-    // Debounced, and only the newest reply is shown.
-    const order = ++latest.current;
+    setResults(undefined);
+    setTruncated(false);
+    setError('');
+    setNavigationError('');
+    setBusy(Boolean(text) && scopeAvailable);
+    if (!text || !scopeAvailable) return;
+    // Query, scope and unmount each invalidate both successful and failed older replies.
+    let cancelled = false;
     const timer = setTimeout(() => {
-      setBusy(true);
-      void request<{ results: Result[]; truncated: boolean }>('search', { query: text }).then(
+      void request<{ results: SearchResult[]; truncated: boolean }>('search', {
+        query: text,
+        ...(scope ? { sessionId: scope } : {}),
+      }).then(
         (reply) => {
-          if (order !== latest.current) return;
+          if (cancelled) return;
           setResults(reply.results);
           setTruncated(reply.truncated);
-          setError('');
           setBusy(false);
         },
         (failure) => {
-          if (order !== latest.current) return;
+          if (cancelled) return;
           setError(String(failure));
           setBusy(false);
         },
       );
     }, 250);
-    return () => clearTimeout(timer);
-  }, [query]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, scope, scopeAvailable, retry]);
+  const duplicates = new Map<string, number>();
+  for (const session of sessions)
+    duplicates.set(name(session), (duplicates.get(name(session)) ?? 0) + 1);
   const label = (id: string) => {
     const row = sessions.find((s) => s.id === id);
     return row ? name(row) : `Session ${id.slice(-8)}`;
@@ -71,10 +83,40 @@ export function HistorySearch({
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
+      <label>
+        Search in
+        <select
+          aria-label="Search in"
+          value={scope}
+          onChange={(event) => setScope(event.target.value)}
+        >
+          <option value="">All sessions</option>
+          {!scopeAvailable && <option value={scope}>Unavailable session</option>}
+          {sessions.map((session) => (
+            <option key={session.id} value={session.id}>
+              {name(session)}
+              {session.lifecycle === 'archived' ? ' · Archived' : ''}
+              {(duplicates.get(name(session)) ?? 0) > 1 ? ` · ${session.id.slice(-8)}` : ''}
+            </option>
+          ))}
+        </select>
+      </label>
       <p className="muted">
-        Searches the latest 100 messages kept for each session, including archived ones.
+        Searches the latest 100 messages kept for{' '}
+        {scope ? 'this session' : 'each session, including archived ones'}.
       </p>
-      {error && <p role="alert">Search is unavailable: {error}</p>}
+      {!scopeAvailable && (
+        <p role="alert">
+          This session is no longer available. Choose another session or All sessions.
+        </p>
+      )}
+      {busy && <p role="status">Searching…</p>}
+      {(error || navigationError) && (
+        <div>
+          <p role="alert">{navigationError || `Search is unavailable: ${error}`}</p>
+          <button onClick={() => setRetry((value) => value + 1)}>Retry search</button>
+        </div>
+      )}
       {results && (
         <p role="status">
           {results.length === 0
@@ -86,7 +128,12 @@ export function HistorySearch({
         <ul className="history-results" aria-label="Search results">
           {results.map((result) => (
             <li key={`${result.sessionId}:${result.itemId}`}>
-              <button onClick={() => open(result.sessionId)}>
+              <button
+                onClick={() => {
+                  const failure = open(result);
+                  if (failure) setNavigationError(failure);
+                }}
+              >
                 <span className="eyebrow">
                   {label(result.sessionId)} · {result.kind === 'userMessage' ? 'You' : 'Muse'}
                   {result.archived ? ' · Archived' : ''}

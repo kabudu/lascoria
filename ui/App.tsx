@@ -4,7 +4,7 @@ import { FolderPath } from './FolderPath';
 import { Help } from './Help';
 import { DataLifecycle } from './DataLifecycle';
 import { ExitDialog, type ExitChoice } from './ExitDialog';
-import { HistorySearch } from './HistorySearch';
+import { HistorySearch, type SearchResult } from './HistorySearch';
 import { NotificationSettings } from './NotificationSettings';
 import { ProjectUpdate } from './ProjectUpdate';
 import { ComposerImages } from './ComposerImages';
@@ -397,6 +397,8 @@ export function App() {
   const [history, setHistory] = useState<Item[] | null>(null),
     [offset, setOffset] = useState(0),
     [total, setTotal] = useState(0);
+  const [searchHit, setSearchHit] = useState<SearchResult>();
+  const focusedSearchHit = useRef<SearchResult | undefined>(undefined);
   const revision = useRef(0),
     loaded = useRef(false),
     dirty = useRef(false),
@@ -925,6 +927,24 @@ export function App() {
     setOffset(0);
     setTotal(session?.state.totalItems ?? 0);
   }, [task?.id]);
+  useEffect(() => {
+    if (
+      modal ||
+      !searchHit ||
+      focusedSearchHit.current === searchHit ||
+      searchHit.sessionId !== session?.id
+    )
+      return;
+    const frame = requestAnimationFrame(() => {
+      const match = document.querySelector<HTMLElement>('[data-search-match="true"]');
+      if (match) {
+        focusedSearchHit.current = searchHit;
+        match.focus({ preventScroll: true });
+        match.scrollIntoView({ block: 'center' });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [modal, searchHit, session?.id, task?.id]);
   // D3: save the messages Lascoria keeps for a session as Markdown, through the native chooser.
   async function exportTranscript(row: SessionRow) {
     const slug =
@@ -1024,7 +1044,8 @@ export function App() {
       prefs.showRuntimeReminders ||
       item.kind !== 'reminderChild' ||
       item.itemId === task?.item?.itemId ||
-      ['failed', 'rejected'].includes(item.status),
+      ['failed', 'rejected'].includes(item.status) ||
+      (searchHit?.sessionId === session?.id && searchHit.itemId === item.itemId),
   );
   const itemStatusLabels: Record<string, string> = {
     inProgress: 'In progress',
@@ -2403,6 +2424,24 @@ export function App() {
                             key={item.itemId}
                             className="transcript-item"
                             data-kind={item.kind}
+                            data-search-match={
+                              searchHit?.sessionId === session.id &&
+                              searchHit.itemId === item.itemId
+                                ? true
+                                : undefined
+                            }
+                            tabIndex={
+                              searchHit?.sessionId === session.id &&
+                              searchHit.itemId === item.itemId
+                                ? -1
+                                : undefined
+                            }
+                            aria-label={
+                              searchHit?.sessionId === session.id &&
+                              searchHit.itemId === item.itemId
+                                ? 'Search match'
+                                : undefined
+                            }
                           >
                             <header>
                               <strong>
@@ -3257,12 +3296,24 @@ export function App() {
           <HistorySearch
             sessions={status.sessions}
             name={sessionName}
-            open={(sessionId) => {
-              if (status.sessions.find((s) => s.id === sessionId)?.lifecycle === 'archived')
-                setShowArchived(true);
-              updatePrefs({ sessionId, selection: undefined });
+            open={(result) => {
+              const target = status.sessions.find((row) => row.id === result.sessionId);
+              if (!target?.state.items?.some((item) => item.itemId === result.itemId))
+                return 'This message is not available in the current retained view. Retry after the session refreshes.';
+              const node = tasks(target, prefs).find(
+                (node) => node.id === `${target.id}:${result.turnId}`,
+              );
+              if (!node)
+                return 'This message’s task is not available in the current view. Try another result or export the session transcript.';
+              if (target.lifecycle === 'archived') setShowArchived(true);
+              updatePrefs({ sessionId: result.sessionId, selection: node?.id });
+              setHistory(null);
+              setOffset(0);
+              setSearchHit(result);
               setTab('transcript');
+              openInspector();
               setModal(null);
+              return undefined;
             }}
           />
         )}

@@ -40,7 +40,23 @@ pub fn run(db: &Db, params: &Value) -> Result<Value> {
         !query.is_empty() && query.chars().count() <= 200 && !query.chars().any(char::is_control),
         "Search for 1 to 200 characters"
     );
-    let session = params.get("sessionId").and_then(Value::as_str);
+    let session = match params.get("sessionId").filter(|value| !value.is_null()) {
+        Some(value) => {
+            let id = value
+                .as_str()
+                .context("Search session must be a session ID")?;
+            ensure!(
+                !id.is_empty() && id.len() <= 128,
+                "Invalid search session ID"
+            );
+            ensure!(
+                db.get("sessions", id)?.is_some(),
+                "Search session is no longer available"
+            );
+            Some(id)
+        }
+        None => None,
+    };
     let lowered = query.to_lowercase();
     // Lowercasing in Rust handles non-ASCII text; SQLite narrows candidates by exact substring
     // or ASCII case only when that is safe, then Rust confirms each match.
@@ -51,7 +67,7 @@ pub fn run(db: &Db, params: &Value) -> Result<Value> {
            FROM sessions s, json_each(s.value,'$.state.items') i
           WHERE (?2 IS NULL OR s.id = ?2)
             AND json_type(i.value,'$.text') = 'text'
-            AND (?3 = 0 OR instr(lower(coalesce(json_extract(i.value,'$.displayText'), json_extract(i.value,'$.text'))), ?1) > 0)
+            AND (?3 = 0 OR length(coalesce(json_extract(i.value,'$.displayText'), json_extract(i.value,'$.text'))) <> length(CAST(coalesce(json_extract(i.value,'$.displayText'), json_extract(i.value,'$.text')) AS BLOB)) OR instr(lower(coalesce(json_extract(i.value,'$.displayText'), json_extract(i.value,'$.text'))), ?1) > 0)
           ORDER BY s.rowid DESC, i.key DESC",
     )?;
     let ascii = lowered.is_ascii();
@@ -121,6 +137,20 @@ mod tests {
         assert_eq!(found["results"][1]["archived"], true);
         let scoped = run(&db, &json!({"query":"retry","sessionId":"a"}))?;
         assert_eq!(scoped["results"].as_array().unwrap().len(), 1);
+        for bad in [json!(123), json!(""), json!("missing"), json!([])] {
+            assert!(run(&db, &json!({"query":"retry", "sessionId":bad})).is_err());
+        }
+        db.put(
+            "sessions",
+            "unicode",
+            &json!({"id":"unicode","state":{"items":[
+                {"itemId":"kelvin", "kind":"agentMessage", "text":"Kelvin units"}
+            ]}}),
+        )?;
+        assert_eq!(
+            run(&db, &json!({"query":"kelvin"}))?["results"][0]["itemId"],
+            "kelvin"
+        );
         // Non-ASCII case folding happens in Rust, not SQLite.
         let unicode = run(&db, &json!({"query":"STRASSE"}))?;
         assert_eq!(unicode["results"].as_array().unwrap().len(), 0);
