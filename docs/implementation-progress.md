@@ -1,6 +1,6 @@
 # Release implementation progress
 
-Started 15 October 2026 from `2253fd4`. Scope and acceptance criteria: [release readiness](release-readiness.md). Updated as work progresses. **Implemented** and **verified** are separate; whole release gates stay unchecked until every acceptance item has evidence. Public release is not yet approved or ready.
+Started 15 October 2026 from `2253fd4`. Scope and acceptance criteria: [release readiness](release-readiness.md). Updated as work progresses. **Implemented** and **verified** are separate; whole release gates stay unchecked until every acceptance item has evidence. Public source opening and distribution publication are owner-authorised; distribution remains conditional on the outstanding release gates.
 
 ## Decisions and environment
 
@@ -732,3 +732,7 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [ ] Pass the corrected three-OS hosted matrix and final reviewed-head local CI.
 - [ ] Complete required installer/update acceptance, publish reconciled versioned artifacts and inspect canonical release metadata.
 - [ ] Deploy and verify the canonical website, both domains, HTTPS, consent and apex redirect.
+
+- [x] At reviewed head `ad63153`, `./scripts/ci-local.sh` passed: 96 Rust tests, 87 Node tests with one explicit Linux-only skip, and all 33 UI workflows. The corrected hosted Windows runtime ownership test and Linux supervisor tests also pass; complete matrix outcomes remain pending.
+- [x] Production website deployed to Cloudflare Pages. Both domains are active; HTTP/HTTPS apex redirects preserve path/query. Live production consent/responsive checks pass and five axe scans report zero violations. Public binary-download metadata remains pending.
+- [x] Add a build-only manual Release run to produce signed native-acceptance artifacts before publication, without creating tags/releases. Publication still requires a version tag and passing validation plus builds.
