@@ -2398,7 +2398,7 @@ export function App() {
                   >
                     {tab === 'workspace' && (
                       <Workspace
-                        key={session.id}
+                        key={`${session.id}:${session.projectContext?.revision ?? 0}`}
                         session={session}
                         commands={status.commands}
                         busy={busy}
