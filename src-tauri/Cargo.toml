@@ -2,6 +2,7 @@
 name = "spatial-constellation-desktop"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
 rust-version = "1.97"
 
 [build-dependencies]
@@ -24,6 +25,8 @@ tokio = { version = "1", features = ["net", "io-util", "time", "process", "fs", 
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+# Local, isolated signed updater trials only; never enabled by release builds.
+update-acceptance = []
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

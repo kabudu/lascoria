@@ -142,6 +142,17 @@ pub fn flush(db: &Db) {
     with(|s| s.error = None);
 }
 
+/// A deliberate stop/update cannot discard already-known volatile updates.
+pub fn ensure_saved(db: &Db) -> Result<()> {
+    flush(db);
+    if report().is_some() {
+        bail!(
+            "Unsaved updates are still waiting. Free space or restore access to Lascoria's data folder before pausing or installing an update"
+        );
+    }
+    Ok(())
+}
+
 /// For status: what is waiting to be saved and why, or nothing.
 pub fn report() -> Option<Value> {
     with(|s| {
@@ -250,6 +261,12 @@ mod tests {
                     .all(|fact| fact.as_object().unwrap().len() == 2)
             );
         });
+        assert!(
+            ensure_saved(&db)
+                .unwrap_err()
+                .to_string()
+                .contains("Unsaved updates")
+        );
         let waiting = report().expect("updates wait");
         assert!(waiting["message"].as_str().unwrap().len() > 10);
         assert_eq!(
@@ -258,7 +275,7 @@ mod tests {
         );
         // Space is back: the newest state lands and both commands are applied.
         db.0.execute_batch("PRAGMA query_only=0")?;
-        flush(&db);
+        ensure_saved(&db)?;
         assert_eq!(
             db.get("sessions", &session)?.unwrap()["state"]["turns"],
             json!(["one", "two"])

@@ -19,9 +19,8 @@ const size = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 /**
  * Settings → Updates (R3). Check, download with progress, then install and restart, each an
- * explicit step. Installing never interrupts running work by surprise: on Windows it pauses
- * work first with the user's agreement; elsewhere running work continues in the background
- * and the background service restarts once it is idle.
+ * explicit step. Full-runtime installation pauses work with the user's agreement and
+ * waits for the background writer to stop before replacing any installed resources.
  */
 export function UpdateSettings({
   prefs,
@@ -93,6 +92,7 @@ export function UpdateSettings({
   }
   if (!status) return <p role="status">Reading update status…</p>;
   const progress = status.progress;
+  const visibleError = error || status.lastError;
   return (
     <section className="settings-group" aria-label="Update settings" aria-busy={busy}>
       <p>
@@ -110,7 +110,7 @@ export function UpdateSettings({
         </p>
       ) : (
         <>
-          {error && <p role="alert">{error}</p>}
+          {visibleError && <p role="alert">{visibleError}</p>}
           {status.available ? (
             <article className="update-available" aria-label="Available update">
               <h4>Lascoria {status.available.version} is available</h4>
@@ -173,7 +173,7 @@ export function UpdateSettings({
                   <p>
                     {status.installStopsWork
                       ? workRunning
-                        ? 'Installing on this computer pauses running work first: tasks stop at a checkpoint and can be resumed after the restart.'
+                        ? 'Installing pauses running work first. Lascoria saves progress and stops its background service before updating. You can continue the same sessions after restart; interrupted commands are never automatically replayed.'
                         : 'Lascoria will close, install the update and reopen. Nothing is running.'
                       : workRunning
                         ? 'Lascoria will restart with the new version. Running work keeps going in the background; the background service moves to the new version once it is idle.'
@@ -191,7 +191,7 @@ export function UpdateSettings({
               )}
             </article>
           ) : (
-            status.lastCheckedAtMs && !error && <p role="status">Lascoria is up to date.</p>
+            status.lastCheckedAtMs && !visibleError && <p role="status">Lascoria is up to date.</p>
           )}
           <div className="settings-actions">
             <button disabled={busy || status.downloading} onClick={() => void check()}>

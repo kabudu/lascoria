@@ -88,6 +88,8 @@ test('a full data disk keeps Muse running and saves the waiting result once spac
   assert.equal(full.pid, daemon.pid);
   assert.equal(full.sessions[0].lifecycle, 'connected', 'the host was not stopped');
   await assert.rejects(api('turn', { sessionId, text: 'More' }, 'refused'), /disk is full/);
+  await assert.rejects(api('stop', { sessions: [sessionId] }), /Unsaved updates/);
+  assert.equal((await api('status')).pid, daemon.pid, 'refused stop preserves the writer');
 
   await rm(join(disk, 'filler'));
   const saved = await until(
