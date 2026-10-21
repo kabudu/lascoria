@@ -239,7 +239,9 @@ fn startup_failure(since: u128) -> Option<String> {
         return None;
     }
     let message: String = note["message"].as_str()?.chars().take(500).collect();
-    Some(format!("Lascoria's background service could not start: {message}"))
+    Some(format!(
+        "Lascoria's background service could not start: {message}"
+    ))
 }
 #[tauri::command]
 async fn open_account_browser(url: String) -> Result<(), String> {
