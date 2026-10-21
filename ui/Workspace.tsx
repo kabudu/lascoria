@@ -214,19 +214,21 @@ export function Workspace({
             <details open>
               <summary>{file.path}</summary>
               <pre>{file.text}</pre>
-              <button
-                disabled={busy || archived}
-                onClick={() =>
-                  attach(
-                    `\nRepository context${folderId ? ` (${folderName(folderId)})` : ''}: ${file.path}\n${folderId ? `Folder: ${selectedRoot}\n` : ''}\n${file.text}\n`,
-                  )
-                }
-              >
-                Add file to task draft
-              </button>
-              {openInEditor && (
-                <button onClick={() => openInEditor(file.path, folderId)}>Open in editor</button>
-              )}
+              <div className="row">
+                <button
+                  disabled={busy || archived}
+                  onClick={() =>
+                    attach(
+                      `\nRepository context${folderId ? ` (${folderName(folderId)})` : ''}: ${file.path}\n${folderId ? `Folder: ${selectedRoot}\n` : ''}\n${file.text}\n`,
+                    )
+                  }
+                >
+                  Add file to task draft
+                </button>
+                {openInEditor && (
+                  <button onClick={() => openInEditor(file.path, folderId)}>Open in editor</button>
+                )}
+              </div>
             </details>
           )}
         </section>

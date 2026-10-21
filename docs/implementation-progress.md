@@ -697,3 +697,5 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] F11 follow-up: retire cached Workspace data and in-flight replies when the session Project revision changes. The held-read UI regression failed against the previous view and passed after revision-bound remounting; final exact-head CI is recorded in PR #1.
 
 - [x] Clean-checkout validation setup: stage generated runtime resources before native compilation in local CI and the prepared hosted matrix. The fresh Linux source archive exposed the absent-resource failure; a warm developer checkout had masked the ordering dependency. Actions remains disabled; workflow lint and final local CI are recorded in PR #1.
+
+- [x] Owner-reported file-action spacing: group Add file to task draft and Open in editor with the existing wrapping action-row layout. Focused editor/Project UI workflows pass and the rendered file-action spacing was visually inspected. Add folder and Save project already use this shared layout.
