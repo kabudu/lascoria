@@ -1,8 +1,6 @@
 <h1>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="ui/public/brand/lascoria-lockup-dark.svg">
-    <img src="ui/public/brand/lascoria-lockup.svg" alt="Lascoria" width="420" height="98">
-  </picture>
+  <img src="ui/public/brand/lascoria-lockup.svg#gh-light-mode-only" alt="Lascoria" width="420" height="98">
+  <img src="ui/public/brand/lascoria-lockup-dark.svg#gh-dark-mode-only" alt="Lascoria" width="420" height="98">
 </h1>
 
 **The spatial coding workspace.** Give your agents room to work.
