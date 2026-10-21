@@ -34,6 +34,8 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install 1.97 --profile minimal --component rustfmt,clippy
       - run: npm ci
+      - name: Stage runtime resources for native checks
+        run: npm run build
       - run: npm run check
       - run: npm run check:ui
       - run: cargo test --manifest-path runtime-support/Cargo.toml

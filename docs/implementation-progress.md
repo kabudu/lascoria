@@ -695,3 +695,5 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] F11 native handoff: a fresh `c63eaf9` macOS QA app opened the selected API repository file in VS Code, with its exact native file URL checked. All 18 desktop Rust tests passed natively on Windows x64. Earlier Linux ARM64 unit evidence covers the 17-test fallback boundary only. See [native acceptance](native-acceptance.md#combined-review-project-editor-checks-21-october) for environment and failed-setup limits.
 
 - [x] F11 follow-up: retire cached Workspace data and in-flight replies when the session Project revision changes. The held-read UI regression failed against the previous view and passed after revision-bound remounting; final exact-head CI is recorded in PR #1.
+
+- [x] Clean-checkout validation setup: stage generated runtime resources before native compilation in local CI and the prepared hosted matrix. The fresh Linux source archive exposed the absent-resource failure; a warm developer checkout had masked the ordering dependency. Actions remains disabled; workflow lint and final local CI are recorded in PR #1.
