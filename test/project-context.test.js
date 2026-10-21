@@ -234,7 +234,7 @@ test(
     await rm(docs, { recursive: true });
     await assert.rejects(
       request(directory, 'turn', { sessionId, text: 'Do not run' }, 'missing-docs'),
-      /folder unavailable/,
+      /is no longer there: .*Put it back/,
     );
     const turns = (await status()).commands.filter((c) => c.operation === 'turn');
     assert.equal(turns.length, 4);

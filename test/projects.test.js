@@ -167,7 +167,7 @@ test(
     await rm(api, { recursive: true });
     await assert.rejects(
       request(directory, 'turn', { sessionId, text: 'Do not run' }, 'missing-root'),
-      /folder unavailable/,
+      /is no longer there: .*Put it back/,
     );
     const savedRetry = await request(
       directory,
