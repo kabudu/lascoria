@@ -10,6 +10,9 @@ export MUSE_NO_AUTO_UPDATE=1
 node scripts/check-repository.js
 gitleaks git --redact=100 --no-banner --no-color --ignore-gitleaks-allow --log-opts=--all --timeout 60
 git diff --check
+# Tauri native checks resolve the generated runtime resource directory.
+# Stage it before compiling native code, including on a clean checkout.
+npm run build
 npm run check
 npm run check:ui
 cargo test --offline --manifest-path runtime-support/Cargo.toml
