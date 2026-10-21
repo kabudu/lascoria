@@ -4,10 +4,16 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, readdir, open } from 'node:fs/
 import { spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { request } from '../src/client.js';
-import { bounded } from '../src/runtime.js';
+import { pathToFileURL } from 'node:url';
+// LASCORIA_RELAY_APP runs this against an installed QA package (Windows).
+const app = process.env.LASCORIA_RELAY_APP;
+const workers = app ? join(app, 'runtime', 'workers') : resolve('src');
+const { request } = await import(pathToFileURL(join(workers, 'client.js')).href);
+const { bounded } = await import(pathToFileURL(join(workers, 'runtime.js')).href);
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
-const binary = resolve('supervisor/target/debug/constellation-supervisor');
+const binary = app
+  ? join(app, 'runtime', `constellation-supervisor${process.platform === 'win32' ? '.exe' : ''}`)
+  : resolve('supervisor/target/debug/constellation-supervisor');
 
 // R7: a damaged data file does not stop Lascoria for good. It is set aside, the service starts
 // with empty data and points at the newest backup, and restoring that backup brings the work
@@ -20,6 +26,7 @@ test('a damaged data file is kept aside and the newest backup restores the work'
   execFileSync('git', ['init', '-q', workspace]);
   const env = {
     ...process.env,
+    ...(app ? { SCH_RESOURCES: join(app, 'runtime'), SCH_NODE: process.execPath } : {}),
     SCH_STATE_DIR: directory,
     SCH_PROVIDER: 'echo',
     SCH_AUTH_MANAGED: '0',

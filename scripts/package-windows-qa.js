@@ -34,7 +34,7 @@ for (const file of [
 ])
   await copyFile(join('testing', file), join(output, 'testing', file));
 await copyFile('test/relay-agent.test.js', join(output, 'testing/relay-agent.test.js'));
-for (const file of ['relay-identity.test.js', 'skills-observed.test.js'])
+for (const file of ['relay-identity.test.js', 'skills-observed.test.js', 'data-recovery.test.js'])
   await copyFile(join('test', file), join(output, 'testing', file));
 await copyFile('test/project-worktrees.test.js', join(output, 'testing/project-worktrees.test.js'));
 await copyFile('test/project-context.test.js', join(output, 'testing/project-context.test.js'));
