@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Update certificate validation and bundled roots for RUSTSEC-2026-0382 and RUSTSEC-2026-0383.
+
 - Closing Updates while its native listener is registering no longer leaves extra background listeners behind.
 
 - Full-runtime updates pause safely on every operating system, retain unsaved checkpoints before stopping, bound and verify downloads, and support retry after installation fails. Release preparation validates the complete platform inventory and reconciles immutable publication outcomes.
