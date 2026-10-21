@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- If the disk holding Lascoria's data fills up, Muse keeps working: Lascoria says it cannot save, refuses new tasks with that reason, and saves what is waiting as soon as space is free.
+
 - History search can target one session, retry temporary failures, and open the matching task/message; cleared queries and changed scopes ignore late replies. Unicode lowercase matches are retained even for ASCII queries.
 
 - Background Git refuses files selecting configured conversion filters instead of running their programs; failed task checkout cleans up its owned worktree and branch.

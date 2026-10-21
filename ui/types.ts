@@ -54,6 +54,8 @@ export interface SessionRow {
 }
 export type StatusReply = Status | { unchanged: true; version: string; pid: number };
 export interface Status {
+  /** R7: session updates waiting because the data folder refused a write (a full disk). */
+  storage?: { unsaved: number; message: string; sinceMillis: number } | null;
   relayConnections?: { sessions: string[]; allowAgentMessages: boolean }[];
   relayUnread?: { sessionId: string; peerId: string; count: number }[];
   version?: string;

@@ -1774,6 +1774,16 @@ export function App() {
               <button onClick={() => void boot()}>Reconnect</button>
             </div>
           )}
+          {status.storage && (
+            <div className="banner error" role="alert" aria-label="Changes not saved">
+              {status.storage.message ||
+                'Lascoria cannot save changes to its data folder right now.'}{' '}
+              {status.storage.unsaved === 1
+                ? 'One session is waiting to be saved'
+                : `${status.storage.unsaved} sessions are waiting to be saved`}
+              ; Lascoria keeps trying and saves them as soon as it can.
+            </div>
+          )}
           {serviceOutdated && (
             <div className="banner" role="status" aria-label="Finish updating">
               {serviceRestart === 'restarting'

@@ -105,7 +105,8 @@ impl Dedicated {
                         }
                     }
                     Some("state") => {
-                        if let Err(error) = db.lock().unwrap().state(
+                        if let Err(error) = crate::unsaved::state(
+                            &db.lock().unwrap(),
                             &session,
                             generation,
                             frame["state"].clone(),
@@ -129,9 +130,7 @@ impl Dedicated {
             waiting.lock().unwrap().clear();
             reason["stderrTail"] =
                 json!(String::from_utf8_lossy(&stderr_tail.lock().unwrap()).to_string());
-            if let Err(error) = db.lock().unwrap().interrupt(&session, generation, reason) {
-                eprintln!("Persist worker interruption: {error}");
-            }
+            crate::unsaved::interruption(&db.lock().unwrap(), &session, generation, reason);
         });
         let mut worker = Self {
             child,

@@ -16,6 +16,7 @@ mod review;
 mod search;
 mod session_names;
 mod support;
+mod unsaved;
 mod usage;
 mod worker;
 mod workspace;
@@ -349,7 +350,7 @@ impl Actor {
             let commands = db.recent_commands(100)?;
             let relay = relay::snapshot(&db)?;
             return Ok(
-                json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands}),
+                json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands,"storage":unsaved::report()}),
             );
         }
         let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -1070,11 +1071,14 @@ async fn connection(
         // Snapshot reads bypass session command lanes, including during recovery.
         if request["operation"] == "status" {
             let db = db.lock().unwrap();
-            if request["params"]["since"].as_str().is_some_and(|version| version == db.version()) {
+            // While updates wait to be saved the version does not move, so send the full
+            // snapshot with its storage warning rather than "unchanged".
+            let storage = unsaved::report();
+            if storage.is_none() && request["params"]["since"].as_str().is_some_and(|version| version == db.version()) {
                 return Ok(json!({"unchanged":true,"version":db.version(),"pid":std::process::id()}));
             }
             let relay = relay::snapshot(&db)?;
-            return Ok(json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?}));
+            return Ok(json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":db.recent_commands(100)?,"storage":storage}));
         }
         // R7 support report: counts and states only, previewed before anything is saved.
         if request["operation"] == "support/preview" || request["operation"] == "support/save" {
@@ -1174,7 +1178,7 @@ async fn connection(
     let failed = response.is_err();
     let payload = match response {
         Ok(result) => json!({"version":1,"result":result}),
-        Err(error) => json!({"version":1,"error":error.to_string()}),
+        Err(error) => json!({"version":1,"error":unsaved::user_message(&error)}),
     };
     let payload = payload.to_string();
     if let Some(started) = started {
@@ -1287,6 +1291,16 @@ async fn supervisor_main() -> Result<()> {
     });
     // R10 background triage: idle until the user enables it for a provider and workspace.
     let triage = tokio::spawn(decisions::triage_loop(db.clone()));
+    // R7: retry session updates that a full disk refused, so a session never stays stale.
+    let unsaved_db = db.clone();
+    let unsaved_retry = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if unsaved::report().is_some() {
+                unsaved::flush(&unsaved_db.lock().unwrap());
+            }
+        }
+    });
     let global = Lane::new(make_actor(None));
     let lanes = Arc::new(Mutex::new(HashMap::new()));
     for row in db.lock().unwrap().all("sessions")? {
@@ -1506,6 +1520,8 @@ async fn supervisor_main() -> Result<()> {
     }
     account_monitor.abort();
     triage.abort();
+    unsaved_retry.abort();
+    unsaved::flush(&db.lock().unwrap());
     let _ = account_monitor.await;
     account.lock().await.stop().await;
     fs::remove_file(socket_path)?;
