@@ -7,7 +7,9 @@ import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 const app = resolve(process.argv[2]);
 const { request } = await import(pathToFileURL(join(app, 'runtime/workers/client.js')));
-const root = await mkdtemp(join(tmpdir(), 'lascoria-subscription-'));
+const temporary = await mkdtemp(join(tmpdir(), 'lascoria-subscription-'));
+// Let the supervisor create private state with its explicit owner on Windows.
+const root = join(temporary, 'state');
 const daemon = spawn(
   join(app, `runtime/constellation-supervisor${process.platform === 'win32' ? '.exe' : ''}`),
   [],
@@ -69,5 +71,5 @@ try {
     daemon.kill();
     await done;
   }
-  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  await rm(temporary, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }
