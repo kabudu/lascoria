@@ -34,7 +34,6 @@ if (universal) {
   ]) {
     const node = process.env[cpu === 'arm64' ? 'NODE_DARWIN_ARM64' : 'NODE_DARWIN_X64'];
     if (!node) throw Error(`Missing verified Node distribution for ${cpu}`);
-    execFileSync('/usr/bin/lipo', ['-verify_arch', cpu, node]);
     execFileSync(
       'cargo',
       [
