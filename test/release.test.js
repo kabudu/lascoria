@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, truncate, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, truncate, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -90,6 +92,31 @@ test('release artifacts get collision-free names and an updater manifest with ar
     }
   }
   const value = manifest(artifactFiles, 'v0.2.0', 'Notes', new Date('2026-10-18T12:00:00Z'));
+  const notesDirectory = await mkdtemp(join(tmpdir(), 'lsc-notes-'));
+  t.after(() => rm(notesDirectory, { recursive: true, force: true }));
+  const notesPath = join(notesDirectory, 'notes.md');
+  await writeFile(notesPath, 'Notes');
+  const cli = (epoch) =>
+    spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL('../scripts/release-artifacts.js', import.meta.url)),
+        'manifest',
+        dir,
+        'v0.2.0',
+        notesPath,
+      ],
+      { env: { ...process.env, SOURCE_DATE_EPOCH: epoch }, encoding: 'utf8' },
+    );
+  assert.equal(cli('1792678611').status, 0);
+  const firstManifest = await readFile(join(dir, 'latest.json'), 'utf8');
+  const firstChecksums = await readFile(join(dir, 'SHA256SUMS.txt'), 'utf8');
+  assert.equal(JSON.parse(firstManifest).pub_date, '2026-10-22T14:16:51.000Z');
+  assert.equal(cli('1792678611').status, 0);
+  assert.equal(await readFile(join(dir, 'latest.json'), 'utf8'), firstManifest);
+  assert.equal(await readFile(join(dir, 'SHA256SUMS.txt'), 'utf8'), firstChecksums);
+  assert.notEqual(cli('invalid').status, 0);
+  assert.equal(await readFile(join(dir, 'latest.json'), 'utf8'), firstManifest);
   assert.equal(value.version, '0.2.0');
   assert.deepEqual(value.platforms['darwin-aarch64'], value.platforms['darwin-x86_64']);
   assert.ok(value.platforms['darwin-aarch64'].url.endsWith('_darwin-universal.app.tar.gz'));

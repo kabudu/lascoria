@@ -52,7 +52,7 @@ jobs:
           node scripts/verify-release-recovery.js "$RUNNER_TEMP/run.json" "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/artifacts.json" "$TAG" "$commit"
           {
             echo "RELEASE_COMMIT=$commit"
-            echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$TAG")"
+            echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct "$TAG")"
           } >> "$GITHUB_ENV"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
