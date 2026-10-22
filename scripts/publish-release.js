@@ -190,15 +190,23 @@ export class GitHubReleaseClient {
       throw Error('Release publication requires the intended repository');
   }
   async find(tag) {
-    // GitHub documents the tag endpoint as published-only. Listing with push access also
-    // sees interrupted drafts. A failure is never interpreted as an absent release.
+    // The published tag endpoint and the draft listing have independent cache lifetimes.
+    // Keep both observations, and refuse distinct release IDs for the same tag.
+    const matches = new Map();
+    try {
+      const canonical = await this.get(`${REPO}/releases/tags/${encodeURIComponent(tag)}`);
+      if (canonical.tag_name !== tag) throw Error('Unexpected canonical release identity');
+      matches.set(id(canonical.id), canonical);
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
     for (let page = 1; page <= 50; page++) {
       const releases = await this.get(`${REPO}/releases?per_page=20&page=${page}`);
       if (!Array.isArray(releases)) throw Error('Invalid release listing');
-      const matches = releases.filter((r) => r.tag_name === tag);
-      if (matches.length > 1) throw Error('Ambiguous release identity');
-      if (matches.length) return matches[0];
-      if (releases.length < 20) return null;
+      for (const release of releases.filter((r) => r.tag_name === tag))
+        if (!matches.has(id(release.id))) matches.set(release.id, release);
+      if (matches.size > 1) throw Error('Ambiguous release identity');
+      if (releases.length < 20) return matches.values().next().value ?? null;
     }
     throw Error('Release history exceeds reconciliation budget; inspect it manually');
   }
@@ -312,14 +320,20 @@ function metadata(release, expected) {
 
 async function createDraft(client, expected) {
   let release = await client.find(expected.tag_name);
-  if (!release)
-    release = await client.mutation(
-      () =>
-        client.raw('POST', `https://api.github.com${REPO}/releases`, {
-          json: { ...expected, draft: true },
-        }),
-      async () => (await client.find(expected.tag_name)) ?? undefined,
-    );
+  if (!release) {
+    try {
+      release = await client.raw('POST', `https://api.github.com${REPO}/releases`, {
+        json: { ...expected, draft: true },
+      });
+    } catch (error) {
+      if (!error.transient && error.status !== 422) throw error;
+      if (error.transient) await client.pause(error, 0);
+      release = await client.find(expected.tag_name);
+      // GitHub permits multiple drafts for a tag. An empty cached listing cannot
+      // justify repeating an uncertain create request.
+      if (!release) throw error;
+    }
+  }
   metadata(release, expected);
   return release;
 }
@@ -341,20 +355,19 @@ async function publishDraft(client, release, expected) {
         compare(expected.tag_name.slice(1), latest.tag_name.slice(1)) > 0 ? 'true' : 'false';
     } else makeLatest = 'true';
   }
-  await client.mutation(
+  const current = await client.mutation(
     () =>
       client.raw('PATCH', `https://api.github.com${REPO}/releases/${id(release.id)}`, {
         json: { draft: false, make_latest: makeLatest },
       }),
     async () => {
-      const current = await client.find(expected.tag_name);
-      if (!current) throw Error('Release disappeared while publishing');
+      const current = await client.get(`${REPO}/releases/${id(release.id)}`);
       metadata(current, expected);
       return current.draft ? undefined : current;
     },
   );
-  const current = await client.find(expected.tag_name);
-  if (!current || current.draft) throw Error('Publication was not confirmed; inspect the release');
+  if (!current || current.id !== release.id || current.draft !== false)
+    throw Error('Publication was not confirmed; inspect the release');
   metadata(current, expected);
 }
 

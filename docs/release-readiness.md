@@ -271,3 +271,12 @@ Follow the [running completion sequence](implementation-progress.md#active-compl
 
 - [x] Implement one macOS release target and shared updater archive for Apple Silicon and Intel; bundle both slices of the desktop, supervisor and Node runtime.
 - [x] Prove both slices in the signed universal candidate updater archive and mounted installer from `c31900e`, including notarization, Gatekeeper and production updater signatures. Actual public distribution remains a separate publication gate.
+
+### First public binary release: v0.1.2 (22 October)
+
+- [x] Publish the semantic version tag and curated [GitHub release](https://github.com/kabudu/lascoria/releases/tag/v0.1.2) with the complete 13-asset inventory.
+- [x] Independently download all public assets and verify checksums, production updater signatures, five platform mappings and immutable source/tag/notes identity. Verify both architecture slices, Developer ID signatures, stapled notarization and Gatekeeper in the actual universal macOS installer and updater.
+- [x] Verify the public stable and beta updater manifests match the signed release.
+- [x] Deploy and verify the canonical website, public download links, consent, accessibility, HTTPS domains and apex redirects.
+
+These publication checks do not change the scope of earlier native acceptance evidence or complete unrelated unchecked feature, performance or security work.

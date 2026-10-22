@@ -36,12 +36,21 @@ function github() {
     if (method === 'GET' && path === prefix) result = json(repo);
     else if (method === 'GET' && path.startsWith(`${prefix}/git/ref/tags/`))
       result = json({ object: { sha: state.commit, type: 'commit' } });
-    else if (method === 'GET' && path === `${prefix}/releases/latest`) {
+    else if (method === 'GET' && path.startsWith(`${prefix}/releases/tags/`)) {
+      const release = releases.find(
+        (r) => r.tag_name === decodeURIComponent(path.split('/').at(-1)) && !r.draft,
+      );
+      result = release ? json(snapshot(release)) : json({}, 404);
+    } else if (method === 'GET' && new RegExp(`^${prefix}/releases/[0-9]+$`).test(path)) {
+      const release = releases.find((r) => r.id === Number(path.split('/').at(-1)));
+      result = release ? json(snapshot(release)) : json({}, 404);
+    } else if (method === 'GET' && path === `${prefix}/releases/latest`) {
       const latest = releases.findLast(
         (r) => !r.draft && !r.prerelease && r.make_latest !== 'false',
       );
       result = latest ? json(snapshot(latest)) : json({}, 404);
-    } else if (method === 'GET' && path === `${prefix}/releases`) result = json(snapshot(releases));
+    } else if (method === 'GET' && path === `${prefix}/releases`)
+      result = json(state.staleListings ? [] : snapshot(releases));
     else if (method === 'POST' && path === `${prefix}/releases`) {
       const value = JSON.parse(options.body);
       if (releases.some((r) => r.tag_name === value.tag_name)) return json({}, 422);
@@ -378,4 +387,39 @@ test('installation token metadata works and GitHub write refusal cannot create a
   wrong.repo.full_name = 'someone/else';
   await assert.rejects(publishRelease({ ...args, client: wrong.client() }), /intended repository/);
   assert.equal(mutationCount(wrong), 0);
+});
+
+test('cached empty listings cannot hide published releases or invalidate positive publication acknowledgements', async (t) => {
+  const args = await fixture(t);
+  const g = github();
+  g.state.staleListings = true;
+  await publishRelease({ ...args, client: g.client() });
+  const before = mutationCount(g);
+  assert.deepEqual(await publishRelease({ ...args, client: g.client() }), {
+    result: 'already-published',
+    tag: args.tag,
+  });
+  assert.equal(g.releases.length, 1);
+  assert.equal(mutationCount(g), before);
+});
+
+test('an unobservable lost draft-create reply stops after one request and later resumes the same draft', async (t) => {
+  const args = await fixture(t);
+  const g = github();
+  g.state.staleListings = true;
+  g.failures.push({
+    match: (m, p) => m === 'POST' && p === `${prefix}/releases`,
+    left: 1,
+    after: true,
+  });
+  await assert.rejects(publishRelease({ ...args, client: g.client() }), /outcome is uncertain/);
+  assert.equal(g.releases.length, 1);
+  assert.equal(
+    g.calls.filter((c) => c.method === 'POST' && c.path === `${prefix}/releases`).length,
+    1,
+  );
+  g.state.staleListings = false;
+  await publishRelease({ ...args, client: g.client() });
+  assert.equal(g.releases.length, 1);
+  assert.equal(g.releases[0].draft, false);
 });
