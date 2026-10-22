@@ -2794,17 +2794,76 @@ select {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.6rem 0.75rem;
+  min-width: 0;
   max-height: 30vh;
   overflow: auto;
 }
 .notification-settings fieldset:disabled {
   opacity: 0.6;
 }
+/* Keep switch geometry independent of the general stacked form-input rules. */
 .notification-settings label {
   display: flex;
-  gap: 0.5rem;
-  align-items: flex-start;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.5rem 0;
+  line-height: 1.5;
+  cursor: pointer;
   overflow-wrap: anywhere;
+}
+.notification-settings label span {
+  flex: 1;
+  min-width: 0;
+}
+.notification-settings input[role='switch'] {
+  appearance: none;
+  display: block;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 24px;
+  margin: 0;
+  padding: 2px;
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  background: var(--panel);
+  cursor: inherit;
+}
+.notification-settings input[role='switch']::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.notification-settings input[role='switch']:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.notification-settings input[role='switch']:checked::before {
+  transform: translateX(18px);
+  background: var(--accent-ink);
+}
+.notification-settings fieldset:disabled label {
+  cursor: not-allowed;
+}
+@media (forced-colors: active) {
+  .notification-settings input[role='switch'] {
+    background: Canvas;
+    border-color: ButtonText;
+  }
+  .notification-settings input[role='switch']::before {
+    background: ButtonText;
+  }
+  .notification-settings input[role='switch']:checked {
+    background: Highlight;
+    border-color: Highlight;
+  }
+  .notification-settings input[role='switch']:checked::before {
+    background: HighlightText;
+  }
 }
 .notification-check {
   display: flex;
