@@ -1693,11 +1693,7 @@ main {
   margin: 0 0 8px;
   font-size: 0.65rem;
 }
-.transcript-background input {
-  width: 13px;
-  height: 13px;
-  accent-color: var(--accent);
-}
+
 .transcript-item[data-kind] details pre {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -2802,7 +2798,7 @@ select {
   opacity: 0.6;
 }
 /* Keep switch geometry independent of the general stacked form-input rules. */
-.notification-settings label {
+.toggle-switch {
   display: flex;
   gap: 0.75rem;
   align-items: center;
@@ -2813,11 +2809,11 @@ select {
   cursor: pointer;
   overflow-wrap: anywhere;
 }
-.notification-settings label span {
+.toggle-switch > span {
   flex: 1;
   min-width: 0;
 }
-.notification-settings input[role='switch'] {
+.toggle-switch input[role='switch'] {
   appearance: none;
   display: block;
   flex: 0 0 42px;
@@ -2830,7 +2826,7 @@ select {
   background: var(--panel);
   cursor: inherit;
 }
-.notification-settings input[role='switch']::before {
+.toggle-switch input[role='switch']::before {
   content: '';
   display: block;
   width: 18px;
@@ -2838,11 +2834,11 @@ select {
   border-radius: 50%;
   background: var(--muted);
 }
-.notification-settings input[role='switch']:checked {
+.toggle-switch input[role='switch']:checked {
   border-color: var(--accent);
   background: var(--accent);
 }
-.notification-settings input[role='switch']:checked::before {
+.toggle-switch input[role='switch']:checked::before {
   transform: translateX(18px);
   background: var(--accent-ink);
 }
@@ -2850,18 +2846,18 @@ select {
   cursor: not-allowed;
 }
 @media (forced-colors: active) {
-  .notification-settings input[role='switch'] {
+  .toggle-switch input[role='switch'] {
     background: Canvas;
     border-color: ButtonText;
   }
-  .notification-settings input[role='switch']::before {
+  .toggle-switch input[role='switch']::before {
     background: ButtonText;
   }
-  .notification-settings input[role='switch']:checked {
+  .toggle-switch input[role='switch']:checked {
     background: Highlight;
     border-color: Highlight;
   }
-  .notification-settings input[role='switch']:checked::before {
+  .toggle-switch input[role='switch']:checked::before {
     background: HighlightText;
   }
 }
