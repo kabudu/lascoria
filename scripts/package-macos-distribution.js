@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { staple } from './staple-macos.js';
 import { notarize } from './notarize-macos.js';
+import { verifyTicket } from './verify-macos-ticket.js';
 
 if (process.platform !== 'darwin') throw Error('Package macOS distribution on macOS');
 const version = process.env.VERSION;
@@ -20,7 +21,7 @@ const run = (program, args) =>
     maxBuffer: 2 * 1024 * 1024,
   });
 if (await staple(['stapler', 'staple', '-v', app])) throw Error('Cannot staple release app');
-run('/usr/bin/xcrun', ['stapler', 'validate', app]);
+await verifyTicket(app);
 const archive = join(bundle, 'macos/Lascoria.app.tar.gz');
 rmSync(archive, { force: true });
 rmSync(`${archive}.sig`, { force: true });
@@ -54,7 +55,7 @@ try {
   run('/usr/bin/codesign', ['--verify', '--strict', image]);
   notarize(image);
   if (await staple(['stapler', 'staple', '-v', image])) throw Error('Cannot staple disk image');
-  run('/usr/bin/xcrun', ['stapler', 'validate', image]);
+  await verifyTicket(image);
   run('/usr/sbin/spctl', [
     '--assess',
     '--type',
