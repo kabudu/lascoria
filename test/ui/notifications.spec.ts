@@ -119,6 +119,7 @@ test('desktop notifications follow saved preferences, skip what was already wait
       attention.getByRole('button', { name: /Inspect completion: Earlier work/ }),
     ).toBeVisible();
     await attention.getByRole('button', { name: /Inspect completion: Earlier work/ }).click();
+    await page.getByRole('tab', { name: 'transcript', exact: true }).click();
     const background = page.getByRole('switch', { name: /Background activity/ });
     await expect(background).not.toBeChecked();
     await background.focus();
