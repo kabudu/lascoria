@@ -270,4 +270,4 @@ Follow the [running completion sequence](implementation-progress.md#active-compl
 ### Universal macOS distribution
 
 - [x] Implement one macOS release target and shared updater archive for Apple Silicon and Intel; bundle both slices of the desktop, supervisor and Node runtime.
-- [ ] Prove both slices in the signed updater archive and mounted installer, including notarization, Gatekeeper and production updater signatures. Architecture-specific candidates are not the universal release.
+- [x] Prove both slices in the signed universal candidate updater archive and mounted installer from `c31900e`, including notarization, Gatekeeper and production updater signatures. Actual public distribution remains a separate publication gate.

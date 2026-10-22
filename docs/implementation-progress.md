@@ -756,11 +756,17 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Reproduce two production attempts failing at different `stapler validate` calls with CloudKit error 68 (connection reset), after successful notarization and stapling. No public release assets were published by either incomplete attempt.
 - [x] Prepare per-command validation retries for error 68 and transport timeouts: three attempts, 5/10 second backoff, 30 second subprocess deadlines. Missing/invalid tickets fail immediately; exhausted transport retries remain failures. Controlled recovery, invalid-ticket and exhausted-retry tests pass.
 - [x] Preserve independent platform builds when one matrix target fails, and include the ticket/stapling tests in the hosted portable suite.
-- [ ] Validate this follow-up head through complete local and hosted CI. This preparation does not modify the existing `v0.1.1` tag.
+- [x] Validate the follow-up through complete local and hosted CI at reviewed head `c31900e`: 96 Rust tests, 93 Node tests with one Linux-only skip and 33 UI workflows. The existing `v0.1.1` source tag is unchanged.
 
 - [x] Prepare version 0.1.2 metadata and curated notes for the retry-hardening follow-up, preserving the existing 0.1.1 source tag. This branch is not a published release.
 
 ### Universal macOS release correction (22 October)
 
 - [x] Replace separate macOS release targets with one universal target; include both architectures in the desktop, supervisor and Node runtime. Map both updater platform keys to the same universal artifact and require both slices during packaged-byte verification.
-- [ ] Validate the reviewed source with full local and hosted CI, then generate and independently verify the signed/notarized universal distribution before publication. Earlier architecture-specific candidates do not satisfy this gate.
+- [x] Validate reviewed head `c31900e` with `./scripts/ci-local.sh` and hosted native CI. Independently download the universal candidate: both packaged apps contain both slices in the desktop, supervisor and Node; deep strict signatures, stapled tickets, Gatekeeper and the production updater signature pass. Both apps declare macOS 13.5. Earlier architecture-specific candidates are superseded.
+
+### Versioned publication and repository policy (22 October)
+
+- [x] Merge PR #5 at `9ccc01e`, whose source tree matches the final reviewed head, and push annotated tag `v0.1.2`. The tag starts the production release workflow; a successful candidate build is not public binary publication.
+- [x] Set the current master policy to zero required approving reviews while retaining strict three-OS CI, resolved conversations, administrator enforcement, linear history and disabled force pushes/deletions.
+- [ ] Verify the public versioned release, actual downloaded bytes, checksums and updater metadata after the production workflow completes.
