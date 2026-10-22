@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { verifyTicket } from './verify-macos-ticket.js';
 
 if (process.platform !== 'darwin') throw Error('Verify macOS distribution on macOS');
 const bundle = resolve('src-tauri/target/release/bundle');
@@ -15,22 +16,22 @@ const run = (program, args) =>
     timeout: 120_000,
     maxBuffer: 2 * 1024 * 1024,
   });
-const verify = (app) => {
+const verify = async (app) => {
   run('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
-  run('/usr/bin/xcrun', ['stapler', 'validate', app]);
+  await verifyTicket(app);
 };
 let mountAttempted = false;
 try {
-  verify(join(bundle, 'macos/Lascoria.app'));
+  await verify(join(bundle, 'macos/Lascoria.app'));
   mkdirSync(archive);
   run('/usr/bin/tar', ['-xzf', join(bundle, 'macos/Lascoria.app.tar.gz'), '-C', archive]);
-  verify(join(archive, 'Lascoria.app'));
+  await verify(join(archive, 'Lascoria.app'));
   const { readdirSync } = await import('node:fs');
   const images = readdirSync(join(bundle, 'dmg')).filter((name) => name.endsWith('.dmg'));
   if (images.length !== 1) throw Error('Expected exactly one macOS disk image');
   const image = join(bundle, 'dmg', images[0]);
   run('/usr/bin/codesign', ['--verify', '--strict', image]);
-  run('/usr/bin/xcrun', ['stapler', 'validate', image]);
+  await verifyTicket(image);
   run('/usr/sbin/spctl', [
     '--assess',
     '--type',
@@ -50,7 +51,7 @@ try {
     '-mountpoint',
     mount,
   ]);
-  verify(join(mount, 'Lascoria.app'));
+  await verify(join(mount, 'Lascoria.app'));
   run('/usr/sbin/spctl', [
     '--assess',
     '--type',

@@ -750,3 +750,10 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Remove duplicate feature-push native matrices: GitHub treated the cancelled push copy as a required cancelled check even when the identical PR matrix passed. Validate pull requests and master pushes, retain manual/reusable validation, and keep the existing three required native check names. Final protected merge remains gated on the resulting single PR matrix.
 
 - [x] Correct an intermittent updater transport-test failure: a valid local response exceeded the 500 ms fixture budget under concurrent setup, while the focused rerun passed. Prepare the proxy-free client before timing transport and allow successful/size-refusal cases five seconds of scheduling room; retain the 500 ms stalled-body cancellation assertion. Production download limits and deadlines are unchanged.
+
+### Ticket-validation hardening prepared, 22 October
+
+- [x] Reproduce two production attempts failing at different `stapler validate` calls with CloudKit error 68 (connection reset), after successful notarization and stapling. No public release assets were published by either incomplete attempt.
+- [x] Prepare per-command validation retries for error 68 and transport timeouts: three attempts, 5/10 second backoff, 30 second subprocess deadlines. Missing/invalid tickets fail immediately; exhausted transport retries remain failures. Controlled recovery, invalid-ticket and exhausted-retry tests pass.
+- [x] Preserve independent platform builds when one matrix target fails, and include the ticket/stapling tests in the hosted portable suite.
+- [ ] Validate this follow-up head through complete local and hosted CI. This preparation does not modify the existing `v0.1.1` tag.
