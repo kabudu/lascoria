@@ -2337,46 +2337,53 @@ export function App() {
                       </section>
                     )}
                   </div>
-                  {task?.provenance === 'native' &&
-                    nodes.some((node) => node.id === session.id + ':' + task.turnId) && (
-                      <button
-                        onClick={() =>
-                          select(nodes.find((node) => node.id === session.id + ':' + task.turnId)!)
+                  <div className="inspector-actions">
+                    {task?.provenance === 'native' &&
+                      nodes.some((node) => node.id === session.id + ':' + task.turnId) && (
+                        <button
+                          onClick={() =>
+                            select(
+                              nodes.find((node) => node.id === session.id + ':' + task.turnId)!,
+                            )
+                          }
+                        >
+                          Open owning turn
+                        </button>
+                      )}
+                    <button
+                      className="session-settings-trigger"
+                      disabled={
+                        !available ||
+                        busy ||
+                        task?.provenance === 'native' ||
+                        !status.features?.includes('sessionSettings')
+                      }
+                      onClick={async () => {
+                        const token = crypto.randomUUID();
+                        settingsRequest.current = token;
+                        setSettingsTarget(session.id);
+                        setSettingsCatalog(null);
+                        setSettingsMessage('');
+                        setModal('settings');
+                        try {
+                          const catalog = await request('models', { sessionId: session.id });
+                          if (settingsRequest.current === token) setSettingsCatalog(catalog);
+                        } catch (error) {
+                          if (settingsRequest.current === token) setSettingsMessage(String(error));
                         }
+                      }}
+                    >
+                      Session model &amp; effort
+                    </button>
+                    {status.features?.includes('localRelay') && (
+                      <button
+                        className="session-settings-trigger"
+                        onClick={() => setModal('relay')}
                       >
-                        Open owning turn
+                        Connect sessions
                       </button>
                     )}
-                  <button
-                    className="session-settings-trigger"
-                    disabled={
-                      !available ||
-                      busy ||
-                      task?.provenance === 'native' ||
-                      !status.features?.includes('sessionSettings')
-                    }
-                    onClick={async () => {
-                      const token = crypto.randomUUID();
-                      settingsRequest.current = token;
-                      setSettingsTarget(session.id);
-                      setSettingsCatalog(null);
-                      setSettingsMessage('');
-                      setModal('settings');
-                      try {
-                        const catalog = await request('models', { sessionId: session.id });
-                        if (settingsRequest.current === token) setSettingsCatalog(catalog);
-                      } catch (error) {
-                        if (settingsRequest.current === token) setSettingsMessage(String(error));
-                      }
-                    }}
-                  >
-                    Session model &amp; effort
-                  </button>
-                  {status.features?.includes('localRelay') && (
-                    <button className="session-settings-trigger" onClick={() => setModal('relay')}>
-                      Connect sessions
-                    </button>
-                  )}
+                  </div>
                   <TokenUse state={session.state} turnId={task?.turnId ?? undefined} />
                   <div className="tabs" role="tablist">
                     {inspectorTabs.map((name) => (

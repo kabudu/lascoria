@@ -2921,17 +2921,28 @@ select {
   gap: 0.45rem;
   margin: 0.6rem 0;
 }
+.inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  padding: 0 20px 0.5rem;
+}
+.inspector-actions > button {
+  margin: 0;
+  padding: 6px 10px;
+  min-height: 36px;
+  font-size: 0.72rem;
+}
 .token-use {
-  margin: 0.75rem 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
+  margin: 0.5rem 20px 0.75rem;
+  border: 0;
+  background: transparent;
   font-size: 0.78rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .token-use > summary {
-  padding: 0.75rem 1rem;
+  padding: 0.6rem 0;
   color: var(--ink);
   cursor: pointer;
 }
@@ -2942,7 +2953,7 @@ select {
   font-variant-numeric: tabular-nums;
 }
 .token-use-body {
-  padding: 0 1rem 1rem;
+  padding: 0.4rem 0 0.75rem;
 }
 .token-use .token-metrics {
   display: grid;

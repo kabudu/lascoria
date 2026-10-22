@@ -801,3 +801,5 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [ ] Complete final-head CI, publish v0.1.3 and verify its actual signed release packages and updater channels.
 
 - [x] Reproduce the native settings inset finding: the master switch had only 3px of clearance inside its scrolling pane, clipping its 6px focus halo. Reserve 8px/10px insets, increase the navigation/content gutter and add a regression that fails on the old clearance before passing on the correction.
+
+- [x] Put native-task navigation and session controls in a shared inspector action row with the same 20px inset as its heading and transcript. Remove the token section’s outer border and inset its borderless disclosure; retain quiet metric surfaces. Regression checks cover native-task action clearance and the absence of the redundant frame.
