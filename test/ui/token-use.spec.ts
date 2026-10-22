@@ -60,10 +60,11 @@ test('token use separates totals, context and optional breakdown without overflo
       },
     ],
   };
+  let selected = 's1:t1';
   await page.exposeFunction('tokenBridge', async (command: string, args: any) => {
     if (command === 'connect_supervisor' || args?.operation === 'status') return status;
     if (args?.operation === 'presentation/get')
-      return { revision: 0, value: { sessionId: 's1', selection: 's1:t1' } };
+      return { revision: 0, value: { sessionId: 's1', selection: selected } };
     if (args?.operation === 'review/list') return { artifacts: [], evidence: [] };
     return {};
   });
@@ -100,6 +101,21 @@ test('token use separates totals, context and optional breakdown without overflo
   await expect(panel).toContainText('model-two');
   await expect(panel).toContainText('$1.25 (partial estimate)');
   expect((await new AxeBuilder({ page }).include('.token-use').analyze()).violations).toEqual([]);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  selected = 's1:child';
+  await page.reload();
+  const owning = page.getByRole('button', { name: 'Open owning turn', exact: true });
+  await expect(owning).toBeVisible();
+  const inspector = page.getByRole('region', { name: 'Selected task inspector' });
+  const actionBox = await owning.boundingBox();
+  const inspectorBox = await inspector.boundingBox();
+  expect(actionBox!.x - inspectorBox!.x).toBeGreaterThanOrEqual(20);
+  await expect(panel).toHaveCSS('border-top-width', '0px');
+  await panel.locator(':scope > summary').click();
+  await inspector.screenshot({ path: '.dev/native-task-inspector-layout.png' });
+  await owning.click();
+  await expect(owning).toBeHidden();
+  selected = 's1:t1';
   // Old hosts cannot advertise archiving. Keep the direct action discoverable with guidance.
   await expect(page.getByRole('button', { name: 'Archive selected session…' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Archive selected session…' })).toHaveAttribute(
