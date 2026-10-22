@@ -30,7 +30,7 @@ export function NotificationSettings({ settings, sessions, name, update, test, l
         minimised. Notifications appear only while Lascoria is open: after you close it and keep
         work running, check back in Lascoria.
       </p>
-      <label className="setting-toggle">
+      <label className="toggle-switch">
         <input
           type="checkbox"
           role="switch"
@@ -42,7 +42,7 @@ export function NotificationSettings({ settings, sessions, name, update, test, l
       <fieldset disabled={!current.enabled}>
         <legend>Notify me when</legend>
         {groups.map((group) => (
-          <label key={group.key}>
+          <label className="toggle-switch" key={group.key}>
             <input
               type="checkbox"
               role="switch"
@@ -57,7 +57,7 @@ export function NotificationSettings({ settings, sessions, name, update, test, l
         <legend>Sessions</legend>
         {!open.length && <p className="muted">No open sessions.</p>}
         {open.map((row) => (
-          <label key={row.id}>
+          <label className="toggle-switch" key={row.id}>
             <input
               type="checkbox"
               role="switch"

@@ -118,6 +118,38 @@ test('desktop notifications follow saved preferences, skip what was already wait
     await expect(
       attention.getByRole('button', { name: /Inspect completion: Earlier work/ }),
     ).toBeVisible();
+    await attention.getByRole('button', { name: /Inspect completion: Earlier work/ }).click();
+    const background = page.getByRole('switch', { name: /Background activity/ });
+    await expect(background).not.toBeChecked();
+    await background.focus();
+    await page.keyboard.press('Space');
+    await expect(background).toBeChecked();
+    await expect
+      .poll(
+        async () =>
+          (await request(directory, 'presentation/get', {}, 'read-background'))?.value
+            ?.showRuntimeReminders,
+      )
+      .toBe(true);
+    const backgroundBox = await background.boundingBox();
+    const backgroundText = await background.locator('..').locator('span').boundingBox();
+    expect(
+      Math.abs(
+        backgroundBox!.y +
+          backgroundBox!.height / 2 -
+          backgroundText!.y -
+          backgroundText!.height / 2,
+      ),
+    ).toBeLessThan(1);
+    await background.locator('..').screenshot({ path: '.dev/background-activity-toggle.png' });
+    await background.uncheck();
+    await expect
+      .poll(
+        async () =>
+          (await request(directory, 'presentation/get', {}, 'read-background-off'))?.value
+            ?.showRuntimeReminders,
+      )
+      .toBe(false);
     await page.getByLabel('Workspace menu').click();
     await page.getByRole('button', { name: 'Settings…', exact: true }).click();
     await page

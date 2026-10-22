@@ -1754,15 +1754,16 @@ export function App() {
                     placeholder="Filter tasks…"
                   />
                 </label>
-                <label className="runtime-filter">
+                <label className="runtime-filter toggle-switch">
                   <input
                     type="checkbox"
+                    role="switch"
                     checked={prefs.showRuntimeReminders ?? false}
                     onChange={(event) =>
                       updatePrefs({ showRuntimeReminders: event.target.checked })
                     }
                   />
-                  Runtime reminders
+                  <span>Runtime reminders</span>
                 </label>
                 <button
                   onClick={() =>
@@ -2455,18 +2456,21 @@ export function App() {
                               : 'Browse history'}
                           </button>
                         </div>
-                        <label className="transcript-background">
+                        <label className="transcript-background toggle-switch">
                           <input
                             type="checkbox"
+                            role="switch"
                             checked={prefs.showRuntimeReminders ?? false}
                             onChange={(event) =>
                               updatePrefs({ showRuntimeReminders: event.target.checked })
                             }
                           />
-                          Background activity
-                          {items.length !== transcriptItems.length
-                            ? ` (${items.length - transcriptItems.length} hidden)`
-                            : ''}
+                          <span>
+                            Background activity
+                            {items.length !== transcriptItems.length
+                              ? ` (${items.length - transcriptItems.length} hidden)`
+                              : ''}
+                          </span>
                         </label>
                         {transcriptItems.map((item) => (
                           <article
