@@ -32,6 +32,9 @@
     "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
     "resources": {
       "../.dev/bundle-runtime/": "runtime/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.5"
     }
   },
   "plugins": {
