@@ -770,3 +770,9 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Merge PR #5 at `9ccc01e`, whose source tree matches the final reviewed head, and push annotated tag `v0.1.2`. The tag starts the production release workflow; a successful candidate build is not public binary publication.
 - [x] Set the current master policy to zero required approving reviews while retaining strict three-OS CI, resolved conversations, administrator enforcement, linear history and disabled force pushes/deletions.
 - [ ] Verify the public versioned release, actual downloaded bytes, checksums and updater metadata after the production workflow completes.
+
+### Publication credential compatibility and artifact recovery (22 October)
+
+- [x] Diagnose the production publisher preflight: all four package builds and three native validation gates passed, but the client rejected the workflow installation token despite its Contents write permission. Remove the user-role assumption while retaining authenticated requests, repository/visibility binding, GitHub write enforcement and immediate refusal of authorization failures. Controlled installation-token and write-denial tests pass.
+- [x] Implement publish-only recovery bound to the original version tag, source revision, complete passed gate inventory and immutable artifact digests. Preserve installer bytes and use reproducible manifest timestamps. Reject mismatched, expired, incomplete or unpassed inputs.
+- [ ] Complete final reviewed-head local/hosted validation, recover publication from the original verified build and verify the actual public downloads and website links.

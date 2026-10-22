@@ -1,0 +1,73 @@
+name: Recover verified release publication
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing reviewed version tag
+        required: true
+      run_id:
+        description: Original completed Release run with passed builds and validation
+        required: true
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    concurrency:
+      group: lascoria-release-publication
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag }}
+      SOURCE_RUN: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.17.0'
+      - name: Bind recovery to the reviewed tag and all original passed gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" = master ]]
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          git fetch origin master
+          commit="$(git rev-list -n 1 "$TAG")"
+          git merge-base --is-ancestor "$commit" origin/master
+          git show "$TAG:docs/releases/$TAG.md" > "$RUNNER_TEMP/curated.md"
+          node scripts/release.js notes "${TAG#v}" > "$RUNNER_TEMP/notes.md"
+          node scripts/release.js title "${TAG#v}" > "$RUNNER_TEMP/title.txt"
+          cmp "$RUNNER_TEMP/curated.md" "docs/releases/$TAG.md"
+          gh api "repos/kabudu/lascoria/actions/runs/$SOURCE_RUN" > "$RUNNER_TEMP/run.json"
+          gh api "repos/kabudu/lascoria/actions/runs/$SOURCE_RUN/jobs?filter=latest&per_page=100" > "$RUNNER_TEMP/jobs.json"
+          gh api "repos/kabudu/lascoria/actions/runs/$SOURCE_RUN/artifacts?per_page=100" > "$RUNNER_TEMP/artifacts.json"
+          node scripts/verify-release-recovery.js "$RUNNER_TEMP/run.json" "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/artifacts.json" "$TAG" "$commit"
+          {
+            echo "RELEASE_COMMIT=$commit"
+            echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$TAG")"
+          } >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.run_id }}
+          pattern: release-*
+          merge-multiple: true
+          path: dist-release
+          digest-mismatch: error
+      - name: Publish the existing verified bytes and reconcile the updater channel
+        shell: bash
+        env:
+          LASCORIA_SERIALIZED_PUBLISH: '1'
+        run: |
+          set -euo pipefail
+          node scripts/release-artifacts.js manifest dist-release "$TAG" "$RUNNER_TEMP/notes.md"
+          node scripts/publish-release.js release "$TAG" "$RELEASE_COMMIT" dist-release "$RUNNER_TEMP/title.txt" "$RUNNER_TEMP/notes.md"
+          node scripts/publish-release.js beta "$RELEASE_COMMIT" dist-release/latest.json

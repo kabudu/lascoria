@@ -184,13 +184,10 @@ export class GitHubReleaseClient {
       throw Error(
         'Publication is disabled while the repository is private or its visibility is unknown',
       );
-    if (
-      repo.full_name?.toLowerCase() !== 'kabudu/lascoria' ||
-      !(repo.permissions?.push || repo.permissions?.admin)
-    )
-      throw Error(
-        'Release publication requires authenticated push access to the intended repository',
-      );
+    // Installation tokens, including GITHUB_TOKEN, do not expose user-style push roles.
+    // GitHub authenticates this request and enforces Contents:write on every mutation.
+    if (repo.full_name?.toLowerCase() !== 'kabudu/lascoria')
+      throw Error('Release publication requires the intended repository');
   }
   async find(tag) {
     // GitHub documents the tag endpoint as published-only. Listing with push access also

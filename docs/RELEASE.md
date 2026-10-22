@@ -88,3 +88,9 @@ Version 0.1.1 metadata and curated notes are prepared for review only. No tag, i
 ### Universal macOS distribution
 
 The app declares macOS 13.5 or later, matching the actual minimum OS load commands in both pinned Node executables. The public macOS download is one universal app and disk image for Apple Silicon and Intel. Tauri builds both desktop slices; the packaged supervisor and pinned Node runtime are also merged with lipo before Developer ID signing. Both official Node archives are checked against the pinned distribution checksums. Release verification requires arm64 and x86_64 slices in all three executables inside both the updater archive and mounted disk image. The updater manifest maps both macOS platform keys to the same signed universal archive. Windows and Linux retain their native packages.
+
+### Recover a completed build
+
+If only publication fails, run Recover verified release publication from master with the original version tag and Release run ID. Recovery requires the tag to remain on master, every original build and native validation gate to have passed, and the exact unexpired artifact inventory with matching source revision and archive digests. It downloads and verifies the existing packages without rebuilding, checks the curated notes against the tag, and uses the same immutable publisher and serialized updater reconciliation. Manifest timestamps use the source commit time so retries reproduce the same metadata bytes. Unknown or changed release assets remain errors.
+
+The publisher accepts authenticated GitHub installation tokens, including the workflow GITHUB_TOKEN. GitHub enforces the required Contents write permission on each mutation; HTTP 401/403 errors stop without blind retries. See [GitHub token permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions).

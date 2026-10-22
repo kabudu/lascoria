@@ -153,7 +153,18 @@ if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) {
       const notes = readFileSync(notesFile, 'utf8').trim();
       writeFileSync(
         join(dir, 'latest.json'),
-        JSON.stringify(manifest(files, tag, notes), null, 2) + '\n',
+        JSON.stringify(
+          manifest(
+            files,
+            tag,
+            notes,
+            process.env.SOURCE_DATE_EPOCH === undefined
+              ? new Date()
+              : new Date(Number(process.env.SOURCE_DATE_EPOCH) * 1000),
+          ),
+          null,
+          2,
+        ) + '\n',
       );
       const sums = [...files, join(dir, 'latest.json')]
         .sort()

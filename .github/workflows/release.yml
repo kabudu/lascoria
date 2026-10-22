@@ -249,6 +249,8 @@ jobs:
           set -euo pipefail
           node scripts/release.js title "$VERSION" > "$RUNNER_TEMP/title.txt"
           node scripts/release.js notes "$VERSION" > "$RUNNER_TEMP/notes.md"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_REF_NAME")"
+          export SOURCE_DATE_EPOCH
           node scripts/release-artifacts.js manifest dist-release "$GITHUB_REF_NAME" "$RUNNER_TEMP/notes.md"
       - name: Reconcile and publish immutable release artifacts
         shell: bash
