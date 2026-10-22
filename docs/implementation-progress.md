@@ -792,14 +792,21 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 ### Toggle alignment patch release (22 October)
 
 - [x] Prepare 0.1.3 version and lockfile metadata with focused curated notes for the notification and background-activity switches. The application fix passed full local CI at `a0f7e86`; release metadata validation is tracked in its PR.
-- [ ] Publish the versioned update after required CI and merge, then independently verify public artifacts, updater signatures and channel metadata.
+- [x] Publish the versioned update after required CI and merge, then independently verify public artifacts, updater signatures and channel metadata. Public v0.1.3 is verified from source `aa1aac8`; see the distribution record below.
 
 ### Inspector clarity and archive access (22 October)
 
 - [x] Replace the dense token-use definition list with responsive session/task metrics and a context meter. Keep prompt/output/cache, reasoning, subagent, model and API-price facts in an expandable breakdown, preserving unknown, partial and pressure states without confusing usage with subscription allowance. Focused fixtures cover the reported counts, missing task/limit data, both themes, narrow widths and automated accessibility.
 - [x] Add Archive selected session to Sessions with a named confirmation, retained files/history, idle/test guards and stable target identity. Keep unsupported older services disabled with upgrade guidance. A real native-bridge workflow proves cancellation, archive and retained read-only history; existing Workspace archiving remains available.
-- [ ] Complete final-head CI, publish v0.1.3 and verify its actual signed release packages and updater channels.
+- [x] Complete final-head CI at `b71f3b3` (96 Rust, 97 Node with one Linux-only skip, 34 UI workflows), pass the three hosted native gates, merge PR #10 and publish v0.1.3. Its actual signed release packages and updater channels passed independent verification.
 
 - [x] Reproduce the native settings inset finding: the master switch had only 3px of clearance inside its scrolling pane, clipping its 6px focus halo. Reserve 8px/10px insets, increase the navigation/content gutter and add a regression that fails on the old clearance before passing on the correction.
 
 - [x] Put native-task navigation and session controls in a shared inspector action row with the same 20px inset as its heading and transcript. Remove the token section’s outer border and inset its borderless disclosure; retain quiet metric surfaces. Regression checks cover native-task action clearance and the absence of the redundant frame.
+
+### Verified v0.1.3 distribution (22 October)
+
+- [x] Publish [v0.1.3](https://github.com/kabudu/lascoria/releases/tag/v0.1.3) from annotated tag source `aa1aac8`, whose tree matches reviewed `b71f3b3`. The [production release workflow](https://github.com/kabudu/lascoria/actions/runs/39863700708) passed all four package builds, three native validation jobs and immutable publication.
+- [x] Independently download all 13 public assets; verify API digests, every published checksum, tag/source/curated notes, exact inventory and five updater platform mappings. Verify all four updater payload signatures against the production public key.
+- [x] Check the actual universal macOS installer and updater: both CPU slices in desktop, supervisor and Node, macOS 13.5 metadata, deep strict signatures, stapled tickets and Gatekeeper all pass. Check both Linux AppImage ELF architectures and Debian version/architecture metadata plus the desktop, supervisor and Node executable architectures. These are package checks, not an additional native Windows/Linux installation trial.
+- [x] Review the canonical public release at desktop and mobile widths. Confirm identical v0.1.3 manifests at the stable, beta and default updater endpoints; verify the production website’s latest-release download link and apex redirect with path/query preservation. The website does not need a deployment for each app version. Owned native QA app/service processes and temporary mounts are closed; existing user sessions are preserved.
