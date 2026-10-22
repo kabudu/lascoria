@@ -175,6 +175,10 @@ test('desktop notifications follow saved preferences, skip what was already wait
       await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
       for (const width of [800, 520]) {
         await page.setViewportSize({ width, height: 720 });
+        const section = await dialog.locator('.settings-section').boundingBox();
+        const primary = await enabled.boundingBox();
+        // The 3px outline plus its 3px offset must fit inside the scroll clip.
+        expect(primary!.x - section!.x).toBeGreaterThanOrEqual(8);
         for (const toggle of await dialog.getByRole('switch').all()) {
           const control = await toggle.boundingBox();
           const text = await toggle.locator('..').locator('span').boundingBox();
