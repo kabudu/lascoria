@@ -103,6 +103,15 @@ test('desktop notifications follow saved preferences, skip what was already wait
     // Waiting before the window opens: never announced later.
     await finish(sessionId, 'Earlier work', 'earlier');
 
+    await request(
+      directory,
+      'start',
+      {
+        workspace,
+        name: 'Review implementation across the desktop application and background services',
+      },
+      'start-long-note',
+    );
     const page = await context.newPage();
     await page.goto('/');
     const attention = page.getByRole('region', { name: 'Attention' });
@@ -117,14 +126,43 @@ test('desktop notifications follow saved preferences, skip what was already wait
       .click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: 'Desktop notifications' })).toBeVisible();
-    const enabled = dialog.getByRole('checkbox', { name: 'Show desktop notifications' });
-    const finished = dialog.getByRole('checkbox', { name: 'A task finishes' });
-    const sessionToggle = dialog.getByRole('checkbox', { name: 'Release checks' });
+    const enabled = dialog.getByRole('switch', { name: 'Show desktop notifications' });
+    const finished = dialog.getByRole('switch', { name: 'A task finishes' });
+    const sessionToggle = dialog.getByRole('switch', { name: 'Release checks' });
     await expect(enabled).not.toBeChecked();
     await expect(finished).toBeDisabled();
-    await enabled.check();
+    await page.setViewportSize({ width: 800, height: 650 });
+    await dialog.screenshot({ path: '.dev/notification-toggles-disabled.png' });
+    await enabled.focus();
+    await page.keyboard.press('Space');
     await expect(finished).toBeChecked();
     await expect(sessionToggle).toBeChecked();
+    await page.setViewportSize({ width: 800, height: 650 });
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
+      for (const width of [800, 520]) {
+        await page.setViewportSize({ width, height: 720 });
+        for (const toggle of await dialog.getByRole('switch').all()) {
+          const control = await toggle.boundingBox();
+          const text = await toggle.locator('..').locator('span').boundingBox();
+          expect(control).not.toBeNull();
+          expect(text).not.toBeNull();
+          expect(
+            Math.abs(control!.y + control!.height / 2 - text!.y - text!.height / 2),
+          ).toBeLessThan(1);
+          expect(control!.width).toBe(42);
+        }
+        await finished.scrollIntoViewIfNeeded();
+        await dialog.screenshot({ path: `.dev/notification-toggles-${theme}-${width}.png` });
+        await dialog
+          .getByRole('switch', {
+            name: 'Review implementation across the desktop application and background services',
+          })
+          .scrollIntoViewIfNeeded();
+        await dialog.screenshot({ path: `.dev/notification-sessions-${theme}-${width}.png` });
+      }
+    }
+    await page.evaluate(() => (document.documentElement.dataset.theme = 'light'));
     await page.setViewportSize({ width: 800, height: 650 });
     expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
     await dialog.getByRole('button', { name: 'Send a test notification', exact: true }).click();

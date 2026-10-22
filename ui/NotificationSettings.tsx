@@ -33,10 +33,11 @@ export function NotificationSettings({ settings, sessions, name, update, test, l
       <label className="setting-toggle">
         <input
           type="checkbox"
+          role="switch"
           checked={current.enabled}
           onChange={(event) => update({ ...current, enabled: event.target.checked })}
         />
-        Show desktop notifications
+        <span>Show desktop notifications</span>
       </label>
       <fieldset disabled={!current.enabled}>
         <legend>Notify me when</legend>
@@ -44,10 +45,11 @@ export function NotificationSettings({ settings, sessions, name, update, test, l
           <label key={group.key}>
             <input
               type="checkbox"
+              role="switch"
               checked={current[group.key] !== false}
               onChange={(event) => update({ ...current, [group.key]: event.target.checked })}
             />
-            {group.label}
+            <span>{group.label}</span>
           </label>
         ))}
       </fieldset>
@@ -58,6 +60,7 @@ export function NotificationSettings({ settings, sessions, name, update, test, l
           <label key={row.id}>
             <input
               type="checkbox"
+              role="switch"
               checked={!muted.has(row.id)}
               onChange={(event) => {
                 const next = new Set(muted);
@@ -68,7 +71,7 @@ export function NotificationSettings({ settings, sessions, name, update, test, l
                 update({ ...current, mutedSessions: [...next].filter((id) => known.has(id)) });
               }}
             />
-            {name(row)}
+            <span>{name(row)}</span>
           </label>
         ))}
       </fieldset>

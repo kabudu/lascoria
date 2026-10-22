@@ -167,6 +167,8 @@ Added 15 October at the user's request. This is a release gate requiring an evid
 
 ### R13 - Full UX, developer experience and language review
 
+- [x] Correct notification control alignment and replace master, event and session checkboxes with accessible switches. Verify keyboard operation, saved preferences, wrapped labels, disabled groups and both themes at desktop and narrow widths; see the 22 October notification entry in implementation progress.
+
 Added 15 October at the user's request. Include the later feedback that dropdown controls are too short: review minimum height, padding, text/chevron alignment, focus and native popup behaviour across all platforms. Clear, easily digestible language and a clean, uncluttered interface are release requirements. Technical terms belong where they help developers make a decision; internal implementation details belong in expandable diagnostics.
 
 - [ ] Review every first-run and daily-use journey: installation, sign-in/API keys, session creation, model/effort changes, canvas navigation, skills, usage, attention, transcript, changes, evidence, Git delivery, archive/continuation, settings, updates and recovery. Evaluate hierarchy, spacing, useful defaults, discoverability, progressive disclosure and consistency across macOS, Windows and Linux.
