@@ -353,3 +353,29 @@ test('publishing an older stable build never moves the stable latest channel bac
     'v0.3.0',
   );
 });
+
+test('installation token metadata works and GitHub write refusal cannot create a release or retry', async (t) => {
+  const args = await fixture(t);
+  for (const permissions of [undefined, { contents: 'write' }]) {
+    const g = github();
+    g.repo.permissions = permissions;
+    await publishRelease({ ...args, client: g.client() });
+    assert.equal(g.releases.length, 1);
+    assert.equal(g.releases[0].draft, false);
+  }
+  const denied = github();
+  delete denied.repo.permissions;
+  denied.failures.push({
+    match: (m, p) => m === 'POST' && p === `${prefix}/releases`,
+    left: 1,
+    status: 403,
+  });
+  await assert.rejects(publishRelease({ ...args, client: denied.client() }), /HTTP 403/);
+  assert.equal(denied.releases.length, 0);
+  assert.equal(denied.calls.filter((c) => c.method === 'POST').length, 1);
+  assert.equal(denied.waits.length, 0);
+  const wrong = github();
+  wrong.repo.full_name = 'someone/else';
+  await assert.rejects(publishRelease({ ...args, client: wrong.client() }), /intended repository/);
+  assert.equal(mutationCount(wrong), 0);
+});
