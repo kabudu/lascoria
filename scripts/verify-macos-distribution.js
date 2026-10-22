@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { verifyTicket } from './verify-macos-ticket.js';
 
 if (process.platform !== 'darwin') throw Error('Verify macOS distribution on macOS');
-const bundle = resolve('src-tauri/target/release/bundle');
+const bundle = resolve(process.env.LASCORIA_BUNDLE_DIR || 'src-tauri/target/release/bundle');
 const root = mkdtempSync(join(tmpdir(), 'lascoria-distribution-'));
 const mount = join(root, 'mount');
 const archive = join(root, 'archive');
@@ -17,6 +17,14 @@ const run = (program, args) =>
     maxBuffer: 2 * 1024 * 1024,
   });
 const verify = async (app) => {
+  if (process.env.LASCORIA_UNIVERSAL === '1') {
+    for (const binary of [
+      'MacOS/spatial-constellation-desktop',
+      'Resources/runtime/node',
+      'Resources/runtime/constellation-supervisor',
+    ])
+      run('/usr/bin/lipo', ['-verify_arch', 'arm64', 'x86_64', join(app, 'Contents', binary)]);
+  }
   run('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
   await verifyTicket(app);
 };

@@ -2,7 +2,7 @@
 //
 //   node scripts/release-artifacts.js stage <target> <version> <out-dir>
 //       Copy this runner's Tauri bundles to <out-dir> under names that cannot collide between
-//       targets. <target> is darwin-aarch64, darwin-x86_64, windows-x86_64, linux-x86_64 or
+//       targets. <target> is darwin-universal, windows-x86_64, linux-x86_64 or
 //       linux-aarch64.
 //   node scripts/release-artifacts.js manifest <dir> <tag> <notes-file>
 //       Write latest.json (the updater manifest with artifact signatures) and SHA256SUMS.txt for every file.
@@ -19,13 +19,7 @@ import { join, resolve, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse } from './release.js';
 
-export const TARGETS = [
-  'darwin-aarch64',
-  'darwin-x86_64',
-  'windows-x86_64',
-  'linux-x86_64',
-  'linux-aarch64',
-];
+export const TARGETS = ['darwin-universal', 'windows-x86_64', 'linux-x86_64', 'linux-aarch64'];
 const MAX_UPDATER_BYTES = 256 * 1024 * 1024;
 const REPOSITORY = 'https://github.com/kabudu/lascoria';
 
@@ -124,10 +118,14 @@ export function manifest(files, tag, notes, date = new Date()) {
     if (lstatSync(signatureFile).size > 16384) throw Error(`${bundle} signature is too large`);
     const signature = readFileSync(signatureFile, 'utf8').trim();
     if (!signature) throw Error(`${bundle} has an empty signature`);
-    platforms[target] = {
+    const entry = {
       signature,
       url: `${REPOSITORY}/releases/download/${tag}/${bundle}`,
     };
+    for (const platform of target === 'darwin-universal'
+      ? ['darwin-aarch64', 'darwin-x86_64']
+      : [target])
+      platforms[platform] = entry;
   }
   return { version, notes, pub_date: date.toISOString(), platforms };
 }
@@ -138,7 +136,10 @@ if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) {
     if (command === 'stage') {
       const [target, version, out] = args;
       if (!TARGETS.includes(target)) throw Error(`Unknown target ${target}`);
-      const bundles = resolve(import.meta.dirname, '../src-tauri/target/release/bundle');
+      const bundles = resolve(
+        process.env.LASCORIA_BUNDLE_DIR ||
+          resolve(import.meta.dirname, '../src-tauri/target/release/bundle'),
+      );
       mkdirSync(out, { recursive: true });
       for (const [from, to] of plan(target, version, walk(bundles))) {
         copyFileSync(from, join(out, to));

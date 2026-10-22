@@ -759,3 +759,8 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [ ] Validate this follow-up head through complete local and hosted CI. This preparation does not modify the existing `v0.1.1` tag.
 
 - [x] Prepare version 0.1.2 metadata and curated notes for the retry-hardening follow-up, preserving the existing 0.1.1 source tag. This branch is not a published release.
+
+### Universal macOS release correction (22 October)
+
+- [x] Replace separate macOS release targets with one universal target; include both architectures in the desktop, supervisor and Node runtime. Map both updater platform keys to the same universal artifact and require both slices during packaged-byte verification.
+- [ ] Validate the reviewed source with full local and hosted CI, then generate and independently verify the signed/notarized universal distribution before publication. Earlier architecture-specific candidates do not satisfy this gate.

@@ -4,6 +4,9 @@ import { resolve, join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 const debug = process.argv.includes('--debug');
+const universal = process.argv.includes('--universal');
+if (universal && (debug || process.platform !== 'darwin'))
+  throw Error('Universal runtime packaging requires a macOS release build');
 const root = resolve(import.meta.dirname, '..');
 const output = join(root, '.dev/bundle-runtime');
 const suffix = process.platform === 'win32' ? '.exe' : '';
@@ -11,7 +14,7 @@ const expected = process.env.TAURI_ENV_ARCH;
 const arch = { x86_64: 'x64', aarch64: 'arm64', x86: 'ia32' }[expected] ?? expected;
 if (arch && arch !== process.arch)
   throw Error('Run packaging with the Node runtime for the target architecture');
-if (!debug)
+if (!debug && !universal)
   execFileSync(
     'cargo',
     ['build', '--release', '--manifest-path', join(root, 'supervisor/Cargo.toml')],
@@ -23,11 +26,54 @@ async function copy(source, target) {
   const dst = await stat(target).catch(() => null);
   if (!dst || src.size !== dst.size || src.mtimeMs > dst.mtimeMs) await copyFile(source, target);
 }
-await copy(process.execPath, join(output, `node${suffix}`));
-await copy(
-  join(root, `supervisor/target/${debug ? 'debug' : 'release'}/constellation-supervisor${suffix}`),
-  join(output, `constellation-supervisor${suffix}`),
-);
+if (universal) {
+  for (const [cpu, target] of [
+    ['arm64', 'aarch64-apple-darwin'],
+    ['x86_64', 'x86_64-apple-darwin'],
+  ]) {
+    const node = process.env[cpu === 'arm64' ? 'NODE_DARWIN_ARM64' : 'NODE_DARWIN_X64'];
+    if (!node) throw Error(`Missing verified Node distribution for ${cpu}`);
+    execFileSync('/usr/bin/lipo', ['-verify_arch', cpu, node]);
+    execFileSync(
+      'cargo',
+      [
+        'build',
+        '--release',
+        '--locked',
+        '--target',
+        target,
+        '--manifest-path',
+        join(root, 'supervisor/Cargo.toml'),
+      ],
+      { stdio: 'inherit' },
+    );
+  }
+  execFileSync('/usr/bin/lipo', [
+    '-create',
+    process.env.NODE_DARWIN_ARM64,
+    process.env.NODE_DARWIN_X64,
+    '-output',
+    join(output, 'node'),
+  ]);
+  execFileSync('/usr/bin/lipo', [
+    '-create',
+    join(root, 'supervisor/target/aarch64-apple-darwin/release/constellation-supervisor'),
+    join(root, 'supervisor/target/x86_64-apple-darwin/release/constellation-supervisor'),
+    '-output',
+    join(output, 'constellation-supervisor'),
+  ]);
+  for (const name of ['node', 'constellation-supervisor'])
+    execFileSync('/usr/bin/lipo', ['-verify_arch', 'arm64', 'x86_64', join(output, name)]);
+} else {
+  await copy(process.execPath, join(output, `node${suffix}`));
+  await copy(
+    join(
+      root,
+      `supervisor/target/${debug ? 'debug' : 'release'}/constellation-supervisor${suffix}`,
+    ),
+    join(output, `constellation-supervisor${suffix}`),
+  );
+}
 for (const name of [
   'probe-worker.js',
   'worker.js',
@@ -58,7 +104,7 @@ const manifest = {
   node: process.version,
   sdk: sdk.version,
   platform: process.platform,
-  arch: process.arch,
+  arch: universal ? 'universal' : process.arch,
   mode: debug ? 'debug' : 'release',
   binaries: {},
 };

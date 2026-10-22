@@ -6,6 +6,8 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## 0.1.2 - 2026-10-22
 
+- Provide one universal macOS download for Apple Silicon and Intel, including the complete runtime.
+
 ### Fixed
 
 - Retry transient macOS installer ticket-verification failures without relaxing signature or notarization checks.

@@ -91,11 +91,10 @@ jobs:
     needs: plan
     name: build (${{ matrix.target }})
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
-          - { target: darwin-aarch64, runner: macos-15, bundles: 'app,dmg' }
-          - { target: darwin-x86_64, runner: macos-15-intel, bundles: 'app,dmg' }
+          - { target: darwin-universal, runner: macos-15, bundles: 'app,dmg' }
           - { target: windows-x86_64, runner: windows-2022, bundles: 'nsis' }
           - { target: linux-x86_64, runner: ubuntu-22.04, bundles: 'appimage,deb' }
           - { target: linux-aarch64, runner: ubuntu-22.04-arm, bundles: 'appimage,deb' }
@@ -133,8 +132,38 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install 1.97 --profile minimal
       - run: npm ci
+      - name: Prepare both macOS architectures
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          node_version="$(node -p process.version)"
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 --max-time 120 "https://nodejs.org/dist/$node_version/SHASUMS256.txt" -o SHASUMS256.txt
+          for arch in arm64 x64; do
+            file="node-$node_version-darwin-$arch.tar.gz"
+            curl --fail --location --retry 3 --max-time 120 "https://nodejs.org/dist/$node_version/$file" -o "$file"
+            grep "  $file$" SHASUMS256.txt > "$arch.sha256"
+            shasum -a 256 --check "$arch.sha256"
+            tar -xzf "$file"
+          done
+          {
+            echo "NODE_DARWIN_ARM64=$RUNNER_TEMP/node-$node_version-darwin-arm64/bin/node"
+            echo "NODE_DARWIN_X64=$RUNNER_TEMP/node-$node_version-darwin-x64/bin/node"
+            echo "LASCORIA_UNIVERSAL=1"
+            echo "LASCORIA_BUNDLE_DIR=$GITHUB_WORKSPACE/src-tauri/target/universal-apple-darwin/release/bundle"
+          } >> "$GITHUB_ENV"
       - name: Build the UI and the installed runtime (bundled Node, SDK and supervisor)
-        run: npm run desktop:prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = macOS ]; then
+            npm run ui:build
+            node scripts/package-runtime.js --universal
+          else
+            npm run desktop:prepare
+          fi
       - name: Import the Apple signing certificate
         if: runner.os == 'macOS'
         shell: bash
@@ -169,7 +198,7 @@ jobs:
           # The runtime is already prepared (and signed on macOS); do not rebuild it here.
           config='{"build":{"beforeBuildCommand":"npm run ui:build"},"bundle":{"active":true,"createUpdaterArtifacts":true},"plugins":{"updater":{"pubkey":"'"$LASCORIA_UPDATER_PUBKEY"'"}}}'
           if [ "$RUNNER_OS" = macOS ]; then
-            npx tauri build --bundles app --config "$config"
+            npx tauri build --target universal-apple-darwin --bundles app --config "$config"
             node scripts/package-macos-distribution.js
           else
             npx tauri build --bundles "${{ matrix.bundles }}" --config "$config"
@@ -179,7 +208,7 @@ jobs:
         run: node scripts/verify-macos-distribution.js
       - name: Verify signed runtime provenance after bundling
         if: runner.os == 'macOS'
-        run: node scripts/sign-macos-runtime.js --verify "src-tauri/target/release/bundle/macos/Lascoria.app/Contents/Resources/runtime"
+        run: node scripts/sign-macos-runtime.js --verify "$LASCORIA_BUNDLE_DIR/macos/Lascoria.app/Contents/Resources/runtime"
       - name: Stage packages under release names
         shell: bash
         run: node scripts/release-artifacts.js stage "${{ matrix.target }}" "$VERSION" dist-release
