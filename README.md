@@ -16,7 +16,7 @@ Arrange tasks and their relationships, move between parallel sessions, answer qu
 
 [Features](#features) · [Architecture](#architecture) · [Decisions](#decisions) · [Run from source](#run-from-source) · [Documentation](#documentation)
 
-> **Development preview.** Lascoria is preparing for an open-source release. macOS, Windows and Linux are required release targets; the remaining signing, update, platform, security and accessibility gates are tracked in the [release checklist](docs/implementation-progress.md). Public downloads are not ready yet.
+[Download Lascoria for macOS, Windows or Linux](https://github.com/kabudu/lascoria/releases/latest). See the [installation and update guide](docs/RELEASE.md) for platform requirements and package verification.
 
 ## See it in motion
 
