@@ -757,3 +757,5 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Prepare per-command validation retries for error 68 and transport timeouts: three attempts, 5/10 second backoff, 30 second subprocess deadlines. Missing/invalid tickets fail immediately; exhausted transport retries remain failures. Controlled recovery, invalid-ticket and exhausted-retry tests pass.
 - [x] Preserve independent platform builds when one matrix target fails, and include the ticket/stapling tests in the hosted portable suite.
 - [ ] Validate this follow-up head through complete local and hosted CI. This preparation does not modify the existing `v0.1.1` tag.
+
+- [x] Prepare version 0.1.2 metadata and curated notes for the retry-hardening follow-up, preserving the existing 0.1.1 source tag. This branch is not a published release.

@@ -4,6 +4,12 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+## 0.1.2 - 2026-10-22
+
+### Fixed
+
+- Retry transient macOS installer ticket-verification failures without relaxing signature or notarization checks.
+
 ## 0.1.1 - 2026-10-22
 
 Initial release.
