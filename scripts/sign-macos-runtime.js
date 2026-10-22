@@ -1,3 +1,4 @@
+import { verifyUniversalMacBinary } from './verify-universal-macos.js';
 // Sign the staged runtime before the enclosing app is sealed. Update provenance only after
 // both executables pass the actual Apple team requirement, so it describes distributed bytes.
 import { readFile, writeFile } from 'node:fs/promises';
@@ -16,8 +17,7 @@ export async function signMacRuntime(runtime, identity, team) {
   const requirement = `anchor apple generic and certificate leaf[subject.OU] = "${team}"`;
   for (const name of ['node', 'constellation-supervisor']) {
     const file = join(runtime, name);
-    if (provenance.arch === 'universal')
-      execFileSync('/usr/bin/lipo', ['-verify_arch', 'arm64', 'x86_64', file]);
+    if (provenance.arch === 'universal') verifyUniversalMacBinary(file);
     execFileSync(
       'codesign',
       [
@@ -61,8 +61,7 @@ export async function verifyMacRuntime(runtime, team) {
     throw Error('Runtime signing provenance does not match the release team');
   for (const name of ['node', 'constellation-supervisor']) {
     const file = join(runtime, name);
-    if (provenance.arch === 'universal')
-      execFileSync('/usr/bin/lipo', ['-verify_arch', 'arm64', 'x86_64', file]);
+    if (provenance.arch === 'universal') verifyUniversalMacBinary(file);
     execFileSync(
       'codesign',
       [

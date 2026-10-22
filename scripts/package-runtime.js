@@ -1,3 +1,4 @@
+import { verifyUniversalMacBinary } from './verify-universal-macos.js';
 // Stage an installed runtime. All paths are resolved at build time, never on the user's machine.
 import { mkdir, copyFile, cp, readFile, writeFile, stat } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
@@ -63,7 +64,7 @@ if (universal) {
     join(output, 'constellation-supervisor'),
   ]);
   for (const name of ['node', 'constellation-supervisor'])
-    execFileSync('/usr/bin/lipo', ['-verify_arch', 'arm64', 'x86_64', join(output, name)]);
+    verifyUniversalMacBinary(join(output, name));
 } else {
   await copy(process.execPath, join(output, `node${suffix}`));
   await copy(

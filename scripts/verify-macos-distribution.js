@@ -1,3 +1,4 @@
+import { verifyUniversalMacBinary } from './verify-universal-macos.js';
 // Inspect actual packaged bytes, rather than trusting a successful notary submission.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
@@ -23,7 +24,7 @@ const verify = async (app) => {
       'Resources/runtime/node',
       'Resources/runtime/constellation-supervisor',
     ])
-      run('/usr/bin/lipo', ['-verify_arch', 'arm64', 'x86_64', join(app, 'Contents', binary)]);
+      verifyUniversalMacBinary(join(app, 'Contents', binary));
   }
   run('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
   await verifyTicket(app);
