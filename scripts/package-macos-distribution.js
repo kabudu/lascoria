@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { staple } from './staple-macos.js';
+import { notarize } from './notarize-macos.js';
 
 if (process.platform !== 'darwin') throw Error('Package macOS distribution on macOS');
 const version = process.env.VERSION;
@@ -51,6 +52,18 @@ try {
     image,
   ]);
   run('/usr/bin/codesign', ['--verify', '--strict', image]);
+  notarize(image);
+  if (await staple(['stapler', 'staple', '-v', image])) throw Error('Cannot staple disk image');
+  run('/usr/bin/xcrun', ['stapler', 'validate', image]);
+  run('/usr/sbin/spctl', [
+    '--assess',
+    '--type',
+    'open',
+    '--context',
+    'context:primary-signature',
+    '--verbose=2',
+    image,
+  ]);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
