@@ -793,3 +793,9 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 
 - [x] Prepare 0.1.3 version and lockfile metadata with focused curated notes for the notification and background-activity switches. The application fix passed full local CI at `a0f7e86`; release metadata validation is tracked in its PR.
 - [ ] Publish the versioned update after required CI and merge, then independently verify public artifacts, updater signatures and channel metadata.
+
+### Inspector clarity and archive access (22 October)
+
+- [x] Replace the dense token-use definition list with responsive session/task metrics and a context meter. Keep prompt/output/cache, reasoning, subagent, model and API-price facts in an expandable breakdown, preserving unknown, partial and pressure states without confusing usage with subscription allowance. Focused fixtures cover the reported counts, missing task/limit data, both themes, narrow widths and automated accessibility.
+- [x] Add Archive selected session to Sessions with a named confirmation, retained files/history, idle/test guards and stable target identity. Keep unsupported older services disabled with upgrade guidance. A real native-bridge workflow proves cancellation, archive and retained read-only history; existing Workspace archiving remains available.
+- [ ] Complete final-head CI, publish v0.1.3 and verify its actual signed release packages and updater channels.

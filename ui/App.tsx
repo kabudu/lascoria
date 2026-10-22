@@ -26,6 +26,7 @@ import {
 import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
+import { ArchiveSession } from './ArchiveSession';
 import { SessionRelay } from './SessionRelay';
 import { SessionConnections } from './SessionConnections';
 import { RenameSession } from './RenameSession';
@@ -362,6 +363,7 @@ export function App() {
   const [startFolder, setStartFolder] = useState('');
   const [folderPicking, setFolderPicking] = useState(false);
   const [modal, setModal] = useState<
+      | 'archive'
       | 'rename'
       | 'start'
       | 'stop'
@@ -385,6 +387,8 @@ export function App() {
       | null
     >(null),
     [tab, setTab] = useState('transcript');
+  const [archiveTarget, setArchiveTarget] = useState<string | null>(null);
+  const archiveSession = status.sessions.find((row) => row.id === archiveTarget);
   const [review, setReview] = useState<{
     artifacts: Artifact[];
     evidence: Evidence[];
@@ -1485,6 +1489,23 @@ export function App() {
                   </button>
                 ))}
             </nav>
+            {session && session.lifecycle !== 'archived' && (
+              <button
+                className="session-archive-action"
+                disabled={busy || !status.features?.includes('taskWorkspaces')}
+                title={
+                  !status.features?.includes('taskWorkspaces')
+                    ? 'Update Lascoria to archive sessions with this background service.'
+                    : undefined
+                }
+                onClick={() => {
+                  setArchiveTarget(session.id);
+                  setModal('archive');
+                }}
+              >
+                Archive selected session…
+              </button>
+            )}
           </FloatingPanel>
           <FloatingPanel
             title="Attention"
@@ -3295,32 +3316,57 @@ export function App() {
           <h2 id="dialog-heading">
             {isSettingsSection(modal)
               ? 'Settings'
-              : modal === 'rename'
-                ? 'Rename session'
-                : modal === 'inbox'
-                  ? 'New local messages'
-                  : modal === 'help'
-                    ? 'Lascoria help'
-                    : modal === 'search'
-                      ? 'Search history'
-                      : modal === 'relay'
-                        ? 'Local session messages'
-                        : modal === 'account'
-                          ? 'Your Muse connection'
-                          : modal === 'start'
-                            ? 'Start a Muse session'
-                            : modal === 'stop'
-                              ? 'Log out of Lascoria'
-                              : modal === 'diagnostics'
-                                ? 'Performance diagnostics'
-                                : modal === 'settings'
-                                  ? 'Session model and effort'
-                                  : 'Command palette'}
+              : modal === 'archive'
+                ? 'Archive session'
+                : modal === 'rename'
+                  ? 'Rename session'
+                  : modal === 'inbox'
+                    ? 'New local messages'
+                    : modal === 'help'
+                      ? 'Lascoria help'
+                      : modal === 'search'
+                        ? 'Search history'
+                        : modal === 'relay'
+                          ? 'Local session messages'
+                          : modal === 'account'
+                            ? 'Your Muse connection'
+                            : modal === 'start'
+                              ? 'Start a Muse session'
+                              : modal === 'stop'
+                                ? 'Log out of Lascoria'
+                                : modal === 'diagnostics'
+                                  ? 'Performance diagnostics'
+                                  : modal === 'settings'
+                                    ? 'Session model and effort'
+                                    : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'archive' && (
+          <ArchiveSession
+            session={archiveSession}
+            name={archiveSession ? sessionName(archiveSession) : 'this session'}
+            busy={busy}
+            runningTest={status.commands.some(
+              (command) =>
+                command.sessionId === archiveTarget &&
+                command.operation === 'workspace/run' &&
+                command.status === 'running',
+            )}
+            close={() => setModal(null)}
+            archive={async () => {
+              if (!archiveSession || !status.features?.includes('taskWorkspaces')) return;
+              const result = await mutate('session/archive', { sessionId: archiveSession.id });
+              if (result?.status === 'applied') setModal(null);
+              else
+                throw new Error(
+                  'Archiving was not confirmed. Check this session’s status before trying again.',
+                );
+            }}
+          />
+        )}
         {modal === 'rename' && session && (
           <RenameSession
             key={session.id}

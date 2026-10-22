@@ -2,10 +2,7 @@ import { tokenFacts } from './model';
 
 const n = (value: number) => value.toLocaleString();
 
-/**
- * T1 token visibility, collapsed by default. Token counts, Muse's API cost estimate and context
- * occupancy are model-call facts; they are not the subscription allowance in Account & usage.
- */
+/** Model-call facts, separate from the subscription allowance in Account & usage. */
 export function TokenUse({
   state,
   turnId,
@@ -18,76 +15,124 @@ export function TokenUse({
   return (
     <details className="token-use">
       <summary>
-        Token use
-        {facts.session ? ` · ${n(facts.session.totalTokens)} this session` : ' · not reported yet'}
-        {facts.context?.percent != null ? ` · context ${facts.context.percent}% full` : ''}
+        <span>Token use</span>
+        <span className="token-summary-value">
+          {facts.session ? `${n(facts.session.totalTokens)} this session` : 'Not reported yet'}
+        </span>
       </summary>
-      <dl>
-        <dt>This session</dt>
-        <dd>
-          {facts.session
-            ? `${n(facts.session.totalTokens)} tokens (${n(facts.session.promptTokens)} prompt, ${n(facts.session.outputTokens)} output${facts.session.cacheReadTokens != null ? `, ${n(facts.session.cacheReadTokens)} read from cache` : ''})`
-            : 'Muse has not reported token use for this session yet.'}
-        </dd>
-        {turnId && (
-          <>
-            <dt>This task</dt>
+      <div className="token-use-body">
+        <dl className="token-metrics">
+          <div>
+            <dt>This session</dt>
             <dd>
-              {facts.task
-                ? `${n(facts.task.totalTokens)} tokens over ${facts.task.calls} model ${facts.task.calls === 1 ? 'call' : 'calls'}${facts.task.reasoningTokens ? `, ${n(facts.task.reasoningTokens)} of them reasoning` : ''}`
-                : 'Not reported for this task.'}
+              <strong>{facts.session ? n(facts.session.totalTokens) : 'Not reported'}</strong>
+              <span>tokens used</span>
             </dd>
-          </>
+          </div>
+          {turnId && (
+            <div>
+              <dt>This task</dt>
+              <dd>
+                <strong>{facts.task ? n(facts.task.totalTokens) : 'Not reported'}</strong>
+                <span>
+                  {facts.task
+                    ? `tokens · ${n(facts.task.calls)} model ${facts.task.calls === 1 ? 'call' : 'calls'}`
+                    : 'No task usage from Muse yet'}
+                </span>
+              </dd>
+            </div>
+          )}
+          {facts.context && (
+            <div className="token-context" data-pressure={facts.context.pressure}>
+              <dt>Context</dt>
+              <dd>
+                <strong>
+                  {facts.context.percent != null
+                    ? `${facts.context.percent}%`
+                    : n(facts.context.usedTokens)}
+                </strong>
+                <span>
+                  {facts.context.windowTokens
+                    ? `${n(facts.context.usedTokens)} of ${n(facts.context.windowTokens)} tokens`
+                    : 'tokens · limit not reported'}
+                </span>
+                {facts.context.percent != null && (
+                  <progress aria-label="Context used" max={100} value={facts.context.percent} />
+                )}
+              </dd>
+            </div>
+          )}
+        </dl>
+        {facts.context?.pressure === 'warning' && (
+          <p className="token-context-note">
+            Context is getting full. Muse may summarise older messages.
+          </p>
         )}
-        {facts.subagents && (
-          <>
-            <dt>Subagents</dt>
-            <dd>
-              {n(facts.subagents.tokens)} tokens across {facts.subagents.count}{' '}
-              {facts.subagents.count === 1 ? 'subagent' : 'subagents'}, reported separately and not
-              included above.
-            </dd>
-          </>
+        {facts.context?.pressure === 'blocked' && (
+          <p className="token-context-note">
+            Context is full. Compact the conversation or start a new session before continuing.
+          </p>
         )}
-        {facts.context && (
-          <>
-            <dt>Context</dt>
-            <dd>
-              {n(facts.context.usedTokens)}
-              {facts.context.windowTokens
-                ? ` of ${n(facts.context.windowTokens)} tokens (${facts.context.percent}%)`
-                : ' tokens; Muse reports no limit'}
-              {facts.context.pressure === 'warning'
-                ? '. Getting full: Muse may compact older messages.'
-                : facts.context.pressure === 'blocked'
-                  ? '. Full: compact or start a new session before continuing.'
-                  : ''}
-            </dd>
-          </>
-        )}
-        {models.length > 1 && (
-          <>
-            <dt>By model</dt>
-            <dd>
-              {models.map(([model, totals]) => `${model}: ${n(totals.totalTokens)}`).join(' · ')}
-            </dd>
-          </>
-        )}
-        {facts.session?.costUsd != null && (
-          <>
-            <dt>Estimated API cost</dt>
-            <dd>
-              ${facts.session.costUsd.toFixed(2)}
-              {facts.session.costPartial ? ' (partial: some calls had no price)' : ''}. Muse&apos;s
-              estimate at API prices; with a subscription you are not billed this amount.
-            </dd>
-          </>
-        )}
-      </dl>
-      <p className="hint">
-        Per-task and per-model figures cover the model calls this session&apos;s Muse host reported.
-        Your subscription allowance is in Account &amp; usage.
-      </p>
+        <details className="token-breakdown">
+          <summary>Token breakdown</summary>
+          <dl>
+            {facts.session && (
+              <>
+                <dt>Prompt</dt>
+                <dd>{n(facts.session.promptTokens)}</dd>
+                <dt>Output</dt>
+                <dd>{n(facts.session.outputTokens)}</dd>
+                {facts.session.cacheReadTokens != null && (
+                  <>
+                    <dt>Read from cache</dt>
+                    <dd>{n(facts.session.cacheReadTokens)}</dd>
+                  </>
+                )}
+              </>
+            )}
+            {!!facts.task?.reasoningTokens && (
+              <>
+                <dt>Task reasoning</dt>
+                <dd>{n(facts.task.reasoningTokens)} tokens</dd>
+              </>
+            )}
+            {facts.subagents && (
+              <>
+                <dt>Subagents</dt>
+                <dd>
+                  {n(facts.subagents.tokens)} tokens across {n(facts.subagents.count)}{' '}
+                  {facts.subagents.count === 1 ? 'subagent' : 'subagents'}. Reported separately;
+                  excluded from the totals above.
+                </dd>
+              </>
+            )}
+            {models.length > 1 &&
+              models.map(([model, totals]) => (
+                <div className="token-model" key={model}>
+                  <dt>{model}</dt>
+                  <dd>{n(totals.totalTokens)} tokens</dd>
+                </div>
+              ))}
+            {facts.session?.costUsd != null && (
+              <>
+                <dt>Estimated API cost</dt>
+                <dd>
+                  ${facts.session.costUsd.toFixed(2)}
+                  {facts.session.costPartial ? ' (partial estimate)' : ''}. Muse’s API-price
+                  estimate; this is not a subscription charge.
+                </dd>
+              </>
+            )}
+          </dl>
+          {!facts.session &&
+            !facts.task?.reasoningTokens &&
+            !facts.subagents &&
+            models.length <= 1 && <p>Muse has not reported a breakdown yet.</p>}
+        </details>
+        <p className="token-use-help">
+          Reported by Muse. Subscription allowance is in Account &amp; usage.
+        </p>
+      </div>
     </details>
   );
 }
