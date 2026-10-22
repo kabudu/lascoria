@@ -53,14 +53,17 @@ test('release artifacts get collision-free names and an updater manifest with ar
     '/b/dmg/Lascoria_0.2.0_aarch64.dmg',
   ];
   assert.deepEqual(
-    plan('darwin-aarch64', '0.2.0', files).map(([, name]) => name),
+    plan('darwin-universal', '0.2.0', files).map(([, name]) => name),
     [
-      'Lascoria_0.2.0_darwin-aarch64.dmg',
-      'Lascoria_0.2.0_darwin-aarch64.app.tar.gz',
-      'Lascoria_0.2.0_darwin-aarch64.app.tar.gz.sig',
+      'Lascoria_0.2.0_darwin-universal.dmg',
+      'Lascoria_0.2.0_darwin-universal.app.tar.gz',
+      'Lascoria_0.2.0_darwin-universal.app.tar.gz.sig',
     ],
   );
-  assert.throws(() => plan('darwin-aarch64', '0.2.0', files.slice(0, 1)), /signed updater bundle/);
+  assert.throws(
+    () => plan('darwin-universal', '0.2.0', files.slice(0, 1)),
+    /signed updater bundle/,
+  );
   assert.throws(
     () => plan('linux-x86_64', '0.2.0', ['/a/x.AppImage', '/b/y.AppImage', '/a/x.AppImage.sig']),
     /More than one/,
@@ -69,10 +72,8 @@ test('release artifacts get collision-free names and an updater manifest with ar
   const dir = await mkdtemp(join(tmpdir(), 'lsc-release-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const names = [
-    'Lascoria_0.2.0_darwin-aarch64.app.tar.gz',
-    'Lascoria_0.2.0_darwin-aarch64.dmg',
-    'Lascoria_0.2.0_darwin-x86_64.app.tar.gz',
-    'Lascoria_0.2.0_darwin-x86_64.dmg',
+    'Lascoria_0.2.0_darwin-universal.app.tar.gz',
+    'Lascoria_0.2.0_darwin-universal.dmg',
     'Lascoria_0.2.0_windows-x86_64-setup.exe',
     'Lascoria_0.2.0_linux-x86_64.AppImage',
     'Lascoria_0.2.0_linux-x86_64.deb',
@@ -90,8 +91,13 @@ test('release artifacts get collision-free names and an updater manifest with ar
   }
   const value = manifest(artifactFiles, 'v0.2.0', 'Notes', new Date('2026-10-18T12:00:00Z'));
   assert.equal(value.version, '0.2.0');
+  assert.deepEqual(value.platforms['darwin-aarch64'], value.platforms['darwin-x86_64']);
+  assert.ok(value.platforms['darwin-aarch64'].url.endsWith('_darwin-universal.app.tar.gz'));
   assert.equal(value.pub_date, '2026-10-18T12:00:00.000Z');
-  assert.deepEqual(Object.keys(value.platforms).sort(), [...TARGETS].sort());
+  assert.deepEqual(
+    Object.keys(value.platforms).sort(),
+    ['darwin-aarch64', 'darwin-x86_64', ...TARGETS.filter((t) => !t.startsWith('darwin'))].sort(),
+  );
   assert.deepEqual(value.platforms['windows-x86_64'], {
     signature: 'sig-of-Lascoria_0.2.0_windows-x86_64-setup.exe',
     url: 'https://github.com/kabudu/lascoria/releases/download/v0.2.0/Lascoria_0.2.0_windows-x86_64-setup.exe',
@@ -122,7 +128,7 @@ test('release artifacts get collision-free names and an updater manifest with ar
   await writeFile(join(dir, signature), 'x'.repeat(16385));
   assert.throws(() => manifest(artifactFiles, 'v0.2.0', ''), /signature is too large/);
   assert.throws(
-    () => plan('darwin-aarch64', '0.2.0', files.slice(0, 2)),
+    () => plan('darwin-universal', '0.2.0', files.slice(0, 2)),
     /required .dmg installer/,
   );
   assert.throws(

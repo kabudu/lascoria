@@ -16,6 +16,8 @@ export async function signMacRuntime(runtime, identity, team) {
   const requirement = `anchor apple generic and certificate leaf[subject.OU] = "${team}"`;
   for (const name of ['node', 'constellation-supervisor']) {
     const file = join(runtime, name);
+    if (provenance.arch === 'universal')
+      execFileSync('/usr/bin/lipo', ['-verify_arch', 'arm64', 'x86_64', file]);
     execFileSync(
       'codesign',
       [
@@ -59,6 +61,8 @@ export async function verifyMacRuntime(runtime, team) {
     throw Error('Runtime signing provenance does not match the release team');
   for (const name of ['node', 'constellation-supervisor']) {
     const file = join(runtime, name);
+    if (provenance.arch === 'universal')
+      execFileSync('/usr/bin/lipo', ['-verify_arch', 'arm64', 'x86_64', file]);
     execFileSync(
       'codesign',
       [

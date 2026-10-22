@@ -266,3 +266,8 @@ The user decided on 18 October that T1–T5 ship in the first release. They rema
 ## Active implementation order
 
 Follow the [running completion sequence](implementation-progress.md#active-completion-sequence). All three operating systems remain release requirements. Hosted CI runs are deferred until the repository is public, as requested; skipped jobs are not validation evidence.
+
+### Universal macOS distribution
+
+- [x] Implement one macOS release target and shared updater archive for Apple Silicon and Intel; bundle both slices of the desktop, supervisor and Node runtime.
+- [ ] Prove both slices in the signed updater archive and mounted installer, including notarization, Gatekeeper and production updater signatures. Architecture-specific candidates are not the universal release.

@@ -12,7 +12,7 @@ const version = process.env.VERSION;
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version || ''))
   throw Error('Missing release version');
 if (!process.env.APPLE_SIGNING_IDENTITY) throw Error('Missing Apple signing identity');
-const bundle = resolve('src-tauri/target/release/bundle');
+const bundle = resolve(process.env.LASCORIA_BUNDLE_DIR || 'src-tauri/target/release/bundle');
 const app = join(bundle, 'macos/Lascoria.app');
 const run = (program, args) =>
   execFileSync(program, args, {
@@ -32,7 +32,12 @@ try {
   run('/usr/bin/ditto', [app, join(root, 'Lascoria.app')]);
   symlinkSync('/Applications', join(root, 'Applications'));
   mkdirSync(join(bundle, 'dmg'), { recursive: true });
-  const arch = process.arch === 'arm64' ? 'aarch64' : 'x64';
+  const arch =
+    process.env.LASCORIA_UNIVERSAL === '1'
+      ? 'universal'
+      : process.arch === 'arm64'
+        ? 'aarch64'
+        : 'x64';
   const image = join(bundle, 'dmg', `Lascoria_${version}_${arch}.dmg`);
   run('/usr/bin/hdiutil', [
     'create',

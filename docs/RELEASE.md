@@ -84,3 +84,7 @@ The production updater secrets/public variable and Apple signing/notarization na
 The [approved branch-history cleanup](public-history-cleanup.md) is applied and verified. The owner explicitly accepted the identified retained original PR-history residual before approving public source opening. Windows/Linux signed updater installation, the remaining production/failure matrix, native accessibility/resource/platform checks and privacy/security gates remain open; local QA artifacts are not public releases.
 
 Version 0.1.1 metadata and curated notes are prepared for review only. No tag, installer, release or website is published by this preparation. The release date and notes must be reconciled with the final accepted artifact set before a separately approved tag/publication.
+
+### Universal macOS distribution
+
+The public macOS download is one universal app and disk image for Apple Silicon and Intel. Tauri builds both desktop slices; the packaged supervisor and pinned Node runtime are also merged with lipo before Developer ID signing. Both official Node archives are checked against the pinned distribution checksums. Release verification requires arm64 and x86_64 slices in all three executables inside both the updater archive and mounted disk image. The updater manifest maps both macOS platform keys to the same signed universal archive. Windows and Linux retain their native packages.
