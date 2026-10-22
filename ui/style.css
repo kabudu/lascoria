@@ -3046,7 +3046,7 @@ dialog.settings-dialog[open] {
   display: grid;
   grid-template-columns: 11rem 1fr;
   grid-template-rows: minmax(0, 1fr);
-  gap: 1.25rem;
+  gap: 1.5rem;
   flex: 1;
   min-height: 0;
 }
@@ -3056,10 +3056,11 @@ dialog.settings-dialog[open] {
   overflow-y: auto;
 }
 .settings-shell > nav {
-  padding: 3px;
+  padding: 8px;
 }
 .settings-section {
-  padding: 3px 6px 3px 3px;
+  /* Reserve the complete keyboard focus outline inside this scrolling pane. */
+  padding: 8px 10px;
 }
 .decision-limit select {
   display: inline-block;
