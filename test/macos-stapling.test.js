@@ -38,3 +38,47 @@ test('stapling bounds failures/timeouts and cannot dispatch another xcrun comman
   assert.deepEqual(delays, [5000, 10000]);
   await assert.rejects(staple(['notarytool', 'submit']), /only handles ticket stapling/);
 });
+
+const { notarize } = await import('../scripts/notarize-macos.js');
+const credentials = {
+  APPLE_ID: 'fixture@example.invalid',
+  APPLE_PASSWORD: 'fixture-private-value',
+  APPLE_TEAM_ID: 'fixture-team',
+};
+test('final disk image notarization requires explicit acceptance and bounds its subprocess', () => {
+  let options;
+  notarize('/fixture/Lascoria.dmg', {
+    env: credentials,
+    run: (command, args, settings) => {
+      assert.equal(command, '/usr/bin/xcrun');
+      assert.deepEqual(args.slice(0, 3), ['notarytool', 'submit', '/fixture/Lascoria.dmg']);
+      options = settings;
+      return { status: 0, stdout: '{"status":"Accepted"}' };
+    },
+  });
+  assert.equal(options.timeout, 720000);
+  assert.equal(options.maxBuffer, 2097152);
+  for (const result of [
+    { status: 0, stdout: '{"status":"Invalid"}' },
+    { status: 0, stdout: 'invalid response' },
+    { status: null, error: Error(credentials.APPLE_PASSWORD), stdout: '' },
+  ]) {
+    assert.throws(
+      () => notarize('/fixture/Lascoria.dmg', { env: credentials, run: () => result }),
+      (error) => {
+        assert(!error.message.includes(credentials.APPLE_PASSWORD));
+        return /did not accept/.test(error.message);
+      },
+    );
+  }
+  assert.throws(
+    () =>
+      notarize('/fixture/Lascoria.dmg', {
+        env: credentials,
+        run: () => {
+          throw Error(credentials.APPLE_PASSWORD);
+        },
+      }),
+    /^Error: Apple notarization command failed$/,
+  );
+});

@@ -28,6 +28,18 @@ try {
   const { readdirSync } = await import('node:fs');
   const images = readdirSync(join(bundle, 'dmg')).filter((name) => name.endsWith('.dmg'));
   if (images.length !== 1) throw Error('Expected exactly one macOS disk image');
+  const image = join(bundle, 'dmg', images[0]);
+  run('/usr/bin/codesign', ['--verify', '--strict', image]);
+  run('/usr/bin/xcrun', ['stapler', 'validate', image]);
+  run('/usr/sbin/spctl', [
+    '--assess',
+    '--type',
+    'open',
+    '--context',
+    'context:primary-signature',
+    '--verbose=2',
+    image,
+  ]);
   mkdirSync(mount);
   mountAttempted = true;
   run('/usr/bin/hdiutil', [
