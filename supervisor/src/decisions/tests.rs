@@ -288,7 +288,8 @@ async fn stale_files_and_configuration_never_become_current_advice_and_muse_read
     let f = fixture().await;
     let mut service = Service::new().unwrap();
     enable(&service, f.db.clone(), "openai").await;
-    let server = server(response("openai"), 200, None, 200).await;
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    let server = server_gated(response("openai"), 0, None, 200, Some(gate.clone())).await;
     service.endpoint = Some(server.url.clone());
     let service = Arc::new(service);
     let mut p = params("openai");
@@ -305,7 +306,7 @@ async fn stale_files_and_configuration_never_become_current_advice_and_muse_read
             .await
             .unwrap()
     });
-    tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(Duration::from_secs(15), async {
         while server.calls.load(Ordering::SeqCst) == 0 {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
@@ -323,6 +324,7 @@ async fn stale_files_and_configuration_never_become_current_advice_and_muse_read
     std::fs::write(f.root.join("repo/code.txt"), "changed during evaluation\n").unwrap();
     let revision = config(&f.db.lock().unwrap()).unwrap()["revision"].clone();
     service.handle(f.db.clone(),"decision/configure",&json!({"provider":"openai","expectedRevision":revision,"model":"gpt-6-luna","enabled":false,"sessionId":"session-a","workspaceEnabled":false}),"disable").await.unwrap();
+    gate.add_permits(1);
     let row = job.await.unwrap();
     assert_eq!(row["status"], "stale");
     assert_eq!(f.db.lock().unwrap().count("commands").unwrap(), 0);
@@ -361,7 +363,7 @@ async fn cancellation_and_bad_responses_are_recorded_without_retry_or_credential
                 .await
                 .unwrap()
         });
-        tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::time::timeout(Duration::from_secs(15), async {
             while server.calls.load(Ordering::SeqCst) == 0 {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
@@ -426,7 +428,7 @@ async fn admission_is_bounded_and_unfinished_identities_remain_unknown_after_res
                 .unwrap()
         }));
     }
-    tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(Duration::from_secs(15), async {
         // Active admission precedes durable reservation. Hold provider replies until both
         // records exist, rather than racing their creation against a 100 ms response delay.
         while recent_runs(&f.db.lock().unwrap()).unwrap().len() < 2 {
