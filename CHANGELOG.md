@@ -6,6 +6,9 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## 0.1.3 - 2026-10-22
 
+- Make token use easier to scan with separate session, task and context figures and an expandable breakdown.
+- Add a direct session-archive action in the Sessions panel with confirmation and compatibility guidance.
+
 - Replace notification and background-activity checkboxes with accessible, aligned toggles that remain readable with wrapped labels.
 
 ## 0.1.2 - 2026-10-22
