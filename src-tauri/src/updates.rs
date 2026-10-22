@@ -564,9 +564,16 @@ mod tests {
                     std::future::pending::<()>().await;
                 }
             });
+            // Keep platform proxy discovery/client setup outside the transport deadline.
+            // Successful loopback reads need scheduling room on busy CI workers; the
+            // deliberately stalled case retains its short cancellation deadline.
+            let client = reqwest::Client::builder().no_proxy().build().unwrap();
             let result = bounded_download(
                 |mut report| async move {
-                    let mut response = reqwest::get(format!("http://{address}/bundle")).await?;
+                    let mut response = client
+                        .get(format!("http://{address}/bundle"))
+                        .send()
+                        .await?;
                     let total = response.content_length();
                     let mut body = Vec::new();
                     while let Some(chunk) = response.chunk().await? {
@@ -577,7 +584,11 @@ mod tests {
                 },
                 |_, _| {},
                 32,
-                Duration::from_millis(500),
+                if expected == "timeout" {
+                    Duration::from_millis(500)
+                } else {
+                    Duration::from_secs(5)
+                },
             )
             .await;
             server.abort();
