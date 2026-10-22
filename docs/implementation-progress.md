@@ -788,3 +788,8 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 
 - [x] Replace notification master, event and session checkboxes plus the transcript and canvas background-activity filters with labelled keyboard-accessible switches. Remove inherited input offsets, reserve consistent control dimensions and centre wrapped labels in full-row targets. Keep saved preferences and disabled grouping unchanged; support both themes and forced colours.
 - [x] Reproduce the missing switch semantics against the previous UI, then validate keyboard activation, persisted session muting, event filtering, wrapped-label alignment at desktop/narrow widths and accessibility through the notification workflow. Reviewed screenshots cover enabled and disabled states in light/dark themes. Keyboard activation and persistence also cover the transcript background-activity filter. Final-head full CI is recorded in the PR.
+
+### Toggle alignment patch release (22 October)
+
+- [x] Prepare 0.1.3 version and lockfile metadata with focused curated notes for the notification and background-activity switches. The application fix passed full local CI at `a0f7e86`; release metadata validation is tracked in its PR.
+- [ ] Publish the versioned update after required CI and merge, then independently verify public artifacts, updater signatures and channel metadata.

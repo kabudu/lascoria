@@ -4,6 +4,8 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+## 0.1.3 - 2026-10-22
+
 - Replace notification and background-activity checkboxes with accessible, aligned toggles that remain readable with wrapped labels.
 
 ## 0.1.2 - 2026-10-22
