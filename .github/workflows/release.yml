@@ -162,23 +162,18 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/sign-macos-runtime.js
-      - name: Retry notarization ticket stapling within a fixed budget
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          tools="$RUNNER_TEMP/lascoria-release-tools"
-          mkdir -p "$tools"
-          cp scripts/release-xcrun.sh "$tools/xcrun"
-          chmod 700 "$tools/xcrun"
-          echo "$tools" >> "$GITHUB_PATH"
       - name: Build, sign and notarize the desktop bundles
         shell: bash
         run: |
           set -euo pipefail
           # The runtime is already prepared (and signed on macOS); do not rebuild it here.
           config='{"build":{"beforeBuildCommand":"npm run ui:build"},"bundle":{"active":true,"createUpdaterArtifacts":true},"plugins":{"updater":{"pubkey":"'"$LASCORIA_UPDATER_PUBKEY"'"}}}'
-          npx tauri build --bundles "${{ matrix.bundles }}" --config "$config"
+          if [ "$RUNNER_OS" = macOS ]; then
+            npx tauri build --bundles app --config "$config"
+            node scripts/package-macos-distribution.js
+          else
+            npx tauri build --bundles "${{ matrix.bundles }}" --config "$config"
+          fi
       - name: Verify tickets and signatures in the actual macOS packages
         if: runner.os == 'macOS'
         run: node scripts/verify-macos-distribution.js
