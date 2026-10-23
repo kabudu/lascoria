@@ -821,6 +821,8 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 
 ### v0.1.4 delivery
 
+- [x] Stop the initial release preflight on the newly published RUSTSEC-2026-0385 advisory before package builds or publication. Update only the affected `ctutils` lock entry from 0.4.3 to 0.4.4; the online audit passes with zero npm vulnerabilities and all 843 Rust dependency/licence entries checked.
+
 - [x] Prepare consistent 0.1.4 version metadata and curated release notes, including the manual macOS upgrade path for 0.1.2/0.1.3.
 - [ ] Pass final reviewed-head CI, merge release metadata and publish signed release packages through the production workflow.
 - [ ] Independently verify the public package inventory, checksums, signatures, universal Mac payloads and stable/beta updater manifests before closing delivery.
