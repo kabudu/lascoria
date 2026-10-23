@@ -817,4 +817,10 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Add Check for Updates to the native macOS application menu, opening a focused dialog. Keep automatic discovery quiet, expose an enduring toolbar action after deferral, and retain verified downloads when the dialog closes. Use the existing explicit pause/checkpoint/install flow.
 - [x] Change automatic checks to six-hour eligibility with six-hour failure backoff, a bounded startup delay and shared in-flight checks. Keep update preferences and release-channel choices in Settings with an accessible automatic-check switch.
 - [x] Validate native menu invocation, HTTPS-loopback discovery, full-dialog layout, dismissal and toolbar reopening in an isolated macOS QA app. The synthetic future-version manifest is discovery-only; this check does not install an update or establish a new signed replacement trial. Owned QA processes are stopped; user sessions are preserved.
-- [ ] Complete final reviewed-head local CI and PR delivery. Do not label the correction distributed until a signed release containing it is published.
+- [x] Complete final reviewed-head local CI at `82b9c4b` (97 Rust, 97 Node passed with one Linux-only skip, 35 UI workflows), pass all three hosted native checks and merge PR #12 as `cec6426`. Distribution follows in v0.1.4.
+
+### v0.1.4 delivery
+
+- [x] Prepare consistent 0.1.4 version metadata and curated release notes, including the manual macOS upgrade path for 0.1.2/0.1.3.
+- [ ] Pass final reviewed-head CI, merge release metadata and publish signed release packages through the production workflow.
+- [ ] Independently verify the public package inventory, checksums, signatures, universal Mac payloads and stable/beta updater manifests before closing delivery.
