@@ -32,3 +32,9 @@ A support report is different from a transcript export or backup. Those contain 
 - Before restoring data or testing an older build, read [Data and lifecycle requirements](docs/release-readiness.md#r5---durable-data-authentication-and-lifecycle-acceptance) and the in-app confirmation. Newer data formats cannot be assumed to work in older binaries.
 
 Do not replace runtime files while tasks are active or delete a state directory as a first troubleshooting step. Keep your original work and backups until you understand the failure.
+
+## macOS update address rejected
+
+Lascoria 0.1.2 and 0.1.3 on macOS can reject a universal update with “The update's download address does not match this version and computer's secure release source”. The downloaded package has not been installed. This is a filename-validation defect in those versions, not evidence that the app is up to date.
+
+Download the current universal macOS installer from [GitHub Releases](https://github.com/kabudu/lascoria/releases/latest). Pause work and quit Lascoria safely before replacing the app. The corrected updater accepts the universal package for both Apple Silicon and Intel while retaining the exact repository/version checks and mandatory signature verification. Versions that contain the correction still require a normal signed release before distribution.

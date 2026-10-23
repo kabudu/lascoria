@@ -33,6 +33,8 @@ Reference: [official Muse installation documentation](https://dev.meta.ai/docs/m
 
 ### R3 - In-app updates from GitHub Releases
 
+23 October follow-up: universal macOS filename validation, direct native application-menu checking, a focused action dialog, six-hour polling and persistent deferred-update controls are implemented on the update-discovery branch. Native macOS discovery and focused controlled tests are recorded in implementation progress; final CI and release delivery remain separate gates. Older 0.1.2/0.1.3 Mac installs require a manual installer upgrade to receive the validator correction.
+
 - [ ] Add **Check for updates** in Settings/About and bounded automatic startup/periodic checks with a user preference, no overlapping requests, timeouts and backoff. Show installed/latest version, last successful check, release notes, up-to-date, offline and failure states. Checks use ordinary networking, never model calls.
 - [ ] Use the supported Tauri updater with signed platform/architecture artifacts and a release manifest hosted through GitHub Releases. Verify signatures before installation and reject wrong-target, tampered or incompatible artifacts. Keep stable and prerelease selection explicit; do not silently move stable users to prereleases.
 - [ ] Download with progress/cancellation and offer explicit **Install and restart** or **Later**. Automatic checking does not imply forced installation or interruption of active work.

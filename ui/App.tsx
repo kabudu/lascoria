@@ -14,7 +14,7 @@ import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
 import { SupportReport } from './SupportReport';
 import { TokenUse } from './TokenUse';
-import { UpdateSettings, type UpdateStatus } from './Updates';
+import { checkForUpdates, UpdateSettings, type UpdateStatus } from './Updates';
 import {
   EditorSettings,
   EfficiencySettings,
@@ -210,7 +210,7 @@ export function App() {
   useEffect(() => {
     if (serviceRestart === 'whenIdle' && serviceOutdated && !workRunning) void restartService();
   }, [serviceRestart, serviceOutdated, workRunning]);
-  // Automatic update checks: once a day when on (the default), backing off for six hours after
+  // Automatic update checks: every six hours when on (the default), backing off for six hours after
   // a failure. Finding an update only shows a small toolbar notice; nothing downloads.
   const updatePrefsRef = useRef(prefs.updates);
   updatePrefsRef.current = prefs.updates;
@@ -218,23 +218,25 @@ export function App() {
     if (!appUpdate?.configured || prefs.updates?.automatic === false) return;
     let cancelled = false;
     let failedAt = 0;
+    let checking = false;
     const tick = async () => {
       const settings = updatePrefsRef.current ?? {};
-      const due = Date.now() - (settings.lastCheckedAtMs ?? 0) > 24 * 3_600_000;
-      if (cancelled || !due || Date.now() - failedAt < 6 * 3_600_000) return;
+      const due = Date.now() - (settings.lastCheckedAtMs ?? 0) >= 6 * 3_600_000;
+      if (cancelled || checking || !due || Date.now() - failedAt < 6 * 3_600_000) return;
+      checking = true;
       try {
-        const result = await invoke<UpdateStatus>('update_check', {
-          channel: settings.channel ?? 'stable',
-        });
+        const result = await checkForUpdates(settings.channel ?? 'stable');
         if (cancelled) return;
         setAppUpdate((previous) => (previous ? { ...previous, ...result } : previous));
         updatePrefs({ updates: { ...settings, lastCheckedAtMs: Date.now() } });
       } catch {
         failedAt = Date.now();
+      } finally {
+        checking = false;
       }
     };
     const first = setTimeout(() => void tick(), 20_000);
-    const timer = setInterval(() => void tick(), 3_600_000);
+    const timer = setInterval(() => void tick(), 60_000);
     return () => {
       cancelled = true;
       clearTimeout(first);
@@ -381,12 +383,45 @@ export function App() {
       | 'support'
       | 'general'
       | 'editor'
+      | 'update'
       | 'updates'
       | 'efficiency'
       | 'decisions'
       | null
     >(null),
     [tab, setTab] = useState('transcript');
+  const [updateCheckRequest, setUpdateCheckRequest] = useState(0);
+  function openUpdates() {
+    setUpdateCheckRequest((request) => request + 1);
+    setModal('update');
+  }
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) return;
+    let disposed = false;
+    const stops: (() => void)[] = [];
+    const register = (promise: Promise<() => void>) =>
+      void promise
+        .then((stop) => {
+          if (disposed) stop();
+          else stops.push(stop);
+        })
+        .catch(() => {});
+    register(listen('lascoria-check-updates', openUpdates));
+    register(
+      listen('update-progress', () => {
+        void invoke<UpdateStatus>('update_status').then(
+          (next) => {
+            if (!disposed) setAppUpdate(next);
+          },
+          () => {},
+        );
+      }),
+    );
+    return () => {
+      disposed = true;
+      stops.forEach((stop) => stop());
+    };
+  }, []);
   const [archiveTarget, setArchiveTarget] = useState<string | null>(null);
   const archiveSession = status.sessions.find((row) => row.id === archiveTarget);
   const [review, setReview] = useState<{
@@ -1253,8 +1288,16 @@ export function App() {
             </button>
           )}
           {appUpdate?.available && (
-            <button className="update-indicator" onClick={() => setModal('updates')}>
-              Update available
+            <button
+              className="update-indicator"
+              onClick={() => {
+                setUpdateCheckRequest(0);
+                setModal('update');
+              }}
+            >
+              {appUpdate.downloaded
+                ? 'Restart to update'
+                : `Update to ${appUpdate.available.version}`}
             </button>
           )}
           {prefs.usageIndicator && account?.mode !== 'apiKey' && (
@@ -3317,40 +3360,67 @@ export function App() {
         ref={modalRef}
         onCancel={() => setModal(null)}
         aria-labelledby="dialog-heading"
-        className={isSettingsSection(modal) ? 'settings-dialog' : undefined}
+        className={
+          isSettingsSection(modal)
+            ? 'settings-dialog'
+            : modal === 'update'
+              ? 'update-dialog'
+              : undefined
+        }
       >
         <div className="dialog-heading">
           <h2 id="dialog-heading">
             {isSettingsSection(modal)
               ? 'Settings'
-              : modal === 'archive'
-                ? 'Archive session'
-                : modal === 'rename'
-                  ? 'Rename session'
-                  : modal === 'inbox'
-                    ? 'New local messages'
-                    : modal === 'help'
-                      ? 'Lascoria help'
-                      : modal === 'search'
-                        ? 'Search history'
-                        : modal === 'relay'
-                          ? 'Local session messages'
-                          : modal === 'account'
-                            ? 'Your Muse connection'
-                            : modal === 'start'
-                              ? 'Start a Muse session'
-                              : modal === 'stop'
-                                ? 'Log out of Lascoria'
-                                : modal === 'diagnostics'
-                                  ? 'Performance diagnostics'
-                                  : modal === 'settings'
-                                    ? 'Session model and effort'
-                                    : 'Command palette'}
+              : modal === 'update'
+                ? 'Update Lascoria'
+                : modal === 'archive'
+                  ? 'Archive session'
+                  : modal === 'rename'
+                    ? 'Rename session'
+                    : modal === 'inbox'
+                      ? 'New local messages'
+                      : modal === 'help'
+                        ? 'Lascoria help'
+                        : modal === 'search'
+                          ? 'Search history'
+                          : modal === 'relay'
+                            ? 'Local session messages'
+                            : modal === 'account'
+                              ? 'Your Muse connection'
+                              : modal === 'start'
+                                ? 'Start a Muse session'
+                                : modal === 'stop'
+                                  ? 'Log out of Lascoria'
+                                  : modal === 'diagnostics'
+                                    ? 'Performance diagnostics'
+                                    : modal === 'settings'
+                                      ? 'Session model and effort'
+                                      : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'update' && (
+          <div className="update-dialog-content">
+            <UpdateSettings
+              prefs={prefs}
+              update={updatePrefs}
+              workRunning={workRunning}
+              pauseWork={pauseAndStopService}
+              onStatus={setAppUpdate}
+              checkRequest={updateCheckRequest}
+              compact
+            />
+            <div className="update-dialog-footer">
+              <button onClick={() => setModal(null)}>Done for now</button>
+              <button className="quiet-button" onClick={() => setModal('updates')}>
+                Update preferences
+              </button>
+            </div>
+          </div>
+        )}
         {modal === 'archive' && (
           <ArchiveSession
             session={archiveSession}
@@ -3507,6 +3577,7 @@ export function App() {
                 update={updatePrefs}
                 workRunning={workRunning}
                 pauseWork={pauseAndStopService}
+                onStatus={setAppUpdate}
               />
             )}
             {modal === 'notifications' && (

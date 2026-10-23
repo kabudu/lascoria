@@ -66,6 +66,11 @@ fn release_path(version: &str, system: &str, arch: &str) -> Option<String> {
         ("linux", "aarch64" | "x86_64") => ("linux", ".AppImage"),
         _ => return None,
     };
+    let arch = if system == "darwin" {
+        "universal"
+    } else {
+        arch
+    };
     Some(format!(
         "/kabudu/lascoria/releases/download/v{version}/Lascoria_{version}_{system}-{arch}{suffix}"
     ))
@@ -490,10 +495,24 @@ mod tests {
         ] {
             let path = release_path("1.2.3-beta.1", system, arch).unwrap();
             assert!(path.contains("/v1.2.3-beta.1/Lascoria_1.2.3-beta.1_"));
-            assert!(path.ends_with(&format!("{arch}{suffix}")));
+            let target = if system == "macos" { "universal" } else { arch };
+            assert!(path.ends_with(&format!("{target}{suffix}")));
         }
         assert!(release_path("1.2.3", "windows", "aarch64").is_none());
         assert!(release_path("1.2.3", "linux", "x86").is_none());
+    }
+
+    #[test]
+    fn published_universal_mac_artifact_matches_both_processors() {
+        // Independent public release naming contract, not derived from release_path.
+        let published =
+            "/kabudu/lascoria/releases/download/v0.1.3/Lascoria_0.1.3_darwin-universal.app.tar.gz";
+        for arch in ["aarch64", "x86_64"] {
+            assert_eq!(
+                release_path("0.1.3", "macos", arch).as_deref(),
+                Some(published)
+            );
+        }
     }
 
     #[cfg(not(feature = "update-acceptance"))]
@@ -524,7 +543,9 @@ mod tests {
         } else {
             "aarch64"
         };
-        if let Some(other_path) = release_path("1.2.3", std::env::consts::OS, other) {
+        if let Some(other_path) = release_path("1.2.3", std::env::consts::OS, other)
+            && other_path != path
+        {
             assert!(
                 validate_artifact_url(
                     &format!("https://github.com{other_path}").parse().unwrap(),

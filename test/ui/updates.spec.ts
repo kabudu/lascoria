@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 // R3: check, download and install are separate explicit steps; installing asks first and, where
 // the installer must replace the running service, pauses work before installing. After an
@@ -256,11 +257,16 @@ test('late update listener registration is disposed after leaving Settings', asy
   };
   let reads = 0;
   let nextListener = 100;
+  let globalProgressRegistered = false;
   let pending: { id: number; callback: number; resolve: (id: number) => void } | undefined;
   const unlistened: number[] = [];
   await page.exposeFunction('listenerBridge', async (command: string, args: any) => {
     if (command === 'connect_supervisor') return status;
     if (command === 'plugin:event|listen' && args.event === 'update-progress') {
+      if (!globalProgressRegistered) {
+        globalProgressRegistered = true;
+        return 99;
+      }
       const id = ++nextListener;
       return new Promise<number>((resolve) => {
         pending = { id, callback: args.handler, resolve };
@@ -332,4 +338,140 @@ test('late update listener registration is disposed after leaving Settings', asy
     expect(after).toBe(before);
   }
   expect(unlistened.filter((id) => id >= 101)).toEqual([101, 102]);
+});
+
+test('native update action, six-hour discovery and deferred update stay connected', async ({
+  page,
+}) => {
+  const status = {
+    pid: 1,
+    version: 'e1:1',
+    appVersion: '0.1.3',
+    features: [],
+    commands: [],
+    sessions: [],
+  };
+  let checks = 0;
+  let fail = false;
+  let downloads = 0;
+  let update: any = {
+    configured: true,
+    currentVersion: '0.1.3',
+    installStopsWork: true,
+    available: null,
+    downloaded: false,
+    downloading: false,
+    progress: null,
+    lastCheckedAtMs: null,
+    lastError: null,
+  };
+  await page.exposeFunction('discoveryBridge', async (command: string, args: any) => {
+    if (command === 'connect_supervisor') return status;
+    if (command.startsWith('plugin:event|')) return 1;
+    if (command === 'update_status') return update;
+    if (command === 'update_check') {
+      checks++;
+      update.lastCheckedAtMs = Date.now();
+      if (fail) {
+        update.lastError = 'Could not reach the update server. Check your connection and try again';
+        throw Error(update.lastError);
+      }
+      update = {
+        ...update,
+        lastError: null,
+        available: { version: '0.1.4', notes: 'Clearer update controls', date: Date.now() },
+      };
+      return update;
+    }
+    if (command === 'update_download') {
+      downloads++;
+      update.downloaded = true;
+      return null;
+    }
+    if (args?.operation === 'status') return status;
+    if (args?.operation === 'presentation/get')
+      return { revision: 0, value: { theme: 'light', updates: { automatic: true } } };
+    return {};
+  });
+  await page.addInitScript(() => {
+    const callbacks = new Map<number, (event: unknown) => void>();
+    const events = new Map<string, number>();
+    let next = 0;
+    (window as any).__updateEvent = (name: string) => {
+      const id = events.get(name);
+      if (!id) throw Error(`No native listener: ${name}`);
+      callbacks.get(id)!({ event: name, id, payload: {} });
+    };
+    (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
+    (window as any).__TAURI_INTERNALS__ = {
+      transformCallback: (callback: (event: unknown) => void) => {
+        callbacks.set(++next, callback);
+        return next;
+      },
+      invoke: (command: string, args: any) => {
+        if (command === 'plugin:event|listen') events.set(args.event, args.handler);
+        return (window as any).discoveryBridge(command, args);
+      },
+    };
+  });
+  await page.clock.install();
+  await page.goto('/');
+  await expect(page.getByLabel('Workspace menu', { exact: true })).toBeVisible();
+  await page.clock.fastForward(21_000);
+  await expect.poll(() => checks).toBe(1);
+  const indicator = page.getByRole('button', { name: 'Update to 0.1.4', exact: true });
+  await expect(indicator).toBeVisible();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  expect(downloads).toBe(0);
+  await page.clock.fastForward(5 * 3_600_000);
+  expect(checks).toBe(1);
+  await page.clock.fastForward(3_600_000 + 60_000);
+  await expect.poll(() => checks).toBe(2);
+  await page.evaluate(() => (window as any).__updateEvent('lascoria-check-updates'));
+  const dialog = page.getByRole('dialog', { name: 'Update Lascoria', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => checks).toBe(3);
+  await expect(dialog.getByRole('heading', { name: 'Lascoria 0.1.4 is available' })).toBeVisible();
+  await expect(dialog.getByRole('navigation', { name: 'Settings sections' })).toHaveCount(0);
+  await dialog.getByText("What's new", { exact: true }).click();
+  await expect(dialog).toContainText('Clearer update controls');
+  for (const width of [1440, 820]) {
+    await page.setViewportSize({ width, height: 940 });
+    await expect
+      .poll(() => dialog.evaluate((node) => node.scrollWidth <= node.clientWidth))
+      .toBe(true);
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((theme) => {
+        document.documentElement.dataset.theme = theme;
+      }, theme);
+      expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
+      await page.screenshot({ path: `.dev/update-dialog-${width}-${theme}.png` });
+    }
+  }
+  await dialog.getByRole('button', { name: 'Done for now' }).click();
+  await expect(indicator).toBeVisible();
+  expect(downloads).toBe(0);
+  await indicator.click();
+  expect(checks).toBe(3);
+  await dialog.getByRole('button', { name: 'Download', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Install and restart…' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Done for now' }).click();
+  await expect(page.getByRole('button', { name: 'Restart to update', exact: true })).toBeVisible();
+  expect(downloads).toBe(1);
+  fail = true;
+  await page.evaluate(() => (window as any).__updateEvent('lascoria-check-updates'));
+  await expect(dialog.getByRole('alert')).toContainText('Could not reach the update server');
+  await expect(dialog.getByText('Lascoria is up to date.', { exact: true })).toHaveCount(0);
+  // A failed recheck retains the verified download and the persistent action.
+  await expect(dialog.getByRole('button', { name: 'Install and restart…' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Done for now' }).click();
+  await page.clock.fastForward(6 * 3_600_000 + 60_000);
+  await expect.poll(() => checks).toBe(5);
+  await page.clock.fastForward(5 * 3_600_000);
+  expect(checks).toBe(5);
+  fail = false;
+  await page.clock.fastForward(3_600_000 + 60_000);
+  await expect.poll(() => checks).toBe(6);
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Restart to update', exact: true })).toBeVisible();
 });

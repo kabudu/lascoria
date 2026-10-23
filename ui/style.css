@@ -3359,3 +3359,66 @@ button.link {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+
+/* A focused update decision, with detailed preferences kept in Settings. */
+.update-dialog-content {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+.update-content {
+  min-width: 0;
+}
+.update-content > p {
+  margin-top: 0;
+}
+.update-version {
+  color: var(--muted);
+}
+.update-available {
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+}
+.update-available h3,
+.update-available h4 {
+  font-size: 1.2rem;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+}
+.update-available progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.update-content button {
+  min-height: 40px;
+}
+.update-content .update-notes {
+  overflow-wrap: anywhere;
+  padding-right: 0.5rem;
+  line-height: 1.6;
+}
+.update-content .update-confirm {
+  background: var(--accent-surface);
+  border: 0;
+  padding: 1rem;
+}
+.update-confirm button {
+  margin: 0.25rem 0.5rem 0.25rem 0;
+}
+.update-dialog-footer {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.update-dialog-footer button {
+  min-height: 40px;
+}
+
+.update-dialog .dialog-heading h2 {
+  font-size: 1.4rem;
+  letter-spacing: -0.025em;
+  margin: 0;
+}

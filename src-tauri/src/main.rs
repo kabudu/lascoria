@@ -421,7 +421,33 @@ fn main() {
         return;
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(|app| {
+            let menu = tauri::menu::Menu::default(app)?;
+            if let Some(tauri::menu::MenuItemKind::Submenu(application)) = menu.items()?.first() {
+                let check = tauri::menu::MenuItem::with_id(
+                    app,
+                    "check-updates",
+                    "Check for Updates…",
+                    true,
+                    None::<&str>,
+                )?;
+                application.insert(&check, 1)?;
+            }
+            Ok(menu)
+        })
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "check-updates" {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+                let _ = app.emit("lascoria-check-updates", ());
+            }
+        });
+    builder
         .plugin(tauri_plugin_dialog::init())
         // No capability grants its IPC commands; only notifications.rs can show one.
         .plugin(tauri_plugin_notification::init())
