@@ -4,6 +4,8 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+## 0.1.4 - 2026-10-23
+
 - Fix universal macOS update discovery and add a direct macOS Check for Updates menu command.
 - Show updates in a focused dialog with a persistent toolbar action and quiet checks every six hours.
 
