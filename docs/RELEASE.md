@@ -104,3 +104,11 @@ Publication confirmation uses the successful response bound to the existing rele
 ### Verified v0.1.3 update
 
 [Lascoria v0.1.3](https://github.com/kabudu/lascoria/releases/tag/v0.1.3) is public from annotated source commit `aa1aac8`, matching the reviewed application tree at `b71f3b3`. The complete production workflow passed. Independent public-download checks verified all 13 assets/checksums, the curated metadata, all four updater signatures and the five platform mappings. Both macOS containers passed architecture, signing, notarization and Gatekeeper checks; both Linux packages passed architecture/version checks, including the Debian desktop, supervisor and Node binaries. Stable, beta and default updater manifests agree on 0.1.3. Canonical notes were reviewed at desktop and mobile widths, and the production website routes downloads to the latest release. These checks do not extend the separately recorded native installation/migration scope.
+
+### Verified v0.1.4 update
+
+[Lascoria v0.1.4](https://github.com/kabudu/lascoria/releases/tag/v0.1.4) is public from annotated source `4d00f65`, matching the reviewed security-patched tree at `7b15b99`. The [production workflow](https://github.com/kabudu/lascoria/actions/runs/39943485879) passed the online audit, all four package builds, three native validation jobs and publication. The release includes ctutils 0.4.4 for RUSTSEC-2026-0385.
+
+Independent public-download verification passed for all 13 assets, checksums, curated metadata, four updater signatures and five platform mappings. Both Mac containers retain the production identity and version 0.1.4, include Apple Silicon/Intel slices in all three executables, require macOS 13.5 and pass strict signing, stapled ticket and Gatekeeper checks. Windows installer PE/version metadata and Linux AppImage/Debian architecture/version checks passed. Stable, beta and version-specific manifests are byte-identical at 0.1.4. Canonical notes and the production website download path were verified. These checks do not extend the separately recorded installed-platform migration scope.
+
+Mac versions 0.1.2 and 0.1.3 require one manual installer upgrade to receive the universal-filename validator fix. Pause work and quit safely before replacing the app; subsequent versions use the native Lascoria menu or Settings update flow.
