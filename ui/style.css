@@ -3422,3 +3422,80 @@ button.link {
   letter-spacing: -0.025em;
   margin: 0;
 }
+
+.usage-shortcut {
+  position: relative;
+  flex-shrink: 0;
+}
+.usage-shortcut .usage-shortcut-button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.usage-shortcut-button[aria-expanded='true'],
+.usage-shortcut-button:hover {
+  background: var(--accent-surface);
+  color: var(--accent);
+}
+.usage-popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: min(350px, calc(100vw - 40px));
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 16px 48px #0002;
+  z-index: 60;
+  font-size: 0.85rem;
+}
+.usage-popover-source {
+  margin: 0 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.usage-popover-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 20px;
+  padding: 9px 0;
+}
+.usage-popover-row strong {
+  white-space: nowrap;
+  font-weight: 600;
+}
+.usage-popover .hint {
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
+.usage-shortcut .usage-popover-manage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  margin: 16px 0 0;
+  padding: 12px 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  font-size: inherit;
+}
+.service-upgrade p {
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.service-upgrade h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}

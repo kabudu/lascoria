@@ -828,3 +828,18 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Independently download all 13 public assets and verify their API digests, published checksums, exact inventory, curated notes/source metadata, four updater signatures and five platform mappings. Stable, version-specific and beta manifests are byte-identical at 0.1.4.
 - [x] Verify the public Mac installer and updater: both CPU slices in desktop/supervisor/Node, version 0.1.4, retained production identity, macOS 13.5, strict signatures, stapled notarization and Gatekeeper. Verify Windows installer PE/version metadata and both Linux AppImage architectures plus Debian version/architecture and all three packaged executable architectures. These are package checks, not an additional installed-OS migration trial.
 - [x] Review canonical public notes at desktop/mobile widths and verify the production website latest-release link and path/query-preserving apex redirect. Temporary verification mounts are ejected; user app/service sessions are preserved.
+
+### Subscription usage shortcut and legacy-service recovery (25 October)
+
+- [x] Replace disabled account/usage entry points on an older background service with quiet automatic handover when idle, including services that predate version/capability reporting. Active tasks, questions, approvals and pending saves defer the handover. Failed attempts expose a retry without an automatic failure loop.
+- [x] Add a header usage icon with cached current-window and weekly subscription figures, last-reported time, stale/reset-passed and missing-data states, and access to the detailed view. API-key billing does not show a subscription shortcut. Cache reads run only while open, at most once per minute, without creating a host or model request.
+- [x] Validate controlled subscription fixtures in both themes at desktop/narrow widths, keyboard dismissal/focus, accessibility, missing data and legacy recovery without interrupting active work. Isolated native macOS Tauri/WebKit interaction confirms icon, popover layout and navigation to Account & usage; this native check uses Echo and does not establish fresh live subscription figures. Owned QA processes are stopped; user sessions remain running. Final reviewed-head CI is recorded in the PR.
+
+- [x] Recheck idle state after saving drafts/layout; refuse to replace a newer service, serialize local mutations with handover, and inspect the existing connection before retrying an uncertain replacement. Services advertising `idleStop` also refuse a stop if work appears at the supervisor barrier. Older services retain the fresh client-side check but cannot enforce that new server-side precondition.
+- [x] Validate idle, active, question, approval, pending-storage, fresh-work, server-busy, stop-failure, reconnect-failure and newer-service paths through the UI. Real Rust/Muse controlled-provider lifecycle checks prove active idle-stop refusal and idle shutdown. An isolated macOS native trial masks version/capabilities on a real supervisor, then observes automatic process replacement, reconnection, restored usage capability and retained synthetic presentation data. No model call or user-service restart was performed for that native trial.
+
+### v0.1.5 delivery
+
+- [x] Prepare consistent 0.1.5 version metadata and curated notes for subscription usage and automatic idle service handover. Release preflight caught RUSTSEC-2026-0386; update the affected Tokio lock entries to the patched 1.53.3 without weakening the audit.
+- [ ] Pass final reviewed-head local and hosted validation, merge PR #16 and publish the production packages.
+- [ ] Independently verify public binaries, updater signatures, checksums and stable/beta manifests before confirming delivery.

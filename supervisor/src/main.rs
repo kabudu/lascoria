@@ -53,6 +53,7 @@ const FEATURES: &[&str] = &[
     "decisionAssistance",
     "decisionTriage",
     "decisionTool",
+    "idleStop",
 ];
 
 use anyhow::{Context, Result, bail, ensure};
@@ -575,6 +576,20 @@ impl Actor {
                 actual == expected,
                 "Affected sessions changed; refresh status before stop"
             );
+            if params["onlyIfIdle"] == true
+                && sessions.iter().any(|row| {
+                    !row["state"]["activeTurnId"].is_null()
+                        || row["state"]["approvals"]
+                            .as_array()
+                            .is_some_and(|v| !v.is_empty())
+                        || row["state"]["userInputs"]
+                            .as_array()
+                            .is_some_and(|v| !v.is_empty())
+                        || matches!(row["lifecycle"].as_str(), Some("starting" | "recovering"))
+                })
+            {
+                return Ok(json!({"stopping":false,"reason":"busy"}));
+            }
             return Ok(json!({"stopping":true,"sessions":expected}));
         }
         ensure!(

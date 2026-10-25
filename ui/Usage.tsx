@@ -169,17 +169,17 @@ export function Usage({
           >
             {loading ? 'Reading usage…' : 'Refresh usage'}
           </button>
-          <span className="hint">No model request</span>
         </div>
       )}
       {!apiKey && setIndicator && (
-        <label className="usage-indicator-setting">
+        <label className="toggle-switch usage-indicator-setting">
           <input
             type="checkbox"
+            role="switch"
             checked={Boolean(indicator)}
             onChange={(event) => setIndicator(event.currentTarget.checked)}
           />
-          Show the weekly allowance in the toolbar
+          <span>Show the weekly allowance in the toolbar</span>
         </label>
       )}
       <details className="usage-details">

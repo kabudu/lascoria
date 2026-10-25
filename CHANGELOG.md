@@ -4,6 +4,13 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+## 0.1.5 - 2026-10-25
+
+- Update Tokio to address RUSTSEC-2026-0386.
+
+- Add a header shortcut for subscription usage, with current and weekly allowance and freshness information.
+- Automatically finish older background-service updates when work is idle, preserving conversations and drafts and offering a retry if needed.
+
 ## 0.1.4 - 2026-10-23
 
 - Fix universal macOS update discovery and add a direct macOS Check for Updates menu command.

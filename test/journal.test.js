@@ -100,7 +100,10 @@ test(
       'old worker drain interruption is retained',
     );
     assert.equal(afterResume.lifecycle, 'connected');
-    assert.equal((await request(directory, 'stop', { sessions: [sessionId] })).stopping, true);
+    assert.equal(
+      (await request(directory, 'stop', { sessions: [sessionId], onlyIfIdle: true })).stopping,
+      true,
+    );
     await new Promise((resolve) => {
       if (daemon.exitCode !== null) resolve();
       else daemon.once('exit', resolve);

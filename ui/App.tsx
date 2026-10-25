@@ -12,6 +12,7 @@ import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
+import { UsageShortcut } from './UsageShortcut';
 import { SupportReport } from './SupportReport';
 import { TokenUse } from './TokenUse';
 import { checkForUpdates, UpdateSettings, type UpdateStatus } from './Updates';
@@ -172,17 +173,25 @@ export function App() {
   const concurrencyOk = useRef<string | null>(null);
   // T3: tasks already cancelled for going over budget, so each is stopped at most once.
   const budgetStopped = useRef(new Set<string>());
-  const [serviceRestart, setServiceRestart] = useState<'whenIdle' | 'restarting' | null>(null);
+  const [serviceRestart, setServiceRestart] = useState<'whenIdle' | 'restarting' | 'failed' | null>(
+    null,
+  );
+  const [serviceReady, setServiceReady] = useState(false);
+  const handoverPending = useRef(false);
+  const handoverAttempted = useRef(false);
   useEffect(() => {
     if (!(window as any).__TAURI_INTERNALS__) return;
     void invoke<UpdateStatus>('update_status').then(setAppUpdate, () => {});
   }, []);
-  const workRunning = status.sessions.some(
-    (s) =>
-      Boolean(s.state.activeTurnId) ||
-      (s.state.approvals?.length ?? 0) > 0 ||
-      (s.state.userInputs?.length ?? 0) > 0,
-  );
+  const hasWork = (snapshot: Status) =>
+    snapshot.sessions.some(
+      (s) =>
+        Boolean(s.state.activeTurnId) ||
+        (s.state.approvals?.length ?? 0) > 0 ||
+        (s.state.userInputs?.length ?? 0) > 0 ||
+        ['starting', 'recovering'].includes(s.lifecycle),
+    );
+  const workRunning = hasWork(status);
   useEffect(() => {
     const settings = prefs.efficiency;
     if (!settings?.stopOverBudget || !(settings.taskBudget ?? 0)) return;
@@ -203,13 +212,18 @@ export function App() {
   }, [status.sessions, prefs.efficiency]);
   const serviceOutdated = Boolean(
     connected &&
-    status.appVersion &&
-    appUpdate?.currentVersion &&
-    status.appVersion !== appUpdate.currentVersion,
+    ((!status.appVersion && status.features == null) ||
+      (status.appVersion &&
+        appUpdate?.currentVersion &&
+        /^\d+\.\d+\.\d+$/.test(status.appVersion) &&
+        /^\d+\.\d+\.\d+$/.test(appUpdate.currentVersion) &&
+        appUpdate.currentVersion.localeCompare(status.appVersion, 'en', { numeric: true }) > 0)),
   );
   useEffect(() => {
-    if (serviceRestart === 'whenIdle' && serviceOutdated && !workRunning) void restartService();
-  }, [serviceRestart, serviceOutdated, workRunning]);
+    if (!serviceOutdated || !serviceReady || busy || status.storage) return;
+    if (serviceRestart === null && !handoverAttempted.current) setServiceRestart('whenIdle');
+    if (serviceRestart === 'whenIdle' && !workRunning) void restartService(true);
+  }, [serviceRestart, serviceOutdated, workRunning, busy, status.storage, serviceReady]);
   // Automatic update checks: every six hours when on (the default), backing off for six hours after
   // a failure. Finding an update only shows a small toolbar notice; nothing downloads.
   const updatePrefsRef = useRef(prefs.updates);
@@ -575,10 +589,14 @@ export function App() {
       };
       setPrefs(latestPrefs.current);
       loaded.current = true;
+      setServiceReady(true);
       setError('');
+      return true;
     } catch (e) {
       setError(String(e));
       setConnected(false);
+      setServiceReady(false);
+      return false;
     }
   }
   useEffect(() => {
@@ -725,33 +743,71 @@ export function App() {
     await request('stop', { sessions: fresh.sessions.map((s) => s.id) });
   }
   // R3: pause work and wait until the background service has exited.
-  async function pauseAndStopService() {
+  async function pauseAndStopService(onlyIfIdle = false) {
     await flushDraftsRef.current();
     await flushPrefs();
-    if (serviceStoppedForUpdate.current) return;
-    await pauseAll();
+    if (serviceStoppedForUpdate.current) return true;
+    // Recheck after saving, not just the snapshot that scheduled this handover.
+    const fresh = await refresh();
+    if (onlyIfIdle && (hasWork(fresh) || fresh.storage)) return false;
+    const result = await request('stop', {
+      sessions: fresh.sessions.map((s) => s.id),
+      ...(onlyIfIdle && fresh.features?.includes('idleStop') ? { onlyIfIdle: true } : {}),
+    });
+    if (result.stopping === false) {
+      const next = await refresh();
+      if (hasWork(next) || next.storage) return false;
+      throw new Error('Lascoria is still finishing earlier work. Try again in a moment.');
+    }
     for (let i = 0; i < 100; i++) {
       try {
         await request('status');
       } catch {
         serviceStoppedForUpdate.current = true;
         setConnected(false);
-        return;
+        return true;
       }
       await new Promise((r) => setTimeout(r, 200));
     }
     throw new Error('The background service did not stop; try again in a moment');
   }
   // R3 handoff: move the background service to this app's version, then reconnect.
-  async function restartService() {
+  async function restartService(onlyIfIdle = false) {
+    if (handoverPending.current || mutationPending.current) return;
+    handoverPending.current = true;
+    handoverAttempted.current = true;
     setServiceRestart('restarting');
+    setBusy(true);
     try {
-      await pauseAndStopService();
-      await boot();
+      // A lost stop/reconnect reply may have already completed the replacement. Connect is
+      // idempotent: inspect it before sending another stop on an explicit retry.
+      if (serviceRestart === 'failed') {
+        if (!(await boot())) throw new Error('Could not reconnect. Try again in a moment.');
+        const next = await refresh();
+        if (appUpdate?.currentVersion && next.appVersion === appUpdate.currentVersion) {
+          setServiceRestart(null);
+          return;
+        }
+      }
+      if (!(await pauseAndStopService(onlyIfIdle))) {
+        setServiceRestart('whenIdle');
+        return;
+      }
+      if (!(await boot()))
+        throw new Error('Could not reconnect to Lascoria. Your saved work is retained.');
+      const next = await refresh();
+      if (
+        (!next.appVersion && next.features == null) ||
+        (appUpdate?.currentVersion && next.appVersion !== appUpdate.currentVersion)
+      )
+        throw new Error('The updated service is not available yet.');
       setServiceRestart(null);
     } catch (e) {
-      setServiceRestart(null);
-      setError(`Background service restart failed: ${String(e)}`);
+      setServiceRestart('failed');
+      setError(`Lascoria could not finish updating: ${String(e)}`);
+    } finally {
+      handoverPending.current = false;
+      setBusy(false);
     }
   }
   async function pauseIfPreferred() {
@@ -1032,7 +1088,7 @@ export function App() {
     }
   }
   async function mutate(operation: string, params: Json) {
-    if (mutationPending.current) return;
+    if (mutationPending.current || handoverPending.current) return;
     mutationPending.current = true;
     setBusy(true);
     setError('');
@@ -1248,6 +1304,27 @@ export function App() {
       </span>
     </button>
   );
+  const serviceUpgrade = (
+    <section className="service-upgrade" aria-label="Background service update">
+      <h3>
+        {serviceRestart === 'failed'
+          ? 'Could not finish updating'
+          : 'Usage will be available shortly'}
+      </h3>
+      <p>
+        {serviceRestart === 'failed'
+          ? 'Your saved work is retained. Try again to finish updating Lascoria.'
+          : workRunning
+            ? 'Lascoria will finish updating when your current work finishes. Your tasks and questions stay open.'
+            : 'Lascoria is finishing an update. Your conversations and drafts are retained.'}
+      </p>
+      {serviceRestart === 'failed' && (
+        <button disabled={busy} onClick={() => void restartService(true)}>
+          Try again
+        </button>
+      )}
+    </section>
+  );
   return (
     <div className="shell">
       <header className="topbar">
@@ -1318,9 +1395,8 @@ export function App() {
           </span>
           <button
             className="account-status"
-            disabled={!status.features?.includes('accounts')}
             onClick={() => {
-              void refreshAccount().catch(() => {});
+              if (status.features?.includes('accounts')) void refreshAccount().catch(() => {});
               setModal('account');
             }}
           >
@@ -1332,6 +1408,15 @@ export function App() {
                 : 'Sign in'
               : 'Muse account'}
           </button>
+          {account?.mode !== 'apiKey' && (
+            <UsageShortcut
+              enabled={Boolean(status.features?.includes('usageLatest'))}
+              subscription={account?.mode === 'subscription' && account.authenticated}
+              accountKey={`${account?.mode}:${account?.authenticated}:${account?.subscription?.state}`}
+              manage={() => setModal('usage')}
+              fallback={serviceUpgrade}
+            />
+          )}
           <button onClick={() => setModal('palette')} aria-label="Open command palette">
             {navigator.platform.startsWith('Mac') ? '⌘ K' : 'Ctrl K'}
           </button>
@@ -1410,9 +1495,8 @@ export function App() {
               )}
               <span className="eyebrow">Workspace</span>
               <button
-                disabled={!status.features?.includes('accounts')}
                 onClick={() => {
-                  void refreshAccount().catch(() => {});
+                  if (status.features?.includes('accounts')) void refreshAccount().catch(() => {});
                   setModal('account');
                 }}
               >
@@ -1429,10 +1513,6 @@ export function App() {
                 </button>
               )}
               <button
-                disabled={
-                  !status.features?.includes('usage') ||
-                  (!session && !status.features?.includes('usageLatest'))
-                }
                 onClick={() => setModal('usage')}
                 title={
                   menuUsage
@@ -1889,34 +1969,12 @@ export function App() {
               this clears. Unsaved updates may be lost if its background service stops.
             </div>
           )}
-          {serviceOutdated && (
+          {serviceRestart === 'failed' && (
             <div className="banner" role="status" aria-label="Finish updating">
-              {serviceRestart === 'restarting'
-                ? 'Restarting the background service…'
-                : serviceRestart === 'whenIdle'
-                  ? `Lascoria ${appUpdate?.currentVersion} is installed. The background service will restart when running work finishes.`
-                  : `Lascoria ${appUpdate?.currentVersion} is installed, but the background service is still ${status.appVersion}.`}
-              {serviceRestart === null && (
-                <>
-                  {workRunning ? (
-                    <>
-                      <button onClick={() => setServiceRestart('whenIdle')}>
-                        Restart when work finishes
-                      </button>
-                      <button onClick={() => void restartService()}>
-                        Pause work and restart now
-                      </button>
-                    </>
-                  ) : (
-                    <button onClick={() => void restartService()}>
-                      Restart background service
-                    </button>
-                  )}
-                </>
-              )}
-              {serviceRestart === 'whenIdle' && (
-                <button onClick={() => setServiceRestart(null)}>Cancel</button>
-              )}
+              Lascoria could not finish updating. Your saved work is retained.
+              <button disabled={busy} onClick={() => void restartService(true)}>
+                Try again
+              </button>
             </div>
           )}
           {notice && (
@@ -3408,7 +3466,9 @@ export function App() {
               prefs={prefs}
               update={updatePrefs}
               workRunning={workRunning}
-              pauseWork={pauseAndStopService}
+              pauseWork={async () => {
+                await pauseAndStopService();
+              }}
               onStatus={setAppUpdate}
               checkRequest={updateCheckRequest}
               compact
@@ -3551,9 +3611,7 @@ export function App() {
                   ? Boolean(status.features?.includes('dataLifecycle'))
                   : id === 'support'
                     ? Boolean(status.features?.includes('supportReport'))
-                    : id === 'usage'
-                      ? Boolean(status.features?.includes('usage'))
-                      : true
+                    : true
             }
           >
             <h3 className="settings-heading">
@@ -3576,7 +3634,9 @@ export function App() {
                 prefs={prefs}
                 update={updatePrefs}
                 workRunning={workRunning}
-                pauseWork={pauseAndStopService}
+                pauseWork={async () => {
+                  await pauseAndStopService();
+                }}
                 onStatus={setAppUpdate}
               />
             )}
@@ -3590,30 +3650,36 @@ export function App() {
                 lastError={notificationError}
               />
             )}
-            {modal === 'usage' && (
-              <Usage
-                key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}
-                sessionId={session?.state.current ? session.id : undefined}
-                latestEnabled={Boolean(status.features?.includes('usageLatest'))}
-                mode={account?.managed ? account.mode : undefined}
-                signedIn={account?.managed ? account.authenticated : undefined}
-                indicator={Boolean(prefs.usageIndicator)}
-                setIndicator={
-                  status.features?.includes('usageLatest')
-                    ? (on) => updatePrefs({ usageIndicator: on })
-                    : undefined
-                }
-              />
-            )}
+            {modal === 'usage' &&
+              (!status.features?.includes('usage') ? (
+                serviceUpgrade
+              ) : (
+                <Usage
+                  key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}
+                  sessionId={session?.state.current ? session.id : undefined}
+                  latestEnabled={Boolean(status.features?.includes('usageLatest'))}
+                  mode={account?.managed ? account.mode : undefined}
+                  signedIn={account?.managed ? account.authenticated : undefined}
+                  indicator={Boolean(prefs.usageIndicator)}
+                  setIndicator={
+                    status.features?.includes('usageLatest')
+                      ? (on) => updatePrefs({ usageIndicator: on })
+                      : undefined
+                  }
+                />
+              ))}
             {modal === 'data' && (
               <DataLifecycle refreshStatus={refresh} quit={() => setModal('stop')} />
             )}
             {modal === 'support' && <SupportReport />}
           </SettingsShell>
         )}
-        {modal === 'account' && (
-          <Account account={account} refresh={refreshAccount} onRuntimeReady={setRuntimeReady} />
-        )}
+        {modal === 'account' &&
+          (status.features?.includes('accounts') ? (
+            <Account account={account} refresh={refreshAccount} onRuntimeReady={setRuntimeReady} />
+          ) : (
+            serviceUpgrade
+          ))}
         {modal === 'settings' &&
           (() => {
             const target = status.sessions.find((s) => s.id === settingsTarget);

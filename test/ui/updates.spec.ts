@@ -166,84 +166,151 @@ test('updates are checked, downloaded and installed only on request, with a safe
   expect(calls.indexOf('stop')).toBeLessThan(calls.indexOf('update_install'));
 });
 
-test('a background service from an older version is restarted only when safe', async ({ page }) => {
-  const status: any = {
-    pid: 1,
-    version: 'e1:1',
-    appVersion: '0.1.0',
-    features: [],
-    commands: [],
-    sessions: [
-      {
-        id: 's',
-        workspace: '/repo',
-        generation: 1,
-        lifecycle: 'connected',
-        interruptions: [],
-        state: {
-          current: true,
-          activeTurnId: 't',
-          items: [],
-          totalItems: 0,
-          turns: [],
-          approvals: [],
-          userInputs: [],
+for (const scenario of [
+  'active',
+  'idle',
+  'question',
+  'approval',
+  'storage',
+  'fresh-work',
+  'server-busy',
+  'failure',
+  'reconnect',
+  'newer',
+] as const) {
+  test(`background service handover: ${scenario}`, async ({ page }) => {
+    const status: any = {
+      pid: 1,
+      version: 'e1:1',
+      appVersion: scenario === 'newer' ? '9.0.0' : '0.1.0',
+      features: ['idleStop'],
+      commands: [],
+      storage: scenario === 'storage' ? { unsaved: 1, message: 'Synthetic save pending' } : null,
+      sessions: [
+        {
+          id: 's',
+          workspace: '/repo',
+          generation: 1,
+          lifecycle: 'connected',
+          interruptions: [],
+          state: {
+            current: true,
+            activeTurnId: scenario === 'active' ? 't' : undefined,
+            items: [],
+            totalItems: 0,
+            turns: [],
+            approvals:
+              scenario === 'approval'
+                ? [
+                    {
+                      requested: {
+                        approvalId: 'a',
+                        turnId: 't',
+                        toolName: 'read',
+                        subject: 'Synthetic approval',
+                        rawArgs: '{}',
+                        availableChoices: [],
+                      },
+                    },
+                  ]
+                : [],
+            userInputs:
+              scenario === 'question' ? [{ userInputId: 'q', turnId: 't', questions: [] }] : [],
+          },
         },
-      },
-    ],
-  };
-  let stopped = false;
-  let stops = 0;
-  await page.exposeFunction('handoffBridge', async (command: string, args: any) => {
-    if (command === 'connect_supervisor') {
-      if (stopped) {
-        stopped = false;
-        status.appVersion = '0.2.0';
-        status.version = 'e2:1';
-      }
-      return status;
-    }
-    if (command === 'update_status')
-      return {
-        configured: true,
-        currentVersion: '0.2.0',
-        installStopsWork: false,
-        available: null,
-      };
-    switch (args?.operation) {
-      case 'status':
-        if (stopped) throw Error('Supervisor unavailable');
-        return status;
-      case 'stop':
-        stops++;
-        stopped = true;
-        return { stopping: true, sessions: ['s'] };
-      case 'presentation/get':
-        return { revision: 0, value: { sessionId: 's', updates: { automatic: false } } };
-      case 'review/list':
-        return { artifacts: [], evidence: [] };
-      default:
-        return {};
-    }
-  });
-  await page.addInitScript(() => {
-    (window as any).__TAURI_INTERNALS__ = {
-      invoke: (command: string, args: any) => (window as any).handoffBridge(command, args),
+      ],
     };
+    let stopped = false;
+    let stops = 0;
+    let fail = scenario === 'failure';
+    let reconnectFails = scenario === 'reconnect';
+    let serverBusy = scenario === 'server-busy';
+    let freshWork = scenario === 'fresh-work';
+    const stopParams: any[] = [];
+    await page.exposeFunction('handoffBridge', async (command: string, args: any) => {
+      if (command === 'connect_supervisor') {
+        if (stopped && reconnectFails) {
+          reconnectFails = false;
+          throw Error('Injected reconnect failure');
+        }
+        if (stopped) {
+          stopped = false;
+          status.appVersion = '0.2.0';
+          status.version = 'e2:1';
+        }
+        return status;
+      }
+      if (command === 'update_status')
+        return {
+          configured: true,
+          currentVersion: '0.2.0',
+          installStopsWork: false,
+          available: null,
+        };
+      switch (args?.operation) {
+        case 'status':
+          if (stopped) throw Error('Supervisor unavailable');
+          if (freshWork && !args.params.since) {
+            freshWork = false;
+            status.sessions[0].state.activeTurnId = 'new-task';
+            status.version = 'e1:2';
+          }
+          return status;
+        case 'stop':
+          stops++;
+          stopParams.push(args.params);
+          if (fail) throw Error('Injected restart refusal');
+          if (serverBusy) {
+            serverBusy = false;
+            status.sessions[0].state.activeTurnId = 'racing-task';
+            status.version = 'e1:2';
+            return { stopping: false, reason: 'busy' };
+          }
+          stopped = true;
+          return { stopping: true, sessions: ['s'] };
+        case 'presentation/get':
+          return { revision: 0, value: { sessionId: 's', updates: { automatic: false } } };
+        case 'review/list':
+          return { artifacts: [], evidence: [] };
+        default:
+          return {};
+      }
+    });
+    await page.addInitScript(() => {
+      (window as any).__TAURI_INTERNALS__ = {
+        invoke: (command: string, args: any) => (window as any).handoffBridge(command, args),
+      };
+    });
+    await page.goto('/');
+    const banner = page.getByRole('status', { name: 'Finish updating' });
+    if (scenario === 'newer') {
+      await page.waitForTimeout(2000);
+      expect(stops).toBe(0);
+      return;
+    }
+    if (scenario === 'failure' || scenario === 'reconnect') {
+      await expect(banner).toContainText('could not finish updating');
+      await page.waitForTimeout(2200);
+      expect(stops).toBe(1); // No automatic retry loop after an unknown/failing stop.
+      fail = false;
+      await banner.getByRole('button', { name: 'Try again' }).click();
+    } else if (scenario !== 'idle') {
+      await page.waitForTimeout(2200);
+      expect(stops).toBe(scenario === 'server-busy' ? 1 : 0);
+      await expect(banner).toHaveCount(0); // Waiting is quiet, not an action banner.
+      status.sessions[0].state.activeTurnId = undefined;
+      status.sessions[0].state.userInputs = [];
+      status.sessions[0].state.approvals = [];
+      status.storage = null;
+      status.version = 'e1:3';
+    }
+    await expect
+      .poll(() => stops, { timeout: 15000 })
+      .toBe(scenario === 'failure' || scenario === 'server-busy' ? 2 : 1);
+    await expect(banner).toHaveCount(0, { timeout: 15000 });
+    expect(stopParams.every((p) => p.onlyIfIdle === true)).toBe(true);
   });
-  await page.goto('/');
-  const banner = page.getByRole('status', { name: 'Finish updating' });
-  await expect(banner).toContainText('still 0.1.0');
-  await banner.getByRole('button', { name: 'Restart when work finishes' }).click();
-  await expect(banner).toContainText('will restart when running work finishes');
-  await page.waitForTimeout(1500);
-  expect(stops).toBe(0);
-  // The task finishes: the service restarts on its own and the banner goes.
-  status.sessions[0].state.activeTurnId = undefined;
-  status.version = 'e1:2';
-  await expect(banner).toHaveCount(0, { timeout: 15000 });
-  expect(stops).toBe(1);
-});
+}
 
 // A native listener can be installed before its asynchronous registration reply reaches the
 // WebView. Leaving Updates during that gap must dispose it, not retain it for the window's life.
