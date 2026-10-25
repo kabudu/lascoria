@@ -12,6 +12,7 @@ import { DraftConflict } from './DraftConflict';
 import { useDurableDrafts, relayDraftStore } from './useDurableDrafts';
 import { SkillPicker } from './SkillPicker';
 import { Usage } from './Usage';
+import { UsageShortcut } from './UsageShortcut';
 import { SupportReport } from './SupportReport';
 import { TokenUse } from './TokenUse';
 import { checkForUpdates, UpdateSettings, type UpdateStatus } from './Updates';
@@ -203,9 +204,10 @@ export function App() {
   }, [status.sessions, prefs.efficiency]);
   const serviceOutdated = Boolean(
     connected &&
-    status.appVersion &&
-    appUpdate?.currentVersion &&
-    status.appVersion !== appUpdate.currentVersion,
+    ((!status.appVersion && status.features == null) ||
+      (status.appVersion &&
+        appUpdate?.currentVersion &&
+        status.appVersion !== appUpdate.currentVersion)),
   );
   useEffect(() => {
     if (serviceRestart === 'whenIdle' && serviceOutdated && !workRunning) void restartService();
@@ -1248,6 +1250,33 @@ export function App() {
       </span>
     </button>
   );
+  const serviceUpgrade = (
+    <section className="service-upgrade" aria-label="Background service update">
+      <h3>Finish updating Lascoria</h3>
+      <p>
+        The running background service does not provide account and usage information. Restart it to
+        enable these features. Saved conversations and drafts are retained.
+      </p>
+      {serviceRestart ? (
+        <p role="status">
+          {serviceRestart === 'whenIdle'
+            ? 'The service will restart when running work finishes.'
+            : 'Restarting the background service…'}
+        </p>
+      ) : (
+        <div className="settings-actions">
+          {workRunning && (
+            <button onClick={() => setServiceRestart('whenIdle')}>
+              Restart when work finishes
+            </button>
+          )}
+          <button onClick={() => void restartService()}>
+            {workRunning ? 'Pause work and restart' : 'Restart background service'}
+          </button>
+        </div>
+      )}
+    </section>
+  );
   return (
     <div className="shell">
       <header className="topbar">
@@ -1318,9 +1347,8 @@ export function App() {
           </span>
           <button
             className="account-status"
-            disabled={!status.features?.includes('accounts')}
             onClick={() => {
-              void refreshAccount().catch(() => {});
+              if (status.features?.includes('accounts')) void refreshAccount().catch(() => {});
               setModal('account');
             }}
           >
@@ -1332,6 +1360,15 @@ export function App() {
                 : 'Sign in'
               : 'Muse account'}
           </button>
+          {account?.mode !== 'apiKey' && (
+            <UsageShortcut
+              enabled={Boolean(status.features?.includes('usageLatest'))}
+              subscription={account?.mode === 'subscription' && account.authenticated}
+              accountKey={`${account?.mode}:${account?.authenticated}:${account?.subscription?.state}`}
+              manage={() => setModal('usage')}
+              fallback={serviceUpgrade}
+            />
+          )}
           <button onClick={() => setModal('palette')} aria-label="Open command palette">
             {navigator.platform.startsWith('Mac') ? '⌘ K' : 'Ctrl K'}
           </button>
@@ -1410,9 +1447,8 @@ export function App() {
               )}
               <span className="eyebrow">Workspace</span>
               <button
-                disabled={!status.features?.includes('accounts')}
                 onClick={() => {
-                  void refreshAccount().catch(() => {});
+                  if (status.features?.includes('accounts')) void refreshAccount().catch(() => {});
                   setModal('account');
                 }}
               >
@@ -1429,10 +1465,6 @@ export function App() {
                 </button>
               )}
               <button
-                disabled={
-                  !status.features?.includes('usage') ||
-                  (!session && !status.features?.includes('usageLatest'))
-                }
                 onClick={() => setModal('usage')}
                 title={
                   menuUsage
@@ -1894,8 +1926,10 @@ export function App() {
               {serviceRestart === 'restarting'
                 ? 'Restarting the background service…'
                 : serviceRestart === 'whenIdle'
-                  ? `Lascoria ${appUpdate?.currentVersion} is installed. The background service will restart when running work finishes.`
-                  : `Lascoria ${appUpdate?.currentVersion} is installed, but the background service is still ${status.appVersion}.`}
+                  ? 'The background service will restart when running work finishes.'
+                  : status.appVersion
+                    ? `Lascoria ${appUpdate?.currentVersion} is installed, but the background service is still ${status.appVersion}.`
+                    : 'Restart the background service to finish updating Lascoria and enable account and usage information.'}
               {serviceRestart === null && (
                 <>
                   {workRunning ? (
@@ -3551,9 +3585,7 @@ export function App() {
                   ? Boolean(status.features?.includes('dataLifecycle'))
                   : id === 'support'
                     ? Boolean(status.features?.includes('supportReport'))
-                    : id === 'usage'
-                      ? Boolean(status.features?.includes('usage'))
-                      : true
+                    : true
             }
           >
             <h3 className="settings-heading">
@@ -3590,30 +3622,36 @@ export function App() {
                 lastError={notificationError}
               />
             )}
-            {modal === 'usage' && (
-              <Usage
-                key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}
-                sessionId={session?.state.current ? session.id : undefined}
-                latestEnabled={Boolean(status.features?.includes('usageLatest'))}
-                mode={account?.managed ? account.mode : undefined}
-                signedIn={account?.managed ? account.authenticated : undefined}
-                indicator={Boolean(prefs.usageIndicator)}
-                setIndicator={
-                  status.features?.includes('usageLatest')
-                    ? (on) => updatePrefs({ usageIndicator: on })
-                    : undefined
-                }
-              />
-            )}
+            {modal === 'usage' &&
+              (!status.features?.includes('usage') ? (
+                serviceUpgrade
+              ) : (
+                <Usage
+                  key={`${session?.id}:${account?.mode}:${account?.subscription.state}`}
+                  sessionId={session?.state.current ? session.id : undefined}
+                  latestEnabled={Boolean(status.features?.includes('usageLatest'))}
+                  mode={account?.managed ? account.mode : undefined}
+                  signedIn={account?.managed ? account.authenticated : undefined}
+                  indicator={Boolean(prefs.usageIndicator)}
+                  setIndicator={
+                    status.features?.includes('usageLatest')
+                      ? (on) => updatePrefs({ usageIndicator: on })
+                      : undefined
+                  }
+                />
+              ))}
             {modal === 'data' && (
               <DataLifecycle refreshStatus={refresh} quit={() => setModal('stop')} />
             )}
             {modal === 'support' && <SupportReport />}
           </SettingsShell>
         )}
-        {modal === 'account' && (
-          <Account account={account} refresh={refreshAccount} onRuntimeReady={setRuntimeReady} />
-        )}
+        {modal === 'account' &&
+          (status.features?.includes('accounts') ? (
+            <Account account={account} refresh={refreshAccount} onRuntimeReady={setRuntimeReady} />
+          ) : (
+            serviceUpgrade
+          ))}
         {modal === 'settings' &&
           (() => {
             const target = status.sessions.find((s) => s.id === settingsTarget);

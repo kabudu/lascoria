@@ -4,6 +4,9 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+- Add a header shortcut for subscription usage, with current and weekly allowance and freshness information.
+- Explain unavailable account and usage features on older background services and offer explicit restart choices.
+
 ## 0.1.4 - 2026-10-23
 
 - Fix universal macOS update discovery and add a direct macOS Check for Updates menu command.

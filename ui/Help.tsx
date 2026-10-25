@@ -34,7 +34,7 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Understand usage and tokens',
-    text: 'Account & usage, in the workspace menu, shows Muse’s most recent report of your current-window and weekly subscription allowance, when each resets and how old the report is. Muse reports one allowance for your account, so every session shows the same figures. It does not send a model request or interrupt work. Missing or out-of-date reports are shown as unknown, never as 0% used. Subscription allowance is different from task tokens and API billing; provider billing details remain with your provider. Enter /usage in the composer for the same local view.',
+    text: 'The Subscription usage icon in the header opens a quick view of your current and weekly allowance when signed in with a Muse subscription. Choose Account & usage there for details. Account & usage is also in the workspace menu and shows Muse’s most recent report of your current-window and weekly subscription allowance, when each resets and how old the report is. Muse reports one allowance for your account, so every session shows the same figures. It does not send a model request or interrupt work. Missing or out-of-date reports are shown as unknown, never as 0% used. Subscription allowance is different from task tokens and API billing; provider billing details remain with your provider. Enter /usage in the composer for the same local view.',
     destination: 'usage',
     action: 'View usage',
   },
