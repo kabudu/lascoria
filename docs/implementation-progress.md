@@ -837,3 +837,9 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 
 - [x] Recheck idle state after saving drafts/layout; refuse to replace a newer service, serialize local mutations with handover, and inspect the existing connection before retrying an uncertain replacement. Services advertising `idleStop` also refuse a stop if work appears at the supervisor barrier. Older services retain the fresh client-side check but cannot enforce that new server-side precondition.
 - [x] Validate idle, active, question, approval, pending-storage, fresh-work, server-busy, stop-failure, reconnect-failure and newer-service paths through the UI. Real Rust/Muse controlled-provider lifecycle checks prove active idle-stop refusal and idle shutdown. An isolated macOS native trial masks version/capabilities on a real supervisor, then observes automatic process replacement, reconnection, restored usage capability and retained synthetic presentation data. No model call or user-service restart was performed for that native trial.
+
+### v0.1.5 delivery
+
+- [x] Prepare consistent 0.1.5 version metadata and curated notes for subscription usage and automatic idle service handover. Release preflight caught RUSTSEC-2026-0386; update the affected Tokio lock entries to the patched 1.53.3 without weakening the audit.
+- [ ] Pass final reviewed-head local and hosted validation, merge PR #16 and publish the production packages.
+- [ ] Independently verify public binaries, updater signatures, checksums and stable/beta manifests before confirming delivery.
