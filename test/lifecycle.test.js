@@ -93,6 +93,12 @@ test(
       (v) => v.sessions[0].state.activeTurnId === turnId,
       'active turn',
     );
+    assert.deepEqual(
+      await request(directory, 'stop', { sessions: [sessionId], onlyIfIdle: true }),
+      { stopping: false, reason: 'busy' },
+      'an idle-only handover cannot stop an active turn',
+    );
+    assert.equal((await request(directory, 'status')).sessions[0].state.activeTurnId, turnId);
     const steer = await request(
       directory,
       'steer',

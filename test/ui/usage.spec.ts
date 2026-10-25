@@ -208,23 +208,19 @@ test('an unversioned legacy service explains unavailable usage without interrupt
   page,
 }) => {
   const calls = await open(page, null, true);
-  await expect(page.getByRole('status', { name: 'Finish updating' })).toContainText(
-    'enable account and usage',
-  );
+  await expect(page.getByRole('status', { name: 'Finish updating' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Subscription usage', exact: true }).click();
   const popover = page.getByRole('dialog', { name: 'Subscription usage', exact: true });
-  await expect(popover).toContainText('does not provide account and usage');
-  await expect(popover.getByRole('button', { name: 'Restart when work finishes' })).toBeVisible();
-  await expect(
-    popover.getByRole('button', { name: 'Pause work and restart', exact: true }),
-  ).toBeVisible();
+  await expect(popover).toContainText('Usage will be available shortly');
+  await expect(popover).toContainText('Your tasks and questions stay open');
+  await expect(popover.getByRole('button', { name: /Restart/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.getByLabel('Workspace menu', { exact: true }).click();
   const entry = page.getByRole('button', { name: 'Account & usage', exact: true });
   await expect(entry).toBeEnabled();
   await entry.click();
   await expect(page.getByRole('region', { name: 'Background service update' })).toContainText(
-    'Saved conversations and drafts are retained',
+    'Your tasks and questions stay open',
   );
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'Muse account', exact: true }).click();
