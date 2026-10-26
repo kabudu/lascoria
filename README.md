@@ -5,10 +5,7 @@
 
 **The spatial coding workspace.** Give your agents room to work.
 
-[![Native CI](https://github.com/kabudu/lascoria/actions/workflows/validate.yml/badge.svg?branch=master)](https://github.com/kabudu/lascoria/actions/workflows/validate.yml)
-[![Latest release](https://img.shields.io/github/v/release/kabudu/lascoria?label=release&color=5c4eae)](https://github.com/kabudu/lascoria/releases/latest)
-[![SPDX licence: Apache-2.0](docs/images/license-apache-2.0.svg)](LICENSE)
-[![Website: lascoria.org](https://img.shields.io/badge/website-lascoria.org-5c4eae)](https://www.lascoria.org)
+[![Native CI](https://img.shields.io/github/actions/workflow/status/kabudu/lascoria/validate.yml?branch=master&label=CI&style=flat)](https://github.com/kabudu/lascoria/actions/workflows/validate.yml) [![Latest release](https://img.shields.io/github/v/release/kabudu/lascoria?label=release&color=5c4eae&style=flat)](https://github.com/kabudu/lascoria/releases/latest) [![SPDX licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-5c4eae?style=flat)](LICENSE) [![Website: lascoria.org](https://img.shields.io/badge/website-lascoria.org-5c4eae?style=flat)](https://www.lascoria.org)
 
 Lascoria is a desktop workspace for coding with Muse Code. Each session has an interactive map of its tasks, with your other sessions and the work that needs attention close at hand. See what is running, what needs your answer, and what changed across your repositories.
 
