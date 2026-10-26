@@ -2121,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "lascoria-runtime"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "dunce",
  "getrandom 0.4.3",
@@ -3797,7 +3797,7 @@ dependencies = [
 
 [[package]]
 name = "spatial-constellation-desktop"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "dunce",
  "lascoria-runtime",

@@ -1578,6 +1578,26 @@ export function App() {
             layout={prefs.panels?.sessions}
             initial={{ x: 16, y: 150 }}
             onChange={(value) => panelChange('sessions', value)}
+            actions={
+              session.lifecycle !== 'archived' && (
+                <button
+                  className="session-archive-action"
+                  aria-label="Archive selected session…"
+                  disabled={busy || !status.features?.includes('taskWorkspaces')}
+                  title={
+                    !status.features?.includes('taskWorkspaces')
+                      ? 'Update Lascoria to archive sessions with this background service.'
+                      : undefined
+                  }
+                  onClick={() => {
+                    setArchiveTarget(session.id);
+                    setModal('archive');
+                  }}
+                >
+                  Archive…
+                </button>
+              )
+            }
           >
             <div className="section-heading">
               <h2>Sessions</h2>
@@ -1585,17 +1605,23 @@ export function App() {
                 ＋
               </button>
             </div>
-            <label className="row">
+            <label className="toggle-switch">
               <input
                 type="checkbox"
+                role="switch"
                 checked={showArchived}
                 onChange={(e) => setShowArchived(e.target.checked)}
-              />{' '}
-              Show archived sessions
+              />
+              <span>Show archived sessions</span>
             </label>
+            {!showArchived && status.sessions.every((s) => s.lifecycle === 'archived') && (
+              <p className="hint">
+                No active sessions. Turn on Show archived sessions to view saved history.
+              </p>
+            )}
             <nav aria-label="Sessions">
               {status.sessions
-                .filter((s) => showArchived || s.lifecycle !== 'archived' || s.id === session?.id)
+                .filter((s) => showArchived || s.lifecycle !== 'archived')
                 .map((s) => (
                   <button
                     key={s.id}
@@ -1612,23 +1638,6 @@ export function App() {
                   </button>
                 ))}
             </nav>
-            {session && session.lifecycle !== 'archived' && (
-              <button
-                className="session-archive-action"
-                disabled={busy || !status.features?.includes('taskWorkspaces')}
-                title={
-                  !status.features?.includes('taskWorkspaces')
-                    ? 'Update Lascoria to archive sessions with this background service.'
-                    : undefined
-                }
-                onClick={() => {
-                  setArchiveTarget(session.id);
-                  setModal('archive');
-                }}
-              >
-                Archive selected session…
-              </button>
-            )}
           </FloatingPanel>
           <FloatingPanel
             title="Attention"

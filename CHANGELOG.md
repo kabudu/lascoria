@@ -4,6 +4,11 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+## 0.1.6 - 2026-10-26
+
+- Keep Archive in the Sessions panel header and hide archived sessions unless Show archived sessions is enabled.
+- Prevent workspace labels and session details painting over floating-panel headers.
+
 ## 0.1.5 - 2026-10-25
 
 - Update Tokio to address RUSTSEC-2026-0386.

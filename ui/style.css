@@ -3039,8 +3039,17 @@ select {
 .archive-session p {
   line-height: 1.6;
 }
-.session-archive-action {
-  margin-top: 0.5rem;
+.panel-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.panel-heading .session-archive-action {
+  min-height: 32px;
+  padding: 6px 8px;
+  background: var(--accent-surface);
+  color: var(--accent);
+  border: 1px solid var(--line);
 }
 dialog.settings-dialog {
   width: min(880px, 94vw);
@@ -3217,22 +3226,32 @@ dialog.settings-dialog[open] {
   font-weight: 600;
 }
 
-/* Share a layout owner so a wrapped session heading can never sit under its tools. */
+/* Share layout without trapping identity text and global controls in one paint layer.
+   The shell cannot scroll, so absolute positioning retains viewport geometry. */
 .workspace-chrome {
-  position: fixed;
+  position: absolute;
   inset: 78px 26px auto;
-  z-index: 21;
+  z-index: auto;
   pointer-events: none;
 }
 .workspace-chrome > .workspace-title {
   position: relative;
   inset: auto;
+  z-index: auto;
+}
+.workspace-chrome > .workspace-title > :first-child {
+  position: relative;
+  z-index: 5;
+}
+.workspace-chrome > .workspace-title > button {
+  position: relative;
+  z-index: 21;
 }
 .workspace-chrome > .surface-toolbar {
   top: -6px;
   pointer-events: auto;
 }
-.workspace-chrome:has(.project-context[open]) {
+.workspace-chrome > .workspace-title:has(.project-context[open]) > :first-child {
   z-index: 26;
 }
 @media (max-width: 1100px) {

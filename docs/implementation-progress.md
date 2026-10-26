@@ -844,3 +844,16 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Pass final reviewed-head local CI at `8f15467` (97 Rust, 97 Node with one Linux-only skip, 47 UI workflows) and all three hosted native checks. Merge PR #16 as `f0599d2` and publish [v0.1.5](https://github.com/kabudu/lascoria/releases/tag/v0.1.5). The [production workflow](https://github.com/kabudu/lascoria/actions/runs/40204623595) passed all four package builds, three native checks and publication.
 - [x] Independently download all 13 public assets and verify checksums/API digests, curated notes, annotated source and updater mappings. Verify all four production-key updater signatures and their signed 0.1.5 version. Both Mac containers retain both CPU slices in desktop/supervisor/Node and pass strict signing, stapled notarization and Gatekeeper. Windows installer PE/version and both Linux AppImage/Debian architectures and packaged executable architectures pass. These are package checks, not additional installed-OS migration trials.
 - [x] Confirm identical stable, version-specific and beta manifests at 0.1.5; review canonical public notes and their desktop/mobile rendering; verify the production website download link and path/query-preserving apex redirect. Temporary Mac verification mounts are ejected and user app/service sessions are preserved.
+
+### Session archive access and list filtering (26 October)
+
+- [x] Move Archive into the Sessions panel header so it remains available while the list scrolls or the panel is collapsed. Retain the named confirmation, stable target and existing busy/host-capability guards.
+- [x] Honour Show archived sessions for every list row, including the selected archived session. Keep read-only details available, add an empty-list explanation when only archived sessions remain, and use the shared switch for this visibility setting.
+- [x] Separate workspace identity and global-control paint layers so labels stay below floating panels while canvas controls remain accessible. Reviewed both themes at 1440px/820px with scroll/header clearance, keyboard confirmation/cancellation, filter/reload/all-archived cases and automated accessibility checks. The real Rust-backed workspace workflow verifies archiving and filter visibility. Isolated native macOS Echo QA verifies header archiving and filter on/off with six synthetic sessions; owned processes are closed and user sessions preserved. Final reviewed-head CI is recorded in the PR.
+
+### v0.1.6 release checklist (26 October)
+
+- [x] Review archive access/filter fixes and validate isolated native macOS behaviour, both themes, accessibility and real Rust-backed workflows.
+- [x] Prepare semantic version 0.1.6 and curated release notes.
+- [ ] Pass final reviewed-head local CI and all three hosted native checks, then merge PR #18.
+- [ ] Publish the version tag through the production pipeline and independently verify public binaries, checksums, updater signatures and channel manifests.
