@@ -867,5 +867,5 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 
 - [x] Validate archive visibility with task-bearing regressions, real Rust-backed archive/history workflows and isolated native macOS Echo QA.
 - [x] Prepare semantic version 0.1.7 and curated release notes.
-- [ ] Pass final reviewed-head local and hosted native checks, then merge PR #20.
-- [ ] Publish the production release and independently verify binaries, checksums, updater signatures and channel manifests.
+- [x] Pass `./scripts/ci-local.sh` at `ac34852` (97 Rust, 97 Node with one Linux-only skip, 48 UI workflows) and all three hosted native checks, then merge PR #20 as `31bf6a9`.
+- [x] Publish [v0.1.7](https://github.com/kabudu/lascoria/releases/tag/v0.1.7) from `31bf6a9`. The [production workflow](https://github.com/kabudu/lascoria/actions/runs/40321052321) passed all four package builds, three native checks and publication. Independently verify all 13 public assets/checksums, source/tag/curated notes, all four production-key updater signatures, Windows installer version and both Linux architectures. All 11 binaries/signatures match the reviewed build artifacts, including both universal Mac containers with CPU-slice, strict signing, notarization and Gatekeeper checks. Stable/version/beta manifests match; production website download routing and apex redirect pass. Installed user sessions are untouched.
