@@ -862,3 +862,10 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 
 - [x] Use the same session visibility boundary for the list, canvas and inspector. Hiding an archived selection opens unarchived work, or clears the canvas when only archived sessions remain. Keep Sessions visible in the latter state so history can be revealed again.
 - [x] Preserve explicit read-only archive access through Show archived sessions, history search and View archive. A regression with actual task nodes reproduces the old retained-canvas behaviour before the fix; the three focused workflows passed, including real Rust-backed archiving and history search/continuation. Isolated native Echo QA with two task-bearing sessions confirms fallback selection, the all-archived empty state and filter on/off; owned QA processes are closed and user sessions preserved. Final-head results are recorded in the PR.
+
+### v0.1.7 release checklist (26 October)
+
+- [x] Validate archive visibility with task-bearing regressions, real Rust-backed archive/history workflows and isolated native macOS Echo QA.
+- [x] Prepare semantic version 0.1.7 and curated release notes.
+- [ ] Pass final reviewed-head local and hosted native checks, then merge PR #20.
+- [ ] Publish the production release and independently verify binaries, checksums, updater signatures and channel manifests.

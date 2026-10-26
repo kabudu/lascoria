@@ -4,6 +4,8 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+## 0.1.7 - 2026-10-26
+
 - Hide archived sessions from the canvas and inspector when Show archived sessions is off; switch to unarchived work or show a clear empty state.
 
 ## 0.1.6 - 2026-10-26
