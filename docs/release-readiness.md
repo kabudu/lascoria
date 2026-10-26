@@ -171,7 +171,7 @@ Added 15 October at the user's request. This is a release gate requiring an evid
 
 ### R13 - Full UX, developer experience and language review
 
-- [x] Clarify token-use hierarchy and provide direct session-archive access, with responsive light/dark previews, unknown-value handling, keyboard/confirmation semantics and native-bridge archive validation. The 26 October follow-up keeps Archive in the fixed panel header, makes the archived-session filter strict even for selected sessions, and prevents workspace controls painting over floating headers.
+- [x] Clarify token-use hierarchy and provide direct session-archive access, with responsive light/dark previews, unknown-value handling, keyboard/confirmation semantics and native-bridge archive validation. The 26 October follow-up keeps Archive in the fixed panel header, makes the archived-session filter strict even for selected sessions, and prevents workspace labels painting over floating headers while retaining canvas-control access.
 
 - [x] Correct notification control alignment and replace master, event and session checkboxes with accessible switches. Verify keyboard operation, saved preferences, wrapped labels, disabled groups and both themes at desktop and narrow widths; see the 22 October notification entry in implementation progress.
 

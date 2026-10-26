@@ -5,7 +5,7 @@ User-visible changes in Lascoria. Detailed development and validation records li
 ## Unreleased
 
 - Keep Archive in the Sessions panel header and hide archived sessions unless Show archived sessions is enabled.
-- Keep floating-panel headers above workspace controls when panels are moved near the top.
+- Prevent workspace labels and session details painting over floating-panel headers.
 
 ## 0.1.5 - 2026-10-25
 
