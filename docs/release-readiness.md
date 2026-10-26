@@ -294,4 +294,8 @@ These publication checks do not change the scope of earlier native acceptance ev
 - [x] Ship the reviewed toggle, inspector spacing, token visibility and direct archive fixes as [v0.1.3](https://github.com/kabudu/lascoria/releases/tag/v0.1.3), with matching semantic versions, curated notes, passing local/three-OS CI and the complete production build/publication workflow.
 - [x] Verify all 13 actual public downloads and checksums, four updater signatures, universal macOS containers/signatures/tickets/Gatekeeper, Linux package architectures, release rendering, updater channels and website download routing. See the 22 October distribution record in implementation progress for scope; unrelated open platform/security/performance acceptance items remain unchanged.
 
+### v0.1.6 distribution follow-up (26 October)
+
+- [x] Ship the fixed Sessions-header archive action, strict archived-session visibility and panel layering as [v0.1.6](https://github.com/kabudu/lascoria/releases/tag/v0.1.6), after final local and three-OS hosted checks. The complete production workflow and independent public asset, checksum, updater-signature, universal Mac, Linux architecture, Windows version and channel verification passed. See the [running evidence](implementation-progress.md#v016-release-checklist-26-october).
+
 26 October canvas follow-up: the visibility filter now also governs canvas and inspector selection. Hiding an archived selection opens unarchived work or clears both surfaces when none remains. The Sessions panel stays available for explicit read-only history access. Regression tests with task nodes, real Rust-backed archive/history workflows and isolated native macOS Echo QA pass; final-head CI is recorded in the PR.
