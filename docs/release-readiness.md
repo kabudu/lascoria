@@ -171,7 +171,7 @@ Added 15 October at the user's request. This is a release gate requiring an evid
 
 ### R13 - Full UX, developer experience and language review
 
-- [x] Clarify token-use hierarchy and provide direct session-archive access, with responsive light/dark previews, unknown-value handling, keyboard/confirmation semantics and native-bridge archive validation. The 26 October follow-up keeps Archive in the fixed panel header, makes the archived-session filter strict even for selected sessions, and prevents workspace labels painting over floating headers while retaining canvas-control access.
+- [x] Clarify token-use hierarchy and provide direct session-archive access, with responsive light/dark previews, unknown-value handling, keyboard/confirmation semantics and native-bridge archive validation. The 26 October follow-up keeps Archive in the fixed panel header, makes the archived-session filter strict even for selected sessions in the list, and prevents workspace labels painting over floating headers while retaining canvas-control access.
 
 - [x] Correct notification control alignment and replace master, event and session checkboxes with accessible switches. Verify keyboard operation, saved preferences, wrapped labels, disabled groups and both themes at desktop and narrow widths; see the 22 October notification entry in implementation progress.
 
@@ -297,3 +297,5 @@ These publication checks do not change the scope of earlier native acceptance ev
 ### v0.1.6 distribution follow-up (26 October)
 
 - [x] Ship the fixed Sessions-header archive action, strict archived-session visibility and panel layering as [v0.1.6](https://github.com/kabudu/lascoria/releases/tag/v0.1.6), after final local and three-OS hosted checks. The complete production workflow and independent public asset, checksum, updater-signature, universal Mac, Linux architecture, Windows version and channel verification passed. See the [running evidence](implementation-progress.md#v016-release-checklist-26-october).
+
+26 October canvas follow-up: the visibility filter now also governs canvas and inspector selection. Hiding an archived selection opens unarchived work or clears both surfaces when none remains. The Sessions panel stays available for explicit read-only history access. Regression tests with task nodes, real Rust-backed archive/history workflows and isolated native macOS Echo QA pass; final-head CI is recorded in the PR.

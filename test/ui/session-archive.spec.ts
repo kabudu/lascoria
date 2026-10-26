@@ -13,8 +13,15 @@ test('archive stays in the Sessions header and archived selections obey the list
     interruptions: [],
     state: {
       current: i !== 20,
-      items: [],
-      turns: [],
+      items: [
+        {
+          itemId: `prompt-${i}`,
+          kind: 'userMessage',
+          turnId: `turn-${i}`,
+          text: `Canvas task ${i}`,
+        },
+      ],
+      turns: [{ turnId: `turn-${i}`, terminal: 'completed' }],
       totalItems: 0,
       approvals: [],
       userInputs: [],
@@ -113,16 +120,27 @@ test('archive stays in the Sessions header and archived selections obey the list
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(list.getByRole('button')).toHaveCount(19);
   await expect(list.getByRole('button', { name: /Archive target/ })).toHaveCount(0);
-  await expect(archive).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Session 0', exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('region', { name: 'Constellation canvas', exact: true })
+      .getByText('Canvas task 19', { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole('region', { name: 'Constellation canvas', exact: true })
+      .getByText('Canvas task 0', { exact: true }),
+  ).toBeVisible();
   const filter = panel.getByRole('switch', { name: 'Show archived sessions', exact: true });
   await filter.check();
   await expect(list.getByRole('button')).toHaveCount(21);
   await list.getByRole('button', { name: /SESSION.*Session 20/ }).click();
   await filter.uncheck();
   await expect(list.getByRole('button')).toHaveCount(19);
+  await expect(page.getByRole('heading', { name: 'Session 0', exact: true })).toBeVisible();
   await page.reload();
   await expect(list.getByRole('button')).toHaveCount(19);
-  // With only retained history, leave the read-only inspector and an explicit empty list.
+  // With only retained history, clear the canvas and keep archive discovery available.
   sessions.forEach((s) => {
     s.lifecycle = 'archived';
     s.state.current = false;
@@ -131,7 +149,19 @@ test('archive stays in the Sessions header and archived selections obey the list
   await page.reload();
   await expect(list.getByRole('button')).toHaveCount(0);
   await expect(panel.getByText(/No active sessions/)).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Constellation canvas', exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole('heading', { name: 'All sessions are archived.', exact: true }),
+  ).toBeVisible();
   await filter.check();
   await expect(list.getByRole('button')).toHaveCount(21);
+  await list.getByRole('button', { name: /SESSION.*Session 20/ }).click();
+  await expect(
+    page
+      .getByRole('region', { name: 'Constellation canvas', exact: true })
+      .getByText('Canvas task 20', { exact: true }),
+  ).toBeVisible();
   expect(archives).toBe(1);
 });

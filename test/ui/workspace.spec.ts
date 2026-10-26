@@ -257,16 +257,28 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
     await archive.click();
     await page.getByRole('button', { name: 'Archive session', exact: true }).click();
     await expect(sessionsList.getByRole('button')).toHaveCount(beforeArchiveCount - 1);
+    await expect(page.locator('.banner.archived')).toHaveCount(0);
     const showArchived = page.getByRole('switch', { name: 'Show archived sessions', exact: true });
     await showArchived.check();
     await expect(sessionsList.getByRole('button')).toHaveCount(beforeArchiveCount);
     await showArchived.uncheck();
     await expect(sessionsList.getByRole('button')).toHaveCount(beforeArchiveCount - 1);
+    await expect(page.locator('.banner.archived')).toHaveCount(0);
+    await showArchived.check();
+    await sessionsList
+      .getByRole('button', { name: /archived/ })
+      .first()
+      .click();
     await page.getByRole('tab', { name: 'workspace', exact: true }).click();
     await expect(
       page.getByText('Archived. History is retained; execution is disabled.', { exact: true }),
     ).toBeVisible();
     await page.reload();
+    await showArchived.check();
+    await sessionsList
+      .getByRole('button', { name: /archived/ })
+      .first()
+      .click();
     await page.getByRole('tab', { name: 'workspace', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Run command', exact: true })).toBeDisabled();
     expect(await readFile(join(source, 'README.md'), 'utf8')).toBe('Task context\n');

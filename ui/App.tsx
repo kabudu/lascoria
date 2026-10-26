@@ -466,10 +466,13 @@ export function App() {
   const saving = useRef<Promise<void> | null>(null);
   const mutationPending = useRef(false);
   const lastCommand = useRef<{ id: string; operation: string; params: Json } | null>(null);
+  // The list, canvas and inspector share one visibility boundary. A retained
+  // selection must not keep archived work open after its visibility is disabled.
+  const visibleSessions = status.sessions.filter((s) => showArchived || s.lifecycle !== 'archived');
   const session =
-    status.sessions.find((s) => s.id === prefs.sessionId) ??
-    status.sessions.find((s) => s.lifecycle !== 'archived') ??
-    status.sessions[0];
+    visibleSessions.find((s) => s.id === prefs.sessionId) ??
+    visibleSessions.find((s) => s.lifecycle !== 'archived') ??
+    visibleSessions[0];
   const sessionName = (row: SessionRow) =>
     (row.displayName === undefined ? prefs.sessionLabels?.[row.id] : row.displayName) ||
     (row.managedWorkspace?.source ?? row.workspace).split(/[\\/]/).filter(Boolean).at(-1) ||
@@ -1571,7 +1574,7 @@ export function App() {
           </details>
         </div>
       </header>
-      {session && (
+      {status.sessions.length > 0 && (
         <aside className="sidebar">
           <FloatingPanel
             title="Sessions"
@@ -1579,6 +1582,7 @@ export function App() {
             initial={{ x: 16, y: 150 }}
             onChange={(value) => panelChange('sessions', value)}
             actions={
+              session &&
               session.lifecycle !== 'archived' && (
                 <button
                   className="session-archive-action"
@@ -1620,23 +1624,21 @@ export function App() {
               </p>
             )}
             <nav aria-label="Sessions">
-              {status.sessions
-                .filter((s) => showArchived || s.lifecycle !== 'archived')
-                .map((s) => (
-                  <button
-                    key={s.id}
-                    className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
-                    onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
-                  >
-                    <span className="eyebrow">SESSION · {short(s.id)}</span>
-                    {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
-                    <strong title={sessionName(s)}>{sessionName(s)}</strong>
-                    <span>
-                      {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle}{' '}
-                      · {queue.filter((q) => q.sessionId === s.id).length} attention
-                    </span>
-                  </button>
-                ))}
+              {visibleSessions.map((s) => (
+                <button
+                  key={s.id}
+                  className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
+                  onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
+                >
+                  <span className="eyebrow">SESSION · {short(s.id)}</span>
+                  {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
+                  <strong title={sessionName(s)}>{sessionName(s)}</strong>
+                  <span>
+                    {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
+                    {queue.filter((q) => q.sessionId === s.id).length} attention
+                  </span>
+                </button>
+              ))}
             </nav>
           </FloatingPanel>
           <FloatingPanel
@@ -2078,13 +2080,18 @@ export function App() {
           <section className="empty-state">
             <img className="brand-mark large-mark" src="/brand/lascoria-mark.svg" alt="" />
             <p className="eyebrow">THE SPATIAL CODING WORKSPACE</p>
-            <h1>Give your agents room to work.</h1>
+            <h1>
+              {status.sessions.length
+                ? 'All sessions are archived.'
+                : 'Give your agents room to work.'}
+            </h1>
             <p>
-              Open an existing Git repository, give Muse a task, and keep its decisions and changes
-              in view.
+              {status.sessions.length
+                ? 'Turn on Show archived sessions in the Sessions panel to revisit saved work, or start a new session.'
+                : 'Open an existing Git repository, give Muse a task, and keep its decisions and changes in view.'}
             </p>
             <button className="primary" onClick={() => setModal('start')}>
-              Start your first session
+              {status.sessions.length ? 'Start a new session' : 'Start your first session'}
             </button>
           </section>
         ) : (
