@@ -857,3 +857,8 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Prepare semantic version 0.1.6 and curated release notes.
 - [ ] Pass final reviewed-head local CI and all three hosted native checks, then merge PR #18.
 - [ ] Publish the version tag through the production pipeline and independently verify public binaries, checksums, updater signatures and channel manifests.
+
+### Archived canvas visibility follow-up (26 October)
+
+- [x] Use the same session visibility boundary for the list, canvas and inspector. Hiding an archived selection opens unarchived work, or clears the canvas when only archived sessions remain. Keep Sessions visible in the latter state so history can be revealed again.
+- [x] Preserve explicit read-only archive access through Show archived sessions, history search and View archive. A regression with actual task nodes reproduces the old retained-canvas behaviour before the fix; the three focused workflows passed, including real Rust-backed archiving and history search/continuation. Isolated native Echo QA with two task-bearing sessions confirms fallback selection, the all-archived empty state and filter on/off; owned QA processes are closed and user sessions preserved. Final-head results are recorded in the PR.
