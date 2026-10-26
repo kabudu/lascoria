@@ -992,7 +992,8 @@ main {
   position: fixed;
   width: 264px;
   max-width: calc(100vw - 16px);
-  z-index: 10;
+  /* Above workspace chrome (21), below notices (25). */
+  z-index: 22;
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -1002,7 +1003,7 @@ main {
   overflow: hidden;
 }
 .floating-panel:focus-within {
-  z-index: 20;
+  z-index: 23;
 }
 .inspector-window {
   width: 420px;
@@ -3039,8 +3040,17 @@ select {
 .archive-session p {
   line-height: 1.6;
 }
-.session-archive-action {
-  margin-top: 0.5rem;
+.panel-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.panel-heading .session-archive-action {
+  min-height: 32px;
+  padding: 6px 8px;
+  background: var(--accent-surface);
+  color: var(--accent);
+  border: 1px solid var(--line);
 }
 dialog.settings-dialog {
   width: min(880px, 94vw);

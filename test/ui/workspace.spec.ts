@@ -249,11 +249,19 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
     const archive = page
       .getByRole('region', { name: 'Sessions panel' })
       .getByRole('button', { name: 'Archive selected session…', exact: true });
+    const sessionsList = page.getByRole('navigation', { name: 'Sessions', exact: true });
+    const beforeArchiveCount = await sessionsList.getByRole('button').count();
     await archive.click();
     await expect(page.getByRole('dialog')).toContainText('No files are deleted');
     await page.getByRole('button', { name: 'Keep session', exact: true }).click();
     await archive.click();
     await page.getByRole('button', { name: 'Archive session', exact: true }).click();
+    await expect(sessionsList.getByRole('button')).toHaveCount(beforeArchiveCount - 1);
+    const showArchived = page.getByRole('switch', { name: 'Show archived sessions', exact: true });
+    await showArchived.check();
+    await expect(sessionsList.getByRole('button')).toHaveCount(beforeArchiveCount);
+    await showArchived.uncheck();
+    await expect(sessionsList.getByRole('button')).toHaveCount(beforeArchiveCount - 1);
     await page.getByRole('tab', { name: 'workspace', exact: true }).click();
     await expect(
       page.getByText('Archived. History is retained; execution is disabled.', { exact: true }),

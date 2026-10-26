@@ -12,6 +12,7 @@ export function FloatingPanel({
   onChange,
   children,
   badge,
+  actions,
 }: {
   title: string;
   layout?: PanelLayout;
@@ -19,6 +20,7 @@ export function FloatingPanel({
   onChange: (value: PanelLayout) => void;
   children: ReactNode;
   badge?: number;
+  actions?: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [position, setPosition] = useState(layout ?? { ...initial, collapsed: false });
@@ -97,6 +99,7 @@ export function FloatingPanel({
           <span aria-hidden="true">⠿</span> {title}{' '}
           {badge !== undefined && <span className="count">{badge}</span>}
         </button>
+        {actions && <div className="panel-actions">{actions}</div>}
         <button
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title} panel`}
           aria-expanded={!collapsed}
