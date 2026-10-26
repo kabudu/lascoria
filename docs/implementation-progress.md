@@ -850,3 +850,10 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Move Archive into the Sessions panel header so it remains available while the list scrolls or the panel is collapsed. Retain the named confirmation, stable target and existing busy/host-capability guards.
 - [x] Honour Show archived sessions for every list row, including the selected archived session. Keep read-only details available, add an empty-list explanation when only archived sessions remain, and use the shared switch for this visibility setting.
 - [x] Separate workspace identity and global-control paint layers so labels stay below floating panels while canvas controls remain accessible. Reviewed both themes at 1440px/820px with scroll/header clearance, keyboard confirmation/cancellation, filter/reload/all-archived cases and automated accessibility checks. The real Rust-backed workspace workflow verifies archiving and filter visibility. Isolated native macOS Echo QA verifies header archiving and filter on/off with six synthetic sessions; owned processes are closed and user sessions preserved. Final reviewed-head CI is recorded in the PR.
+
+### v0.1.6 release checklist (26 October)
+
+- [x] Review archive access/filter fixes and validate isolated native macOS behaviour, both themes, accessibility and real Rust-backed workflows.
+- [x] Prepare semantic version 0.1.6 and curated release notes.
+- [ ] Pass final reviewed-head local CI and all three hosted native checks, then merge PR #18.
+- [ ] Publish the version tag through the production pipeline and independently verify public binaries, checksums, updater signatures and channel manifests.
