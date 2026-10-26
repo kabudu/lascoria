@@ -869,3 +869,8 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Prepare semantic version 0.1.7 and curated release notes.
 - [x] Pass `./scripts/ci-local.sh` at `ac34852` (97 Rust, 97 Node with one Linux-only skip, 48 UI workflows) and all three hosted native checks, then merge PR #20 as `31bf6a9`.
 - [x] Publish [v0.1.7](https://github.com/kabudu/lascoria/releases/tag/v0.1.7) from `31bf6a9`. The [production workflow](https://github.com/kabudu/lascoria/actions/runs/40321052321) passed all four package builds, three native checks and publication. Independently verify all 13 public assets/checksums, source/tag/curated notes, all four production-key updater signatures, Windows installer version and both Linux architectures. All 11 binaries/signatures match the reviewed build artifacts, including both universal Mac containers with CPU-slice, strict signing, notarization and Gatekeeper checks. Stable/version/beta manifests match; production website download routing and apex redirect pass. Installed user sessions are untouched.
+
+### README badge consistency (26 October)
+
+- [x] Use Shields flat badges consistently for CI, release, licence and website, with a shared 20px height, typography and corners. Remove the unused custom 26px licence SVG and shorten the CI label.
+- [x] Render the actual GitHub Markdown with GitHub styles and live badge SVGs in light/dark at 1120px, 768px, 390px and 320px. All four intrinsic/rendered heights are 20px; desktop badges align on one row, narrow rows wrap without badge overflow, and destination links remain correct. Final reviewed-head CI is recorded in the PR.
