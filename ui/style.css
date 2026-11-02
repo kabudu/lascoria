@@ -485,7 +485,11 @@ main {
   font-size: 0.86rem;
   font-weight: 500;
   overflow-wrap: anywhere;
-  max-height: 42px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+  max-height: 2.7em;
   overflow: hidden;
 }
 .task-node span {
@@ -1848,16 +1852,39 @@ main {
   }
 }
 
-/* One quiet motion cue per active node; waiting/stale observations never spin. */
+/* Busy is indeterminate. Never animate waiting, completed or stale observations. */
 .task-node .status-dot.working {
-  width: 10px;
-  height: 10px;
-  box-sizing: border-box;
-  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  border-top-color: var(--accent);
-  background: transparent;
-  flex: 0 0 10px;
-  animation: node-working 1.1s linear infinite;
+  background: var(--accent);
+}
+.task-node .node-activity-rail {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 6px;
+  height: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  display: block;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  pointer-events: none;
+}
+.task-node .node-activity-rail > span {
+  display: block;
+  width: 28%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: node-activity-sweep 1.6s ease-in-out infinite alternate;
+}
+@keyframes node-activity-sweep {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(257%);
+  }
 }
 .task-node .status-dot.waiting {
   background: var(--attention);
@@ -1876,15 +1903,20 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-@keyframes node-working {
-  to {
-    transform: rotate(360deg);
+@media (prefers-reduced-motion: reduce) {
+  .task-node .node-activity-rail > span {
+    animation: none;
+    transform: translateX(128%);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .task-node .status-dot.working {
-    animation: none;
-    border-color: var(--accent);
+@media (forced-colors: active) {
+  .task-node .node-activity-rail {
+    outline: 1px solid GrayText;
+    background: Canvas;
+  }
+  .task-node .node-activity-rail > span {
+    forced-color-adjust: none;
+    background: Highlight;
   }
 }
 

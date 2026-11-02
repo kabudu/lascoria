@@ -100,6 +100,30 @@ test('capability observations require the exact native shell command, default bo
     revision: 2,
   };
   assert.deepEqual(observedProbe([item], probe).results.loopbackBind.status, 'denied');
+  const yielded = {
+    ...item,
+    args: JSON.stringify({
+      command: probe.command,
+      sandbox_permissions: 'use_default',
+      timeout_ms: 10000,
+      yield_time_ms: 10000,
+    }),
+  };
+  assert.equal(observedProbe([yielded], probe)?.results.loopbackBind.status, 'denied');
+  for (const value of [-1, 10001, '10000', null])
+    assert.equal(
+      observedProbe(
+        [
+          {
+            ...yielded,
+            args: JSON.stringify({ ...JSON.parse(yielded.args), yield_time_ms: value }),
+          },
+        ],
+        probe,
+      ),
+      null,
+    );
+
   for (const patch of [
     { kind: 'agentMessage' },
     { turnId: 'other' },

@@ -2524,6 +2524,11 @@ export function App() {
                                   {activity.label}
                                 </span>
                               </span>
+                              {activity.busy && (
+                                <span className="node-activity-rail" aria-hidden="true">
+                                  <span />
+                                </span>
+                              )}
                             </button>
                           );
                         })}

@@ -18,7 +18,7 @@ Check what the sandbox allows starts an ordinary Muse task using the current mod
 
 The requested command inspects its own process and briefly binds, listens and connects on an ephemeral loopback port. It does not contact an external service, install dependencies, write workspace files, request escalation or use Workspace Run. Unix checks require Python 3; Windows uses PowerShell and .NET. Missing tools and inconclusive failures remain not checked.
 
-A result is accepted only from a completed native shell item matching the exact requested command, turn, nonce, default sandbox argument and successful, untruncated execution envelope. Model prose alone is not evidence. Results distinguish allowed, denied and not checked. They describe this command and boundary, not every tool, future command or managed policy. Network profile labels alone do not prove bind/listen access.
+A result is accepted only from a completed native shell item matching the exact requested command, turn, nonce, default sandbox argument and successful, untruncated execution envelope. A bounded native response-yield argument is accepted; it does not relax command or sandbox matching. Model prose alone is not evidence. Results distinguish allowed, denied and not checked. They describe this command and boundary, not every tool, future command or managed policy. Network profile labels alone do not prove bind/listen access.
 
 The current worker displays the last check and marks it historical after a permission change. After restart, its transcript and command receipt remain, but no current check result is invented. There is no automatic unsandboxed fallback or retry.
 

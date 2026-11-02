@@ -263,7 +263,9 @@ Scope decided by the user on 18 October; later work is in the [roadmap](../ROADM
 - [x] Implement a bounded same-boundary Muse capability task and require exact native shell execution evidence; never infer enforcement from model prose or use an unsandboxed fallback.
 - [x] Pin the verified stable SDK/CLI pair to 1.4.14 / 1.4.14-R7309.1 and provide explicit checksum/fingerprint-verified test bootstrap.
 - [x] Track final reviewed-head CI and remote review in [PR #25](https://github.com/kabudu/lascoria/pull/25). Focused native lifecycle and rendered UI checks pass; use the PR for the final full-suite and hosted results before merge.
-- [ ] Native installed-app and live-provider acceptance for this increment. Controlled-provider tests do not establish these checks or Windows/Linux interactive acceptance.
+- [x] macOS arm64 native QA with a live subscription: Wonder and Spark turns, model/effort changes, cancelled/confirmed profile changes, a denied Read-only write, saved-default restart, exact native capability evidence and visible busy-node activity. This is an isolated ad hoc QA app, not signed distribution acceptance.
+- [ ] Windows/Linux interactive native and live-provider acceptance for this increment. Hosted CI verifies fail-closed capability handling where sandbox support is unavailable; it does not establish positive sandbox execution or physical UI interaction on those platforms.
+- [x] Make working nodes and helper agents visible with a bounded, indeterminate activity bar. Waiting, stale and completed states stay still; reduced motion and long-label layout are covered by rendered workflow tests.
 
 See [permissions](permissions.md) for behaviour, boundaries and compatibility.
 

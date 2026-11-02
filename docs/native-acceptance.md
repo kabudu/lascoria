@@ -1,5 +1,7 @@
 # Native acceptance checklist
 
+Current commands below target the pinned Muse 1.4.14 runtime. Dated evidence retains the versions originally tested.
+
 Status: prepared 17 October 2026 for the increments marked "native pending" in [implementation progress](implementation-progress.md): R5 Data & backups, R17 Log out, D3 history search, continuation and transcript export, R14 images, R15 next-task folder changes, D4 notifications, R12 F1 peer binding, and the Muse 1.4.9 to 1.4.10 upgrade. Each check here is acceptance evidence for one operating system only. Passing it does not close a release gate on its own; the parent gates in [release readiness](release-readiness.md) still need every listed platform and case.
 
 ## Ground rules
@@ -13,17 +15,21 @@ Status: prepared 17 October 2026 for the increments marked "native pending" in [
 
 | OS | Build | Launch |
 | --- | --- | --- |
-| macOS (arm64) | `node scripts/package-macos-qa.js` makes `.dev/macos-qa/Lascoria Acceptance.app` (ad hoc signed, unsigned for distribution) and `provenance.json` with the revision and binary checksums. | `node testing/qa-launch.mjs echo ~/.local/bin/muse-bin-1.4.10-R6427.1`, `live` with the same binary for checks that need Muse's real models after signing in inside the app (QA scripts can still drive it), or `bound` (see F1/U1). `reopen` relaunches only the app with the same state. `stop` ends what `echo` started; in `bound` mode the app owns its supervisor, so end it with **Log out…**, **Pause work and quit**. |
-| Windows (x64) | `node scripts/package-windows-qa.js` on the Mac makes `.dev/windows-qa` (cross-built, unsigned). Copy the whole folder to the laptop. | In that folder: `runtime\node.exe testing\qa-launch.mjs echo <path to Muse 1.4.10 muse.exe>`. Install Muse 1.4.10 first through U1 if the laptop still has 1.4.9. |
+| macOS (arm64) | `node scripts/package-macos-qa.js` makes `.dev/macos-qa/Lascoria Acceptance.app` (ad hoc signed, unsigned for distribution) and `provenance.json` with the revision and binary checksums. | `node testing/qa-launch.mjs echo ~/.local/bin/muse-bin-1.4.14-R7309.1`, `live` with the same binary for checks that need Muse's real models after signing in inside the app (QA scripts can still drive it), or `bound` (see F1/U1). `reopen` relaunches only the app with the same state. `stop` ends what `echo` started; in `bound` mode the app owns its supervisor, so end it with **Log out…**, **Pause work and quit**. |
+| Windows (x64) | `node scripts/package-windows-qa.js` on the Mac makes `.dev/windows-qa` (cross-built, unsigned). Copy the whole folder to the laptop. | In that folder: `runtime\node.exe testing\qa-launch.mjs echo <path to Muse 1.4.14 muse.exe>`. Install Muse 1.4.14 first through U1 if the laptop still has 1.4.9. |
 | Linux | `npm run desktop:prepare`, then `cargo build --release --features custom-protocol` in `src-tauri`; run `src-tauri/target/release/spatial-constellation-desktop` with an isolated `SCH_STATE_DIR` and XDG folders. Without a physical Linux desktop, an X server such as Xvfb hosts it (WebKitGTK). | See the Linux desktop evidence below. |
+
+On macOS, keep the QA checkout/state path short enough for a Unix socket; a long path fails with `path must be shorter than SUN_LEN`. Never move or delete an active user state directory to work around this. The permission acceptance trial used a fresh private directory under `/tmp`.
+
+For local macOS 27 QA with Rust 1.97, a generated stripped proc-macro library was rejected by the loader with `mis-aligned LINKEDIT string pool`. The bounded reproduction loaded the same crate successfully without stripping. `CARGO_PROFILE_RELEASE_STRIP=none node scripts/package-macos-qa.js` built the ad hoc QA app used for the trial. This is local validation build configuration, not a change to production signing or distribution.
 
 ## A. Automated checks (each OS)
 
-Run from the repository (macOS, Linux) or the copied package (Windows), with Muse 1.4.10:
+Run from the repository (macOS, Linux) or the copied package (Windows), with Muse 1.4.14:
 
 | ID | Command | Expected |
 | --- | --- | --- |
-| A1 | `node testing/lifecycle-smoke.js <app folder> <muse 1.4.10> [app binary]` | One JSON line with `"result":"PASS"`. It covers a real echo task, image staging and sending, transcript export (private file), case-insensitive search, continuation without a model turn, backup/export/import, archived-session removal, staged restore applied on restart with a safety backup, and peer binding in both directions. On macOS the app folder is `.dev/native-qa` (after `package-native-qa.js`) and the app binary is `.dev/macos-qa/Lascoria Acceptance.app/Contents/MacOS/LascoriaAcceptance`; on Windows use `.` and `Lascoria.exe`. Anything in `notExercised` is recorded as not run. |
+| A1 | `node testing/lifecycle-smoke.js <app folder> <muse 1.4.14> [app binary]` | One JSON line with `"result":"PASS"`. It covers a real echo task, image staging and sending, transcript export (private file), case-insensitive search, continuation without a model turn, backup/export/import, archived-session removal, staged restore applied on restart with a safety backup, and peer binding in both directions. On macOS the app folder is `.dev/native-qa` (after `package-native-qa.js`) and the app binary is `.dev/macos-qa/Lascoria Acceptance.app/Contents/MacOS/LascoriaAcceptance`; on Windows use `.` and `Lascoria.exe`. Anything in `notExercised` is recorded as not run. |
 | A2 | Windows only: `runtime\node.exe testing\windows-smoke.js . <muse.exe>` | `"result":"PASS"`, including job-object process-tree cleanup and Credential Manager. |
 | A3 | `node --test testing/relay-agent.test.js` with `LASCORIA_RELAY_APP` set to the package | All tests pass (local session messages, restart, drafts). |
 
@@ -57,7 +63,7 @@ Start two sessions in disposable folders first (**New session**, any small Git r
 | ID | Steps | Expected |
 | --- | --- | --- |
 | F1 Peer binding | `qa-launch.mjs bound`. Let the app start its supervisor and reach the account screen. Then, from a terminal with the same `SCH_STATE_DIR` as the launch printed, run `node src/cli.js status` (Windows, in the package: `runtime\node.exe runtime\workers\cli.js status`). | The app works normally. The terminal request is refused with "Only the Lascoria app can control its background service". |
-| U1 Upgrade from 1.4.9 | `qa-launch.mjs stop`, delete `state-bound`, then `qa-launch.mjs bound <Muse 1.4.9 binary>` (macOS: `.dev/installed-qa/state/runtime/1.4.9-R6297.1/muse`). Open **Muse account**. | Setup reports Muse 1.4.10 ready (it finds the 1.4.10 binary next to the launcher) or, where none is installed, offers **Install Muse** for 1.4.10. On Windows, install it and confirm the checksum step and progress. |
+| U1 Upgrade from 1.4.9 | `qa-launch.mjs stop`, delete `state-bound`, then `qa-launch.mjs bound <Muse 1.4.9 binary>` (macOS: `.dev/installed-qa/state/runtime/1.4.9-R6297.1/muse`). Open **Muse account**. | Setup reports Muse 1.4.14 ready (it finds the 1.4.14 binary next to the launcher) or, where none is installed, offers **Install Muse** for 1.4.14. On Windows, install it and confirm the checksum step and progress. |
 | S1 | Sign in with your subscription in bound mode and start one short task. | The task completes; Usage shows an observation. Sign out afterwards with **Sign out of Muse…** in Muse account if you do not want the QA state signed in. |
 
 ## Recording

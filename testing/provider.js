@@ -144,6 +144,7 @@ export async function provider(root, options = {}) {
             command,
             sandbox_permissions: 'use_default',
             timeout_ms: 10000,
+            yield_time_ms: 10000,
             description: 'Run a bounded sandbox capability probe',
           }),
           id: 'fc_permission_probe',

@@ -32,8 +32,19 @@ export function observedProbe(items, probe) {
       args.command !== probe.command ||
       args.sandbox_permissions !== 'use_default' ||
       Object.keys(args).some(
-        (key) => !['command', 'description', 'sandbox_permissions', 'timeout_ms'].includes(key),
-      )
+        (key) =>
+          ![
+            'command',
+            'description',
+            'sandbox_permissions',
+            'timeout_ms',
+            'yield_time_ms',
+          ].includes(key),
+      ) ||
+      (args.yield_time_ms !== undefined &&
+        (!Number.isSafeInteger(args.yield_time_ms) ||
+          args.yield_time_ms < 0 ||
+          args.yield_time_ms > 10000))
     )
       continue;
     // Muse's native shell result is an execution envelope. Never trust a model's
