@@ -4,6 +4,9 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+- Connect successive tasks with distinct session-order curves and keep current work easy to reveal.
+- Place new task cards in available viewport space around panels, preserve saved positions, and show explicit offscreen navigation.
+
 ## 0.1.7 - 2026-10-26
 
 - Hide archived sessions from the canvas and inspector when Show archived sessions is off; switch to unarchived work or show a clear empty state.

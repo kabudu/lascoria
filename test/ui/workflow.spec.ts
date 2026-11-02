@@ -450,7 +450,8 @@ test('real Muse implementation, tests and review through React and the native Ru
       );
     await expect
       .poll(async () => (await request(directory, 'presentation/get')).value.zoom)
-      .toBe(fittedZoom);
+      // CSSOM serializes the scale with fewer digits than the saved camera value.
+      .toBeCloseTo(fittedZoom, 5);
     await page.reload();
     await expect(
       page.getByRole('button', { name: 'Reset zoom to 100 percent', exact: true }),

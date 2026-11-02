@@ -442,6 +442,7 @@ main {
   min-width: 100%;
 }
 .edges {
+  overflow: visible;
   position: absolute;
   pointer-events: none;
 }
@@ -3517,4 +3518,87 @@ button.link {
 .service-upgrade h3 {
   margin: 0 0 0.75rem;
   font-size: 1rem;
+}
+
+/* Session order is context, visually distinct from ownership and manual relations. */
+.edges .session-edge {
+  stroke: var(--accent);
+  stroke-dasharray: 2 6;
+  stroke-width: 2;
+  opacity: 0.7;
+}
+.task-node {
+  height: 140px;
+  min-height: 140px;
+}
+.canvas-discovery {
+  position: fixed;
+  z-index: 21;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 4px 20px #00000012;
+}
+.current-task-status {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+.canvas-discovery button {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.connection-legend {
+  position: relative;
+  font-size: 0.7rem;
+}
+.connection-legend p {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  width: 280px;
+  max-width: 80vw;
+  background: var(--panel);
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+@media (max-width: 900px) {
+  .canvas-discovery {
+    flex-wrap: wrap;
+    justify-content: center;
+    bottom: 36px;
+  }
+  .current-task-status {
+    flex-basis: 100%;
+    text-align: center;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.temporary-layout {
+  font-size: 0.7rem;
+  color: var(--muted);
+  max-width: 220px;
 }

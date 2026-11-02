@@ -303,3 +303,7 @@ These publication checks do not change the scope of earlier native acceptance ev
 ### v0.1.7 distribution follow-up (26 October)
 
 - [x] Ship consistent archived-session visibility across list, canvas and inspector as [v0.1.7](https://github.com/kabudu/lascoria/releases/tag/v0.1.7). Final local and three-OS checks and the complete production workflow passed. Independent public asset, checksum, updater-signature, package architecture/version and channel verification passed. Native behaviour and distribution scope are recorded in [implementation progress](implementation-progress.md#v017-release-checklist-26-october).
+
+### Session continuity and viewport discovery follow-up (2 November)
+
+- [x] Link successive same-session turns as conversation order, distinguish real ownership/manual relationships, reveal active and offscreen work, and prefer free current-viewport space for new cards without rearranging saved cards. Standalone/Project, reload, interaction, crowded/occluded/narrow and bounded-storage regression workflows pass; isolated native macOS Echo QA confirms the presentation. This is not a live-provider trial or Windows/Linux native interaction acceptance. See [implementation progress](implementation-progress.md#session-continuity-and-viewport-discovery-2-november) for scope and the PR for final-head CI.
