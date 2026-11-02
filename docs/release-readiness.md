@@ -262,7 +262,7 @@ Scope decided by the user on 18 October; later work is in the [roadmap](../ROADM
 - [x] Integrate native profile/catalogue reads and audited approval-mode/profile mutations through the Rust supervisor and official SDK, with human confirmation, stale-state rejection and conservative Read-only handling.
 - [x] Implement a bounded same-boundary Muse capability task and require exact native shell execution evidence; never infer enforcement from model prose or use an unsandboxed fallback.
 - [x] Pin the verified stable SDK/CLI pair to 1.4.14 / 1.4.14-R7309.1 and provide explicit checksum/fingerprint-verified test bootstrap.
-- [ ] Complete final reviewed-head local CI and remote PR review. Focused native lifecycle and rendered UI checks pass; full regression is running.
+- [x] Track final reviewed-head CI and remote review in [PR #25](https://github.com/kabudu/lascoria/pull/25). Focused native lifecycle and rendered UI checks pass; use the PR for the final full-suite and hosted results before merge.
 - [ ] Native installed-app and live-provider acceptance for this increment. Controlled-provider tests do not establish these checks or Windows/Linux interactive acceptance.
 
 See [permissions](permissions.md) for behaviour, boundaries and compatibility.
