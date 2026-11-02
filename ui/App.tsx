@@ -35,6 +35,8 @@ import { SessionSettings } from './SessionSettings';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recordTiming, timingSnapshot } from './diagnostics';
 import { useCanvasGestures } from './useCanvasGestures';
+import { useConstellation } from './useConstellation';
+import { sessionSequence, connectionCurve } from './constellation';
 import { FloatingPanel } from './FloatingPanel';
 import type { PanelLayout } from './FloatingPanel';
 import { invoke } from '@tauri-apps/api/core';
@@ -337,6 +339,8 @@ export function App() {
   } | null>(null);
   const suppressNodeClick = useRef<string | null>(null);
   const [mapWidth, setMapWidth] = useState(600);
+  const [revealTarget, setRevealTarget] = useState<string | null>(null);
+  const enteredSession = useRef<string | undefined>(undefined);
   const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const {
     drafts,
@@ -484,7 +488,10 @@ export function App() {
   const selectedSession = useRef<string | undefined>(session?.id);
   selectedSession.current = session?.id;
   const nodes = session ? tasks(session, prefs) : [];
-  const task = nodes.find((t) => t.id === prefs.selection) ?? nodes[0];
+  const activeTask =
+    nodes.find((n) => !n.item && n.turnId === session?.state.activeTurnId) ??
+    nodes.findLast((n) => !n.item && n.status === 'running');
+  const task = nodes.find((t) => t.id === prefs.selection) ?? activeTask ?? nodes[0];
   const selectedTask = useRef(task?.id);
   selectedTask.current = task?.id;
   const queue = attention(
@@ -1105,11 +1112,14 @@ export function App() {
       const result = await request(operation, params, id);
       setNotice(outcomeNotice(operation, result.status));
       if (operation !== 'stop') await refresh();
-      if (operation === 'turn' && result.result?.turnId)
+      if (operation === 'turn' && result.result?.turnId) {
+        setRevealTarget(`${params.sessionId}:${result.result.turnId}`);
         updatePrefs({
           selection: `${params.sessionId}:${result.result.turnId}`,
           sessionId: params.sessionId,
+          search: '',
         });
+      }
       return result;
     } catch (e) {
       setError(
@@ -1126,6 +1136,14 @@ export function App() {
     updatePrefs({ selection: node.id, sessionId: node.sessionId });
     setTab('transcript');
     openInspector();
+    if (outside.includes(node.id)) setRevealTarget(node.id);
+  }
+  function chooseSession(row: SessionRow) {
+    const current = tasks(row, latestPrefs.current).find(
+      (n) => !n.item && n.turnId === row.state.activeTurnId,
+    );
+    updatePrefs({ sessionId: row.id, selection: current?.id, ...(current ? { search: '' } : {}) });
+    if (current) setRevealTarget(current.id);
   }
   async function page() {
     if (!session) return;
@@ -1186,8 +1204,51 @@ export function App() {
   const layout = constellationLayout(nodes, 1800);
   const zoom = Math.max(0.02, Math.min(2, prefs.zoom ?? 1));
   const canvasOffset = prefs.canvasOffset ?? { x: 0, y: 0 };
+  const { outside, reveal, noticeHeight, automatic, temporary } = useConstellation(
+    mapRef,
+    visible,
+    prefs,
+    layout,
+    updatePrefs,
+    `${prefs.view}:${session?.id}`,
+    loaded.current,
+    nodes,
+  );
+  const sequence = sessionSequence(visible);
+  useLayoutEffect(() => {
+    if (!loaded.current || !session || !nodes.length || enteredSession.current === session.id)
+      return;
+    enteredSession.current = session.id;
+    if (activeTask) {
+      updatePrefs({ selection: activeTask.id, search: '' });
+      setRevealTarget(activeTask.id);
+    }
+  });
+  useLayoutEffect(() => {
+    if (
+      !revealTarget ||
+      !mapRef.current ||
+      !(prefs.positions?.[revealTarget] ?? automatic[revealTarget])
+    )
+      return;
+    if (!reveal(revealTarget)) setNotice('Move or collapse a panel to make room for this task.');
+    setRevealTarget(null);
+  });
+  function showTask(node: Task) {
+    updatePrefs({
+      selection: node.id,
+      sessionId: node.sessionId,
+      search: '',
+      collapsed: (latestPrefs.current.collapsed ?? []).filter((id) => id !== node.id),
+      view: 'map',
+    });
+    setTab('transcript');
+    setRevealTarget(node.id);
+  }
   const position = (node: Task, _index: number) =>
-    nodePreview?.id === node.id ? nodePreview : (prefs.positions?.[node.id] ?? layout[node.id]);
+    nodePreview?.id === node.id
+      ? nodePreview
+      : (prefs.positions?.[node.id] ?? automatic[node.id] ?? layout[node.id]);
   const sceneWidth = Math.max(
     mapWidth,
     1800,
@@ -1628,7 +1689,7 @@ export function App() {
                 <button
                   key={s.id}
                   className={`session-card ${session?.id === s.id ? 'selected' : ''}`}
-                  onClick={() => updatePrefs({ sessionId: s.id, selection: undefined })}
+                  onClick={() => chooseSession(s)}
                 >
                   <span className="eyebrow">SESSION · {short(s.id)}</span>
                   {s.state.modelRoute?.modelId && <small>{s.state.modelRoute.modelId}</small>}
@@ -2096,6 +2157,39 @@ export function App() {
           </section>
         ) : (
           <>
+            {(activeTask || outside.length > 0 || temporary) && (
+              <section
+                className="canvas-discovery"
+                aria-label="Canvas navigation"
+                style={{ bottom: 48 + noticeHeight }}
+              >
+                {temporary && (
+                  <span className="temporary-layout">
+                    New card positions are temporary: saved layout is full.
+                  </span>
+                )}
+                {activeTask && (
+                  <>
+                    <span className="current-task-status" role="status">
+                      {nodeActivity(activeTask, session, connected).label}: {activeTask.label}
+                    </span>
+                    <button onClick={() => showTask(activeTask)}>Show current task</button>
+                  </>
+                )}
+                {outside.length > 0 && (
+                  <button
+                    onClick={() => {
+                      const target = nodes.find(
+                        (n) => n.id === (task && outside.includes(task.id) ? task.id : outside[0]),
+                      );
+                      if (target) showTask(target);
+                    }}
+                  >
+                    {outside.length} {outside.length === 1 ? 'task' : 'tasks'} out of view · Reveal
+                  </button>
+                )}
+              </section>
+            )}
             <div className="workspace-grid">
               <section className="task-surface">
                 {prefs.view === 'list' ? (
@@ -2206,7 +2300,22 @@ export function App() {
                         }}
                         aria-label="Task map"
                       >
+                        <ol className="sr-only" aria-label="Session task order">
+                          {sequence.map(({ from, to }) => (
+                            <li key={to.id}>
+                              {from.label} followed by {to.label}. Same-session order, not a
+                              dependency.
+                            </li>
+                          ))}
+                        </ol>
                         <svg className="edges" width="100%" height="100%" aria-hidden="true">
+                          {sequence.map(({ from, to }) => (
+                            <path
+                              key={`sequence-${to.id}`}
+                              className="session-edge"
+                              d={connectionCurve(position(from, 0), position(to, 0))}
+                            />
+                          ))}
                           {visible.flatMap((node, index) => {
                             const parent = visible.findIndex((n) => n.id === node.parentId);
                             if (parent < 0) return [];
@@ -2215,7 +2324,7 @@ export function App() {
                             return [
                               <path
                                 key={node.id}
-                                d={`M ${a.x + 110} ${a.y + 114} C ${a.x + 110 + (Math.abs(a.x - b.x) < 30 ? 24 : 0)} ${a.y + 150}, ${b.x + 110 + (Math.abs(a.x - b.x) < 30 ? 24 : 0)} ${b.y - 36}, ${b.x + 110} ${b.y}`}
+                                d={connectionCurve(a, b)}
                                 className="native-edge"
                               />,
                             ];
@@ -2286,24 +2395,12 @@ export function App() {
                                 if (!drag.moved) return;
                                 setNodePreview({
                                   id: node.id,
-                                  x: Math.max(
-                                    0,
-                                    Math.min(
-                                      12000,
-                                      drag.left +
-                                        (dx + (mapRef.current?.scrollLeft ?? 0) - drag.scrollX) /
-                                          zoom,
-                                    ),
-                                  ),
-                                  y: Math.max(
-                                    0,
-                                    Math.min(
-                                      12000,
-                                      drag.top +
-                                        (dy + (mapRef.current?.scrollTop ?? 0) - drag.scrollY) /
-                                          zoom,
-                                    ),
-                                  ),
+                                  x:
+                                    drag.left +
+                                    (dx + (mapRef.current?.scrollLeft ?? 0) - drag.scrollX) / zoom,
+                                  y:
+                                    drag.top +
+                                    (dy + (mapRef.current?.scrollTop ?? 0) - drag.scrollY) / zoom,
                                 });
                               }}
                               onPointerUp={() => finishNodeDrag(true)}
@@ -2335,8 +2432,8 @@ export function App() {
                                       positions: {
                                         ...latestPrefs.current.positions,
                                         [node.id]: {
-                                          x: Math.max(0, Math.min(12000, p.x + x)),
-                                          y: Math.max(0, Math.min(12000, p.y + y)),
+                                          x: p.x + x,
+                                          y: p.y + y,
                                         },
                                       },
                                     });
@@ -2384,7 +2481,13 @@ export function App() {
                   <span>
                     {visible.length} tasks · {nodes.length - visible.length} hidden
                   </span>
-                  <span>Solid lines: started by Muse · Dashed: links you added</span>
+                  <details className="connection-legend">
+                    <summary>Connections · dotted lines show session order</summary>
+                    <p>
+                      Dotted: successive tasks in this session, not dependencies. Solid: started by
+                      Muse. Dashed: links you added.
+                    </p>
+                  </details>
                 </div>
               </section>
               <FloatingPanel
