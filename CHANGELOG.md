@@ -4,6 +4,8 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+## 0.1.8 - 2026-11-02
+
 - Connect successive tasks with distinct session-order curves and keep current work easy to reveal.
 - Place new task cards in available viewport space around panels, preserve saved positions, and show explicit offscreen navigation.
 
