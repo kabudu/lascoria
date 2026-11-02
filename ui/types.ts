@@ -94,6 +94,7 @@ export interface NotificationPrefs {
   mutedSessions?: string[];
 }
 export interface Prefs {
+  defaultPermissionProfile?: string;
   canvasControlsCollapsed?: boolean;
   zoom?: number;
   canvasOffset?: { x: number; y: number };

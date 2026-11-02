@@ -4,6 +4,10 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+- Add visible session-header controls for model/effort and native permission profiles, with confirmed scoped changes and saved defaults for new sessions.
+- Separate approval policy from sandbox capabilities, show effective access, and offer an explicit sandbox capability check through Muse.
+- Upgrade the pinned Muse CLI/SDK pair to stable 1.4.14 and verify onboarding against the matching vendor manifest and schema.
+
 ## 0.1.8 - 2026-11-02
 
 - Connect successive tasks with distinct session-order curves and keep current work easy to reveal.

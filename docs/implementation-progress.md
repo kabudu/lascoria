@@ -887,3 +887,12 @@ This decision narrows the earlier Windows signing gate; it does not waive native
 - [x] Merge the reviewed session-continuity and viewport-discovery implementation as PR #23 after final local CI (97 Rust, 100 Node passes with one platform skip, 52 UI workflows) and all three hosted native checks.
 - [x] Prepare consistent 0.1.8 application/lockfile versions, a concise changelog and curated release notes. Review the notes in light/dark at desktop and phone widths. Keep universal macOS, Windows x64 and Linux x64/ARM64 distribution and existing updater trust unchanged.
 - Final release-head CI, publication and independent public-artifact verification are recorded in the release PR and its production workflow. This preparation alone does not establish publication or extend native installed-platform acceptance.
+
+
+## Session permissions and stable SDK upgrade (2 November)
+
+Implementation is on `codex/session-permissions`. The persistent header exposes Model & effort and Permissions for the selected session. Safe native profiles, separate future defaults, explicit approval scopes, authoritative read-back, stale confirmation rejection and audited mutation recovery are implemented. Read-only refuses command/write approval even when a native choice is offered. A normal Muse task probes process inspection and ephemeral loopback operations; only exact completed native shell evidence counts.
+
+The SDK and runtime pins are 1.4.14 / 1.4.14-R7309.1. The vendor manifest fingerprint, binary size, SHA-256 and reported build were verified in isolated development bootstrap. The user's installed app, global Muse and active sessions were not restarted or changed.
+
+Focused permission unit tests, real Muse/Rust lifecycle tests with a controlled local provider and the rendered real-bridge UI workflow pass. The lifecycle includes restart persistence, command deduplication, Read-only approval rejection, waiting-approval preservation and native same-boundary evidence. UI checks cover accessible header controls, cancelled/stale changes, lost replies, saved-default reload, light/dark layouts and accessibility. Final full CI and PR review remain in progress. This is not a live paid-provider trial or installed native interaction acceptance.

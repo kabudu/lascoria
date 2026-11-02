@@ -618,6 +618,9 @@ export function outcomeNotice(operation: string, status?: string) {
     resume: 'Recovery',
     setModel: 'Model change',
     setEffort: 'Effort change',
+    setPermissionProfile: 'Permission profile change',
+    setApprovalMode: 'Approval policy change',
+    permissionPreflight: 'Sandbox capability check',
     'artifact/capture': 'Snapshot',
     'evidence/record': 'Evidence',
     'workspace/run': 'Test command',
@@ -692,6 +695,16 @@ export function taskFailure(
   error: { kind?: string; message?: string; retryable?: boolean; quota?: { resetsAtMs?: number } },
   now = Date.now(),
 ) {
+  if (
+    /operation not permitted|permission denied|read.only file system|sandbox (blocked|denied|unavailable)/i.test(
+      error.message ?? '',
+    )
+  )
+    return {
+      title: 'Command access was denied',
+      action:
+        'Check Session permissions and the native error details. Approving a command does not grant missing sandbox capabilities. Do not switch runtimes or runners to hide the denial.',
+    };
   const transport =
     /transport error|error sending request|connection (refused|reset)|timed out|dns/i.test(
       error.message ?? '',

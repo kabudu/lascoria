@@ -4,6 +4,8 @@ Use Lazarus mode for implementation, reviews, validation and release work. The R
 
 The authoritative release inventory is docs/release-readiness.md with evidence/status in docs/implementation-progress.md. Public-opening gates are in docs/public-launch.md. Documentation alone does not complete a feature or platform gate.
 
+When upgrading Muse, use the latest verified stable CLI and official SDK together, pinning the exact version/build and schema fingerprint. Never auto-update or restart active user hosts to change that pin.
+
 ## Delivery and validation
 
 - Preserve unrelated changes and existing native user sessions/questions. Use isolated state directories for QA, close owned QA windows/processes and never restart the user's supervisor to test a build.

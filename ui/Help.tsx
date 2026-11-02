@@ -26,7 +26,11 @@ const guides: { title: string; text: string; destination?: Destination; action?:
   },
   {
     title: 'Change model and reasoning effort',
-    text: 'Open Session model & effort in the task inspector. Model changes apply at the next model call, which may occur within a running task. Effort changes apply to subsequent tasks. The slider uses the selected model’s supported levels and default. Changing settings retains the conversation and existing approvals.',
+    text: 'Choose Model & effort in the main header for the selected session. The task inspector also has a shortcut. Model changes apply at the next model call, which may occur within a running task. Effort changes apply to subsequent tasks. The slider uses the selected model’s supported levels and default. Changing settings retains the conversation and existing approvals.',
+  },
+  {
+    title: 'Control session permissions',
+    text: 'Choose Permissions in the main header. Ask me reviews eligible actions, Auto-review delegates eligible decisions to Muse, and Read-only prevents approvals for commands and writes in Lascoria. Changes require confirmation and affect the named session. Future-session defaults are separate. Advanced settings show native approval rules and sandbox details. Checking capabilities starts a normal Muse task with your current model and permissions; it can use your allowance and may ask for approval. Results apply only to the exact checked command and boundary, not every tool or future action. Lascoria never retries outside the sandbox automatically.',
   },
   {
     title: 'Find and continue earlier work',

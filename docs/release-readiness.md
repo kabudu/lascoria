@@ -256,6 +256,17 @@ Scope decided by the user on 18 October; later work is in the [roadmap](../ROADM
 - [ ] **D4 - Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
 - [x] **D5 - Muse capabilities management: roadmap.** Skill discovery, invocation and attribution remain a release requirement under R9. Activation management and the plugin/MCP/settings workflow are on the roadmap, not the first release.
 
+### R18 - Visible session permissions and capability checks
+
+- [x] Put Model & effort and Permissions in the persistent main header, with session-specific profile changes and separately persisted defaults for future sessions.
+- [x] Integrate native profile/catalogue reads and audited approval-mode/profile mutations through the Rust supervisor and official SDK, with human confirmation, stale-state rejection and conservative Read-only handling.
+- [x] Implement a bounded same-boundary Muse capability task and require exact native shell execution evidence; never infer enforcement from model prose or use an unsandboxed fallback.
+- [x] Pin the verified stable SDK/CLI pair to 1.4.14 / 1.4.14-R7309.1 and provide explicit checksum/fingerprint-verified test bootstrap.
+- [ ] Complete final reviewed-head local CI and remote PR review. Focused native lifecycle and rendered UI checks pass; full regression is running.
+- [ ] Native installed-app and live-provider acceptance for this increment. Controlled-provider tests do not establish these checks or Windows/Linux interactive acceptance.
+
+See [permissions](permissions.md) for behaviour, boundaries and compatibility.
+
 ## Token efficiency, required for the first release
 
 The user decided on 18 October that T1–T5 ship in the first release. They remain opt-in policies where they change behaviour, and none may silently drop instructions, history or permissions.

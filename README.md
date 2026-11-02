@@ -69,7 +69,7 @@ These choices shape the product, its trust boundaries and the first-release scop
 
 ## Run from source
 
-Development needs the pinned Rust toolchain (1.97), Node.js 24 or newer, Git and the native Tauri dependencies for your operating system. The currently tested Muse/SDK version is **1.4.10**. See [validation setup](docs/RELEASE.md) for the exact policy and dependencies.
+Development needs the pinned Rust toolchain (1.97), Node.js 24 or newer, Git and the native Tauri dependencies for your operating system. The currently tested Muse/SDK version is **1.4.14**. See [validation setup](docs/RELEASE.md) for the exact policy and dependencies.
 
 ```sh
 npm ci

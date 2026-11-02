@@ -80,6 +80,8 @@ for (const name of [
   'broker.js',
   'auth-worker.js',
   'session-worker.js',
+  'permissions.js',
+  'permission-probe.js',
   'runtime.js',
   'muse-version.js',
 ])

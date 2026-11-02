@@ -32,6 +32,8 @@ import { SessionRelay } from './SessionRelay';
 import { SessionConnections } from './SessionConnections';
 import { RenameSession } from './RenameSession';
 import { SessionSettings } from './SessionSettings';
+import { Permissions, PermissionProfileField } from './Permissions';
+import { permissionSummary } from './permissionPresentation';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { recordTiming, timingSnapshot } from './diagnostics';
 import { useCanvasGestures } from './useCanvasGestures';
@@ -314,6 +316,8 @@ export function App() {
   }, [connected, status.features?.includes('accounts')]);
   const [showArchived, setShowArchived] = useState(false);
   const [settingsTarget, setSettingsTarget] = useState('');
+  const [permissionsTarget, setPermissionsTarget] = useState('');
+  const [startProfile, setStartProfile] = useState(prefs.defaultPermissionProfile ?? ':ask-me');
   const [settingsCatalog, setSettingsCatalog] = useState<Json>(null);
   const [settingsMessage, setSettingsMessage] = useState('');
   const settingsRequest = useRef('');
@@ -390,6 +394,7 @@ export function App() {
       | 'palette'
       | 'diagnostics'
       | 'settings'
+      | 'permissions'
       | 'account'
       | 'usage'
       | 'relay'
@@ -408,6 +413,10 @@ export function App() {
       | null
     >(null),
     [tab, setTab] = useState('transcript');
+  useEffect(() => {
+    if (modal === 'start')
+      setStartProfile(latestPrefs.current.defaultPermissionProfile ?? ':ask-me');
+  }, [modal]);
   const [updateCheckRequest, setUpdateCheckRequest] = useState(0);
   function openUpdates() {
     setUpdateCheckRequest((request) => request + 1);
@@ -1145,6 +1154,20 @@ export function App() {
     updatePrefs({ sessionId: row.id, selection: current?.id, ...(current ? { search: '' } : {}) });
     if (current) setRevealTarget(current.id);
   }
+  async function openSessionSettings(row: SessionRow) {
+    const token = crypto.randomUUID();
+    settingsRequest.current = token;
+    setSettingsTarget(row.id);
+    setSettingsCatalog(null);
+    setSettingsMessage('');
+    setModal('settings');
+    try {
+      const catalog = await request('models', { sessionId: row.id });
+      if (settingsRequest.current === token) setSettingsCatalog(catalog);
+    } catch (error) {
+      if (settingsRequest.current === token) setSettingsMessage(String(error));
+    }
+  }
   async function page() {
     if (!session) return;
     const taskId = task?.id;
@@ -1397,6 +1420,37 @@ export function App() {
           <span className="brand-name">lascoria</span>
           <span className="edition">SPATIAL CODING</span>
         </a>
+        {session && (
+          <div
+            className="session-controlbar"
+            role="group"
+            aria-label={`Session controls for ${sessionName(session)}`}
+          >
+            {status.features?.includes('sessionSettings') && session.lifecycle !== 'archived' && (
+              <button
+                className="permission-indicator"
+                aria-label="Session model and effort"
+                disabled={!available || busy}
+                onClick={() => void openSessionSettings(session)}
+              >
+                Model &amp; effort
+              </button>
+            )}
+            {status.features?.includes('sessionPermissions') &&
+              session.lifecycle !== 'archived' && (
+                <button
+                  className="permission-indicator"
+                  aria-label="Session permissions"
+                  onClick={() => {
+                    setPermissionsTarget(session.id);
+                    setModal('permissions');
+                  }}
+                >
+                  {permissionSummary(session.state.permissions, session.state.current)}
+                </button>
+              )}
+          </div>
+        )}
         <div className="top-actions">
           {newMessageCount > 0 && (
             <button
@@ -2578,20 +2632,7 @@ export function App() {
                         task?.provenance === 'native' ||
                         !status.features?.includes('sessionSettings')
                       }
-                      onClick={async () => {
-                        const token = crypto.randomUUID();
-                        settingsRequest.current = token;
-                        setSettingsTarget(session.id);
-                        setSettingsCatalog(null);
-                        setSettingsMessage('');
-                        setModal('settings');
-                        try {
-                          const catalog = await request('models', { sessionId: session.id });
-                          if (settingsRequest.current === token) setSettingsCatalog(catalog);
-                        } catch (error) {
-                          if (settingsRequest.current === token) setSettingsMessage(String(error));
-                        }
-                      }}
+                      onClick={() => void openSessionSettings(session)}
                     >
                       Session model &amp; effort
                     </button>
@@ -3571,9 +3612,11 @@ export function App() {
                                   ? 'Log out of Lascoria'
                                   : modal === 'diagnostics'
                                     ? 'Performance diagnostics'
-                                    : modal === 'settings'
-                                      ? 'Session model and effort'
-                                      : 'Command palette'}
+                                    : modal === 'permissions'
+                                      ? 'Session permissions'
+                                      : modal === 'settings'
+                                        ? 'Session model and effort'
+                                        : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
@@ -3799,6 +3842,41 @@ export function App() {
           ) : (
             serviceUpgrade
           ))}
+        {modal === 'permissions' && (
+          <Permissions
+            key={permissionsTarget}
+            session={status.sessions.find((row) => row.id === permissionsTarget)}
+            busy={busy}
+            apply={mutate}
+            defaultProfile={prefs.defaultPermissionProfile ?? ':ask-me'}
+            saveDefault={async (defaultPermissionProfile) => {
+              updatePrefs({ defaultPermissionProfile });
+              await flushPrefs();
+            }}
+            probe={async (expectedKey) => {
+              const result = await mutate('permissionPreflight', {
+                sessionId: permissionsTarget,
+                expectedKey,
+                confirmed: true,
+              });
+              if (
+                !result ||
+                !['applied', 'accepted'].includes(result.status) ||
+                !result.result?.turnId
+              )
+                throw new Error(
+                  result?.error?.message ??
+                    'The capability check was not confirmed. Inspect its command receipt before trying again.',
+                );
+              const id = `${permissionsTarget}:${result.result.turnId}`;
+              updatePrefs({ sessionId: permissionsTarget, selection: id, search: '', view: 'map' });
+              setRevealTarget(id);
+              setTab('transcript');
+              openInspector();
+              setModal(null);
+            }}
+          />
+        )}
         {modal === 'settings' &&
           (() => {
             const target = status.sessions.find((s) => s.id === settingsTarget);
@@ -3872,6 +3950,8 @@ export function App() {
           <ProjectStart
             disabled={!runtimeReady || !!(account?.managed && !account.authenticated)}
             worktrees={Boolean(status.features?.includes('projectWorktrees'))}
+            permissionControls={Boolean(status.features?.includes('sessionPermissions'))}
+            defaultPermissionProfile={prefs.defaultPermissionProfile ?? ':ask-me'}
             maps={prefs.projectMaps}
             onMap={(projectId, layout) => {
               // Keep the most recent dozen Projects' arrangements; older ones fall back to
@@ -3908,6 +3988,9 @@ export function App() {
                     ? { name: String(form.get('sessionName') ?? '') }
                     : {}),
                   isolated: form.get('isolated') === 'on',
+                  ...(status.features?.includes('sessionPermissions')
+                    ? { permissionProfile: startProfile }
+                    : {}),
                   ...(modelId ? { modelId } : {}),
                   ...(prefs.efficiency?.preset === 'economical' &&
                   status.features?.includes('effortPresets')
@@ -3967,6 +4050,13 @@ export function App() {
                   This supervisor predates model selection. Restart it to enable explicit model
                   choices; existing sessions keep their routes.
                 </p>
+              )}
+              {status.features?.includes('sessionPermissions') && (
+                <PermissionProfileField
+                  value={startProfile}
+                  onChange={setStartProfile}
+                  disabled={busy}
+                />
               )}
               <label>
                 Initial task
@@ -4190,6 +4280,7 @@ function DecisionPanels({
   disabled: boolean;
   mutate: (operation: string, params: Json) => Promise<Json>;
 }) {
+  const [allowance, setAllowance] = useState<Json>();
   return (
     <>
       {(session.state.approvals ?? []).map((entry) => {
@@ -4207,19 +4298,89 @@ function DecisionPanels({
               <summary>Request identity and provenance</summary>
               <pre>{text(a)}</pre>
             </details>
+            {allowance?.sessionId === session.id && allowance?.approvalId === a.approvalId && (
+              <section
+                className="permission-confirm"
+                role="group"
+                aria-label="Review saved allowance"
+              >
+                <h4>{allowance.choice.label}</h4>
+                <p>
+                  {allowance.choice.scope === 'session'
+                    ? 'Applies this decision for this Muse session.'
+                    : 'Saves a rule locally for this workspace. It may apply to future sessions.'}{' '}
+                  This does not remove operating-system sandbox restrictions.
+                </p>
+                {allowance.choice.rulePreview && <pre>{allowance.choice.rulePreview}</pre>}
+                <button onClick={() => setAllowance(undefined)}>Cancel allowance</button>
+                <button
+                  disabled={
+                    disabled ||
+                    JSON.stringify(allowance.requirementId) !==
+                      JSON.stringify(a.currentRequirementId) ||
+                    !a.availableChoices.some(
+                      (c: Json) => JSON.stringify(c) === JSON.stringify(allowance.choice),
+                    )
+                  }
+                  onClick={() => {
+                    void mutate('decide', {
+                      sessionId: session.id,
+                      approvalId: a.approvalId,
+                      requirementId: a.currentRequirementId,
+                      choiceId: allowance.choice.choiceId,
+                      confirmed: true,
+                    });
+                    setAllowance(undefined);
+                  }}
+                >
+                  Confirm saved allowance
+                </button>
+              </section>
+            )}
+            {session.state.permissions?.permissionState?.profileId === ':read-only' && (
+              <p>
+                Read-only sessions cannot approve command or write requests. Use Session permissions
+                in the header to change the profile first, or reject this request.
+              </p>
+            )}
             <div className="row">
               {a.availableChoices.map((choice: Json) => (
                 <button
                   key={choice.choiceId}
-                  disabled={disabled}
-                  onClick={() =>
+                  disabled={
+                    disabled ||
+                    (session.state.permissions?.permissionState?.profileId === ':read-only' &&
+                      ['approved', 'approvedForSession', 'approvedPolicyAmendment'].includes(
+                        choice.decision,
+                      )) ||
+                    !['once', 'session', 'localPersistent'].includes(choice.scope) ||
+                    ![
+                      'approved',
+                      'approvedForSession',
+                      'approvedPolicyAmendment',
+                      'denied',
+                      'deniedPolicyAmendment',
+                      'timedOut',
+                      'abort',
+                    ].includes(choice.decision)
+                  }
+                  onClick={() => {
+                    if (['session', 'localPersistent'].includes(choice.scope)) {
+                      setAllowance({
+                        sessionId: session.id,
+                        approvalId: a.approvalId,
+                        requirementId: a.currentRequirementId,
+                        choice,
+                      });
+                      return;
+                    }
                     void mutate('decide', {
                       sessionId: session.id,
                       approvalId: a.approvalId,
                       requirementId: a.currentRequirementId,
                       choiceId: choice.choiceId,
-                    })
-                  }
+                    });
+                  }}
                 >
                   {choice.label ?? choice.decision ?? choice.choiceId}
                 </button>

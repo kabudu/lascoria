@@ -2,8 +2,8 @@
 // macOS: the app from scripts/package-macos-qa.js. Windows: run from the package made by
 // scripts/package-windows-qa.js, with its own runtime\node.exe.
 //
-//   node qa-launch.mjs echo  <Muse 1.4.10 binary>   feature checks, no sign-in needed
-//   node qa-launch.mjs live  <Muse 1.4.10 binary>   like echo, but with Muse's real models: sign
+//   node qa-launch.mjs echo  <Muse 1.4.14 binary>   feature checks, no sign-in needed
+//   node qa-launch.mjs live  <Muse 1.4.14 binary>   like echo, but with Muse's real models: sign
 //                                                   in inside the app; QA scripts can drive it
 //   node qa-launch.mjs bound [older Muse binary]    the app starts its own supervisor; with a
 //                                                   path, setup starts from that older choice
@@ -85,8 +85,8 @@ if (launch === 'echo' || launch === 'live')
   });
 if (launch === 'echo') Object.assign(env, { SCH_PROVIDER: 'echo', SCH_AUTH_MANAGED: '0' });
 if (mode === 'echo' || mode === 'live') {
-  if (!muse) throw Error('Pass the Muse 1.4.10 binary');
-  await select(muse, '1.4.10');
+  if (!muse) throw Error('Pass the Muse 1.4.14 binary');
+  await select(muse, '1.4.14');
   const log = await open(join(root, 'supervisor.log'), 'a');
   const daemon = spawn(exe('constellation-supervisor'), [], {
     env,
