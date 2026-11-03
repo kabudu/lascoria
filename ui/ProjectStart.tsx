@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import type { Json } from './types';
+import { PermissionProfileField } from './Permissions';
 import { FolderPath } from './FolderPath';
 import { ProjectMap, type MapLayout } from './ProjectMap';
 import { DROP_EVENT, type NativeDrop } from './drops';
@@ -26,8 +27,12 @@ export function ProjectStart({
   worktrees,
   maps,
   onMap,
+  permissionControls,
+  defaultPermissionProfile = ':ask-me',
 }: {
   started: (id: string) => void;
+  permissionControls?: boolean;
+  defaultPermissionProfile?: string;
   disabled: boolean;
   /** R15: the supervisor can give each folder its own isolated worktree. */
   worktrees?: boolean;
@@ -46,6 +51,7 @@ export function ProjectStart({
   const [task, setTask] = useState('');
   const [model, setModel] = useState('');
   const [isolated, setIsolated] = useState(false);
+  const [permissionProfile, setPermissionProfile] = useState(defaultPermissionProfile);
   const [attempt, setAttempt] = useState<{ operation: string; params: Json; id: string } | null>(
     null,
   );
@@ -413,6 +419,13 @@ export function ProjectStart({
           <option value="muse-spark-1.3">Muse Spark 1.3</option>
         </select>
       </label>
+      {permissionControls && (
+        <PermissionProfileField
+          value={permissionProfile}
+          onChange={setPermissionProfile}
+          disabled={locked}
+        />
+      )}
       <label>
         Project task
         <textarea
@@ -460,6 +473,7 @@ export function ProjectStart({
               projectRevision: saved!.revision,
               name: saved!.name,
               ...(model ? { modelId: model } : {}),
+              ...(permissionControls ? { permissionProfile } : {}),
               ...(economical ? { effortPreset: 'economical' } : {}),
               ...(worktrees && isolated ? { isolated: true } : {}),
             })

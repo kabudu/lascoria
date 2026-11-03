@@ -3,7 +3,7 @@
 // Uses the real Muse binary with its local echo provider: no model provider, credential or
 // network. Every step runs in a private temporary state directory that is removed afterwards.
 //
-//   node testing/lifecycle-smoke.js <app directory> <Muse 1.4.10 binary> [app binary]
+//   node testing/lifecycle-smoke.js <app directory> <Muse 1.4.14 binary> [app binary]
 //
 // Prints one JSON line. `passed` names what ran; `notExercised` names what did not and why.
 import assert from 'node:assert/strict';
@@ -97,7 +97,7 @@ try {
   await mkdir(workspace);
   await mkdir(outside);
   const version = execFileSync(muse, ['--version'], { encoding: 'utf8' }).trim();
-  assert.match(version, /1\.4\.10/, `Muse 1.4.10 required, found ${version}`);
+  assert.match(version, /1\.4\.14/, `Muse 1.4.14 required, found ${version}`);
   await boot(state);
   passed.push('supervisor/installed-resources');
 

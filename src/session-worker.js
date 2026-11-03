@@ -1,10 +1,19 @@
 // Private SDK bridge. Only the Rust supervisor owns the public control API.
 import { Session } from '@muse-code/sdk';
+import { permissionProbe, observedProbe } from './permission-probe.js';
 import { isDeepStrictEqual } from 'node:util';
 import { open, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { toNamespacedPath } from 'node:path';
 import { bounded, spawnRuntime } from './runtime.js';
+import {
+  permissionTracker,
+  initialProfile,
+  checkPermissionChange,
+  profileChoices,
+  APPROVAL_MODES,
+  PermissionValidationError,
+} from './permissions.js';
 
 export async function createSession(send, onDeath) {
   let ended = false;
@@ -57,6 +66,9 @@ export async function createSession(send, onDeath) {
   let acceptedReceipt;
   let staleReason;
   let runtime;
+  let permissions;
+  let permissionRefreshPending = false;
+  let lastPermissionProbe;
   let shutdown;
   let modelRoute;
   let skillsRevision = 0;
@@ -158,6 +170,16 @@ export async function createSession(send, onDeath) {
       reasoningEffort: runtime?.session?.fold.sessionState.get('session/reasoningEffortChanged')
         ?.reasoningEffort,
       skillsRevision,
+      permissions: permissions?.state ?? { current: false },
+      permissionProbe: lastPermissionProbe
+        ? {
+            ...lastPermissionProbe,
+            currentBoundary:
+              permissions?.state.current &&
+              permissions.state.key === lastPermissionProbe.expectedKey,
+            observed: observedProbe(runtime.session?.fold.items.list() ?? [], lastPermissionProbe),
+          }
+        : undefined,
       tokens: {
         byTurn: Object.fromEntries(tokensByTurn),
         byModel: Object.fromEntries(tokensByModel),
@@ -227,7 +249,7 @@ export async function createSession(send, onDeath) {
         provider: process.env.SCH_PROVIDER ?? 'echo',
         onHistory: rememberSource,
         capabilities: process.env.SCH_RELAY_HELPER ? ['sessionMcp'] : [],
-        // R9: only so Muse reports `skillRead` items (observed skill loading).
+        // Observed skill use and native permission profiles require the experimental surface.
         experimentalApi: true,
         onUsage: (usage) => {
           if (!ended && usage && typeof usage === 'object') send({ kind: 'usage', usage });
@@ -244,6 +266,20 @@ export async function createSession(send, onDeath) {
         }
         // Advisory: the session's invocable skills changed, so cached catalogs are stale.
         if (event.method === 'skill/changed') skillsRevision++;
+        if (
+          ['session/permissionProfileChanged', 'session/approvalModeChanged'].includes(event.method)
+        ) {
+          permissions?.invalidate();
+          if (!opening && permissions && !permissionRefreshPending) {
+            permissionRefreshPending = true;
+            void permissions
+              .refresh(sessionId)
+              .then(() => publishState())
+              .finally(() => {
+                permissionRefreshPending = false;
+              });
+          }
+        }
         if (event.method === 'view/gap' && !gapRecovery) runtime.beginGap();
         const applied = !stale ? runtime.session.apply(event) : undefined;
         if (event.method === 'view/gap' && !stale) {
@@ -289,6 +325,7 @@ export async function createSession(send, onDeath) {
       },
     );
     if (ended) throw new Error('Muse died during initialization');
+    permissions = permissionTracker(runtime.request, runtime.handshake);
   } catch (error) {
     await close();
     throw error;
@@ -296,6 +333,16 @@ export async function createSession(send, onDeath) {
 
   async function execute(message) {
     const { operation, params, commandId } = message;
+    if (operation === 'permissions') {
+      if (stale || !runtime.session?.fold.current || params.sessionId !== sessionId)
+        throw new ValidationError('Session state unavailable');
+      const effective = await permissions.refresh(sessionId);
+      const catalog = profileChoices(
+        await runtime.request('permissionProfile/list', { sessionId }),
+      );
+      publishState([], true);
+      return { effective, profiles: catalog };
+    }
     if (['models', 'usage', 'skills'].includes(operation)) {
       if (ended || !runtime.session?.fold.current || params.sessionId !== sessionId)
         throw new ValidationError('Session state unavailable');
@@ -438,6 +485,7 @@ export async function createSession(send, onDeath) {
           ? {
               sessionId,
               workspaceRoot: params.workspace,
+              permissionProfile: initialProfile(params.permissionProfile),
               // Muse requires native canonical roots, including the Windows namespace prefix.
               ...(params.workspaceRoots
                 ? { workspaceRoots: params.workspaceRoots.map(toNamespacedPath) }
@@ -489,12 +537,53 @@ export async function createSession(send, onDeath) {
         publishState(events.map(commandFact), true);
       }
       opening = false;
+      await permissions.refresh(sessionId);
       publishState([], true);
       return result;
     }
     if (stale || !runtime.session?.fold.current || sessionId !== params.sessionId)
       throw new ValidationError('Session state is not current');
     if (operation === 'mediaUpload') return uploadChunk(params);
+    if (operation === 'permissionPreflight') {
+      const effective = await permissions.refresh(sessionId);
+      checkPermissionChange(params, effective);
+      if (
+        runtime.session.fold.activeTurnId ||
+        runtime.session.fold.pendingApprovals().length ||
+        runtime.session.fold.pendingUserInputs().length
+      )
+        throw new ValidationError(
+          'Finish the current task and pending decisions before checking capabilities',
+        );
+      if (effective.permissionState?.profileId === ':read-only')
+        throw new ValidationError(
+          'Choose Ask me or Auto-review before running command capability checks',
+        );
+      if (
+        effective.permissionState?.axes?.filesystem !== 'sandboxed' ||
+        effective.sandboxAvailability !== 'available'
+      )
+        throw new ValidationError('This check requires a confirmed sandbox boundary');
+      const probe = permissionProbe(runtime.handshake.platformFamily, commandId);
+      const result = await runtime.command(
+        'turn/start',
+        {
+          sessionId,
+          input: [{ type: 'text', text: probe.text }],
+          displayText: 'Check sandbox capabilities',
+        },
+        commandId,
+      );
+      lastPermissionProbe = {
+        command: probe.command,
+        marker: probe.marker,
+        turnId: result.turnId,
+        expectedKey: effective.key,
+        startedAtMs: Date.now(),
+      };
+      publishState([], true);
+      return { ...result, permissionProbe: lastPermissionProbe };
+    }
     let method;
     let wire;
     if (operation === 'turn' || operation === 'steer') {
@@ -616,6 +705,54 @@ export async function createSession(send, onDeath) {
         throw new ValidationError('Effort is not advertised for the selected model');
       method = 'session/setReasoningEffort';
       wire = { sessionId, reasoningEffort: params.reasoningEffort };
+    } else if (['setPermissionProfile', 'setApprovalMode'].includes(operation)) {
+      const effective = await permissions.refresh(sessionId);
+      checkPermissionChange(params, effective);
+      if (operation === 'setPermissionProfile') {
+        const profileId = initialProfile(params.profileId);
+        const catalog = profileChoices(
+          await runtime.request('permissionProfile/list', { sessionId }),
+        );
+        if (!catalog.some((row) => row.profileId === profileId && row.selectable))
+          throw new ValidationError('This profile is not available in Muse for this session');
+        method = 'session/setPermissionProfile';
+        wire = { sessionId, profileId };
+      } else {
+        if (!APPROVAL_MODES.includes(params.mode))
+          throw new ValidationError('Unknown approval mode');
+        if (
+          effective.permissionState?.profileId === ':read-only' &&
+          ![effective.approvalMode?.mode, 'denyUnmatched'].includes(params.mode)
+        )
+          throw new ValidationError(
+            'Choose Ask me before relaxing approval rules in a Read-only session',
+          );
+        if (
+          params.mode === 'allowAll' &&
+          (effective.permissionState?.axes?.filesystem !== 'sandboxed' ||
+            effective.sandboxAvailability !== 'available')
+        )
+          throw new ValidationError(
+            'Skipping approval is available only with a confirmed sandbox boundary',
+          );
+        method = 'session/setApprovalMode';
+        wire = { sessionId, mode: params.mode };
+      }
+      checkPermissionChange(params, permissions.state);
+      // Invalidate before mutation, including a lost/rejected reply. Never fabricate rollback.
+      permissions.invalidate();
+      publishState([], true);
+      try {
+        const result = await runtime.command(method, wire, commandId);
+        acceptedReceipt = result;
+        await permissions.refresh(sessionId);
+        publishState([], true);
+        return result;
+      } catch (error) {
+        await permissions.refresh(sessionId);
+        publishState([], true);
+        throw error;
+      }
     } else if (operation === 'compact') {
       // T4: user-requested native compaction. Muse summarises older history itself; Lascoria
       // never rewrites the transcript. Only between tasks, so a running task is not disturbed.
@@ -633,8 +770,40 @@ export async function createSession(send, onDeath) {
       const approval = pending.approvals.find((a) => a.approvalId === params.approvalId);
       if (!approval || !isDeepStrictEqual(approval.currentRequirementId, params.requirementId))
         throw new ValidationError('Stale approval; refresh status');
-      if (!approval.availableChoices.some((choice) => choice.choiceId === params.choiceId))
-        throw new ValidationError('Choice not offered by Muse');
+      const choice = approval.availableChoices.find(
+        (choice) => choice.choiceId === params.choiceId,
+      );
+      if (!choice) throw new ValidationError('Choice not offered by Muse');
+      if (
+        !['once', 'session', 'localPersistent'].includes(choice.scope) ||
+        ![
+          'approved',
+          'approvedForSession',
+          'approvedPolicyAmendment',
+          'denied',
+          'deniedPolicyAmendment',
+          'timedOut',
+          'abort',
+        ].includes(choice.decision)
+      )
+        throw new ValidationError(
+          'This approval scope or decision is not supported. Review it directly in Muse',
+        );
+      if (['approved', 'approvedForSession', 'approvedPolicyAmendment'].includes(choice.decision)) {
+        const effective = await permissions.refresh(sessionId);
+        if (
+          !effective.current ||
+          !permissions.state.current ||
+          effective.key !== permissions.state.key
+        )
+          throw new ValidationError('Refresh session permissions before approving this action');
+        if (effective.permissionState?.profileId === ':read-only')
+          throw new ValidationError(
+            'Read-only sessions cannot approve command or write requests. Change the profile to Ask me first',
+          );
+      }
+      if (choice.scope !== 'once' && params.confirmed !== true)
+        throw new ValidationError('Review and confirm the scope of this saved allowance first');
       method = 'approval/decide';
       wire = {
         sessionId,
@@ -730,7 +899,10 @@ export async function createSession(send, onDeath) {
           error: {
             message: error.message,
             rejected:
-              !acceptedReceipt && (runtime.isRejection(error) || error instanceof ValidationError),
+              !acceptedReceipt &&
+              (runtime.isRejection(error) ||
+                error instanceof ValidationError ||
+                error instanceof PermissionValidationError),
             receipt: acceptedReceipt,
             kind: error.kind,
             code: error.code,

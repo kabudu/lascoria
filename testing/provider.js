@@ -124,6 +124,35 @@ export async function provider(root, options = {}) {
       (body.includes('STAGE_A_APPROVAL') && tools === 0) ||
       (body.includes('STAGE_A_APPROVAL_2') && tools === 1);
     if (tool) tools++;
+    let probeCall;
+    if (options.permissionProbe) {
+      const texts = [];
+      const collect = (v) => {
+        if (typeof v === 'string') texts.push(v);
+        else if (Array.isArray(v)) v.forEach(collect);
+        else if (v && typeof v === 'object') Object.values(v).forEach(collect);
+      };
+      collect(JSON.parse(body).input);
+      const prompt = texts.findLast((t) => t.startsWith('Lascoria sandbox capability check.'));
+      const command = prompt?.slice(prompt.indexOf('\n\n') + 2);
+      if (command && !stageBSent.has(command)) {
+        stageBSent.add(command);
+        probeCall = {
+          type: 'function_call',
+          name: 'bash',
+          arguments: JSON.stringify({
+            command,
+            sandbox_permissions: 'use_default',
+            timeout_ms: 10000,
+            yield_time_ms: 10000,
+            description: 'Run a bounded sandbox capability probe',
+          }),
+          id: 'fc_permission_probe',
+          call_id: 'call_permission_probe',
+          status: 'completed',
+        };
+      }
+    }
     const id = 'resp_' + requests.length;
     const frame = (status) => ({
       id,
@@ -135,8 +164,8 @@ export async function provider(root, options = {}) {
     const emit = (event) => response.write('data: ' + JSON.stringify(event) + '\n\n');
     response.writeHead(200, { 'content-type': 'text/event-stream' });
     emit({ type: 'response.created', sequence_number: 1, response: frame('in_progress') });
-    if (relayCall) {
-      const item = {
+    if (relayCall || probeCall) {
+      const item = probeCall ?? {
         type: 'function_call',
         id: 'fc_relay_' + requests.length,
         call_id: 'call_relay_' + requests.length,

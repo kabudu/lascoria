@@ -292,6 +292,8 @@ impl Db {
                             | "turn/unqueued"
                             | "approval/resolved"
                             | "userInput/settled"
+                            | "session/approvalModeChanged"
+                            | "session/permissionProfileChanged"
                     )
                 )
             })
@@ -493,6 +495,36 @@ mod tests {
         assert_eq!(status("other-session")?, "accepted");
         assert_eq!(status("sending")?, "outcomeUnknown");
         assert_eq!(status("settled")?, "rejected");
+        Ok(())
+    }
+    #[test]
+    fn permission_commit_facts_reconcile_only_the_current_session_generation() -> Result<()> {
+        for method in [
+            "session/approvalModeChanged",
+            "session/permissionProfileChanged",
+        ] {
+            let db = Db::open(Path::new(":memory:"))?;
+            db.put(
+                "sessions",
+                "s",
+                &json!({"id":"s","generation":2,"state":{"current":true}}),
+            )?;
+            for (id, session) in [("target", "s"), ("neighbour", "t")] {
+                db.put("commands", id, &json!({"id":id,"sessionId":session,"commandId":"wire","status":"outcomeUnknown"}))?;
+            }
+            let facts = json!([{"method":method,"commandId":"wire"}]);
+            db.state("s", 1, json!({"current":true}), &Value::Null, &facts)?;
+            assert_eq!(
+                db.get("commands", "target")?.unwrap()["status"],
+                "outcomeUnknown"
+            );
+            db.state("s", 2, json!({"current":true}), &Value::Null, &facts)?;
+            assert_eq!(db.get("commands", "target")?.unwrap()["status"], "applied");
+            assert_eq!(
+                db.get("commands", "neighbour")?.unwrap()["status"],
+                "outcomeUnknown"
+            );
+        }
         Ok(())
     }
 }

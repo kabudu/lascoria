@@ -27,6 +27,7 @@ const FEATURES: &[&str] = &[
     "usage",
     "modelSelection",
     "sessionSettings",
+    "sessionPermissions",
     "diagnostics",
     "taskWorkspaces",
     "accounts",
@@ -239,7 +240,12 @@ impl Actor {
         match response {
             Ok(response) if response.get("error").is_none() => {
                 command["result"] = response["result"].clone();
-                command["status"] = if prior["status"] == "applied" {
+                command["status"] = if prior["status"] == "applied"
+                    || (["setPermissionProfile", "setApprovalMode"].contains(&operation)
+                        && matches!(
+                            response["result"]["applyOutcome"].as_str(),
+                            Some("completed" | "noop")
+                        )) {
                     json!("applied")
                 } else if response["result"]["status"] == "accepted" {
                     json!("accepted")
@@ -522,7 +528,16 @@ impl Actor {
                 self.save(&archived)?;
             }
             return workspace::finish(&self.db, id, result);
-        } else if ["transcript", "output", "models", "usage", "skills"].contains(&operation) {
+        } else if [
+            "transcript",
+            "output",
+            "models",
+            "usage",
+            "skills",
+            "permissions",
+        ]
+        .contains(&operation)
+        {
             let session = params["sessionId"].as_str().context("Session required")?;
             ensure!(
                 self.row(session)?["state"]["current"] == true,
@@ -533,7 +548,7 @@ impl Actor {
                 .get_mut(session)
                 .context("Worker unavailable")?
                 .call(
-                    json!({"id":Uuid::new_v4().to_string(),"operation":if operation == "output" {"readOutput"} else if ["models", "usage", "skills"].contains(&operation) {operation} else {"inspect"},"params":params}),
+                    json!({"id":Uuid::new_v4().to_string(),"operation":if operation == "output" {"readOutput"} else if ["models", "usage", "skills", "permissions"].contains(&operation) {operation} else {"inspect"},"params":params}),
                 )
                 .await?;
             ensure!(
@@ -603,6 +618,9 @@ impl Actor {
                 "resume",
                 "setModel",
                 "setEffort",
+                "permissionPreflight",
+                "setPermissionProfile",
+                "setApprovalMode",
                 "compact"
             ]
             .contains(&operation),
@@ -665,6 +683,15 @@ impl Actor {
                     < 10,
                 "You can have 10 open sessions. Archive a session you have finished, then start this one"
             );
+            if let Some(profile) = params.get("permissionProfile") {
+                ensure!(
+                    matches!(
+                        profile.as_str(),
+                        Some(":ask-me" | ":auto-review" | ":read-only")
+                    ),
+                    "Choose Ask me, Auto-review or Read-only"
+                );
+            }
             if let Some(model) = params.get("modelId") {
                 ensure!(
                     model.as_str().is_some_and(|id| !id.is_empty()
@@ -785,6 +812,10 @@ impl Actor {
             if let Some(model) = params.get("modelId") {
                 wire["modelId"] = model.clone();
             }
+            wire["permissionProfile"] = params
+                .get("permissionProfile")
+                .cloned()
+                .unwrap_or(json!(":ask-me"));
             let economical = params["effortPreset"] == "economical";
             let result = self
                 .dispatch(id, operation, params, &session, Some(wire))
@@ -1472,7 +1503,7 @@ async fn supervisor_main() -> Result<()> {
                     if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
                     continue;
                 }
-                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "compact", "answer", "decide", "relay/deliver"].iter().any(|op| call.request["operation"] == *op)
+                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "permissionPreflight", "setPermissionProfile", "setApprovalMode", "compact", "answer", "decide", "relay/deliver"].iter().any(|op| call.request["operation"] == *op)
                     && !account_ready.load(std::sync::atomic::Ordering::SeqCst) {
                     let _ = call.response.send(Err(anyhow::anyhow!("Sign in or reconnect your Muse account before continuing")));
                     continue;

@@ -16,7 +16,7 @@ use tokio::{
     process::Command,
     time::timeout,
 };
-const FINGERPRINT: &str = "sha256:5d3b43e5ccdb7dc4f5a32c380f5f2cde0f10e3059b93610afb2e73f73b1d914c";
+const FINGERPRINT: &str = "sha256:c94c3d1f2f51e6424074b9ec43eac3eedcf532d3dcd77351ec1383a87d3049c6";
 const MAX_SIZE: u64 = 768 * 1024 * 1024;
 #[derive(Default)]
 pub struct Setup(

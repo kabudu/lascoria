@@ -15,12 +15,8 @@ export async function bounded(promise, ms = 10000) {
   }
 }
 
-/**
- * Muse 1.4.10's experimental surface adds these notifications over the stable one. Session
- * hosts opt into the experimental API only for the `skillRead` item (R9 observed skill use),
- * so they decline all of them; its one extra server request, `admission/request`, is refused
- * below like any request Lascoria does not handle.
- */
+/** Decline experimental streams this adapter does not consume. Permission changes are
+ * deliberately subscribed: missing them could leave stale authority visible to the user. */
 export const EXPERIMENTAL_NOTIFICATIONS = [
   'account/changed',
   'account/loginCompleted',
@@ -29,7 +25,10 @@ export const EXPERIMENTAL_NOTIFICATIONS = [
   'log/gap',
   'log/record',
   'mcpServer/oauthLoginCompleted',
-  'session/permissionProfileChanged',
+  'peer/settlementsChanged',
+  'log/physicalLine',
+  'log/physicalReset',
+  'session/driveChanged',
 ];
 export async function spawnRuntime(options, onEvent, onDeath) {
   const handshake = spawnMspConnection({

@@ -256,6 +256,19 @@ Scope decided by the user on 18 October; later work is in the [roadmap](../ROADM
 - [ ] **D4 - Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
 - [x] **D5 - Muse capabilities management: roadmap.** Skill discovery, invocation and attribution remain a release requirement under R9. Activation management and the plugin/MCP/settings workflow are on the roadmap, not the first release.
 
+### R18 - Visible session permissions and capability checks
+
+- [x] Put Model & effort and Permissions in the persistent main header, with session-specific profile changes and separately persisted defaults for future sessions.
+- [x] Integrate native profile/catalogue reads and audited approval-mode/profile mutations through the Rust supervisor and official SDK, with human confirmation, stale-state rejection and conservative Read-only handling.
+- [x] Implement a bounded same-boundary Muse capability task and require exact native shell execution evidence; never infer enforcement from model prose or use an unsandboxed fallback.
+- [x] Pin the verified stable SDK/CLI pair to 1.4.14 / 1.4.14-R7309.1 and provide explicit checksum/fingerprint-verified test bootstrap.
+- [x] Track final reviewed-head CI and remote review in [PR #25](https://github.com/kabudu/lascoria/pull/25). Focused native lifecycle and rendered UI checks pass; use the PR for the final full-suite and hosted results before merge.
+- [x] macOS arm64 native QA with a live subscription: Wonder and Spark turns, model/effort changes, cancelled/confirmed profile changes, a denied Read-only write, saved-default restart, exact native capability evidence and visible busy-node activity. This is an isolated ad hoc QA app, not signed distribution acceptance.
+- [ ] Windows/Linux interactive native and live-provider acceptance for this increment. Hosted CI verifies fail-closed capability handling where sandbox support is unavailable; it does not establish positive sandbox execution or physical UI interaction on those platforms.
+- [x] Make working nodes and helper agents visible with a bounded, indeterminate activity bar. Waiting, stale and completed states stay still; reduced motion and long-label layout are covered by rendered workflow tests.
+
+See [permissions](permissions.md) for behaviour, boundaries and compatibility.
+
 ## Token efficiency, required for the first release
 
 The user decided on 18 October that T1–T5 ship in the first release. They remain opt-in policies where they change behaviour, and none may silently drop instructions, history or permissions.
