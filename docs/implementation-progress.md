@@ -914,4 +914,5 @@ This establishes macOS native interaction and subscription-provider behaviour fo
 
 - [x] Merge PR #25 after final local CI, macOS/Windows/Linux hosted checks and the recorded isolated macOS subscription trials.
 - [x] Prepare consistent 0.1.9 package/lockfile versions and curated release notes covering session access, direct model/effort controls, activity bars and Muse 1.4.14 compatibility.
+- [x] Preview curated notes in light/dark at desktop and narrow widths, and pass the online supply-chain audit after moving yanked async-executor 1.14.0 to verified non-yanked 1.14.1 in the affected lockfiles.
 - Release-head CI, notes previews, production build/publication and independent public-download verification are tracked in the release PR and production workflow. Publication requires the complete universal macOS, Windows x64 and Linux x64/ARM64 inventory, updater signatures, checksums and matching channel manifests. Existing platform acceptance scope remains unchanged.
