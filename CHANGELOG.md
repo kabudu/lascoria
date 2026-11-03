@@ -4,8 +4,10 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
-- Make working tasks and helper agents easier to spot with a moving activity bar; waiting, disconnected and finished nodes stay still.
+## 0.1.9 - 2026-11-03
 
+- Make working tasks and helper agents easier to spot with a moving activity bar; waiting, disconnected and finished nodes stay still.
+- Keep long node titles readable with a two-line ellipsis.
 - Add visible session-header controls for model/effort and native permission profiles, with confirmed scoped changes and saved defaults for new sessions.
 - Separate approval policy from sandbox capabilities, show effective access, and offer an explicit sandbox capability check through Muse.
 - Upgrade the pinned Muse CLI/SDK pair to stable 1.4.14 and verify onboarding against the matching vendor manifest and schema.
