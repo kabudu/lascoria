@@ -1,8 +1,52 @@
 # Lascoria release-readiness backlog
 
-Updated 21 October 2026. Implementation is active; see the [running checklist](implementation-progress.md). This is the consolidated product/release backlog, not a claim that Lascoria is ready to distribute. Historical validation records remain in the stage documents. An unchecked item is planned or outstanding; checked implementation elsewhere does not close a release gate without its acceptance evidence.
+Updated 4 November 2026, after v0.1.9. This is the consolidated product/release backlog; evidence lives in the [running checklist](implementation-progress.md) and the stage documents. The repository has been public since 21 October, hosted three-OS CI runs on every pull request and master push, and versioned binaries have been public since v0.1.2. Publishing a release does not close a gate: an unchecked item stays open until its own acceptance evidence exists, and a checked subtask does not close its parent.
 
-The user requested missing-Muse onboarding, in-app update checks backed by platform GitHub Releases, and renaming the repository to `lascoria`. Implementation is tracked below and in the running checklist. Repository rename is complete; public visibility, software installation and publishing remain separate actions.
+## Status summary (4 November)
+
+Three states are used. **Shipped** means available in the public release and every acceptance item has evidence. **Implemented, incompletely validated** means the code is in the public release but the gate still has the exact remaining scope listed. **Planned** means a proposal in the [roadmap](../ROADMAP.md), not available and not scheduled.
+
+### Shipped
+
+| Area | Evidence |
+| --- | --- |
+| Public source and repository policy (R4 rename/opening, PL01 to PL04) | Renamed to `kabudu/lascoria`; public since 21 October; Actions enabled; master protection requires `native (macos-latest)`, `native (windows-latest)` and `native (ubuntu-latest)`. |
+| Versioned binary distribution, v0.1.2 to v0.1.9 | Each release has one universal macOS installer/updater, Windows x64 and Linux x64/ARM64 packages, 13 public assets and matching stable/beta manifests, independently verified after publication. Latest: [v0.1.9](https://github.com/kabudu/lascoria/releases/tag/v0.1.9) from tag `v0.1.9` at `0d7a993`, [production run 41588667199](https://github.com/kabudu/lascoria/actions/runs/41588667199). See [v0.1.9 evidence](implementation-progress.md#v019-release-checklist-3-november). |
+| Universal macOS distribution | Both architecture slices, Developer ID signatures, stapled notarization and Gatekeeper pass in the public installer and updater for every release since v0.1.2. |
+| Curated release notes and fail-closed release metadata (PL13, PL14) | Versioned sources in `docs/releases/`, checked against the tag by release automation. Rendered previews are recorded in each release PR; the canonical page was inspected at desktop and mobile widths for v0.1.2. |
+
+### Implemented, incompletely validated
+
+Everything here is in the public builds. Unless a row says otherwise, macOS has the strongest native evidence; Windows and Linux evidence is narrower and noted. Package checks on published artifacts do not establish physical Windows or Linux acceptance.
+
+| Gate | Remaining scope |
+| --- | --- |
+| R1 Muse onboarding | Windows and Linux onboarding runs; clean-account browser login followed by a live task; installation outside shell PATH and incompatible installations; offline, cancelled and partial setup; the error and accessibility matrix. |
+| R2 Self-contained download | Fresh install, launch, uninstall and reinstall without developer tools on physical Windows and Linux; a published OS/architecture support statement; proof that application/state identity survives the rename and updates. Windows publisher signing is planned (roadmap). |
+| R3 In-app updates | Windows and Linux signed replacement and restart; migration failure and recovery; incompatible supervisor; interrupted install, unavailable GitHub and rate-limit recovery against real releases; a recorded check that public installs carry no GitHub token. |
+| R4 Public-release preparation | Application identifier and state-path compatibility evidence; clean-machine installation guidance validated per platform; build reproducibility. |
+| R5 Data and lifecycle | Packaged lifecycle matrix (long commands, subagents, waiting questions/approvals, crash, sleep/wake, supervisor replacement); real provider expiry; cross-window draft conflicts; native data-lifecycle runs on all three OSes. |
+| R6 Stage C evidence | Real retained-history and update-burst measurements on the current build; sustained packaged measurements; developer trials. |
+| R7 Accessibility and failure states | Native VoiceOver and keyboard-only journeys; the rest of the failure-state matrix; native support-report save on all three OSes. |
+| R8 Account usage and `/usage` | Live subscription `usage/changed`; no-observation, stale, API-key and signed-out states during active turns, tools and waiting states, on all three OSes. |
+| R9 Skill picker | Muse-originated `skill/changed`; plugin skills; the full validation matrix on all three OSes. |
+| R10 Decision assistance | Windows and Linux acceptance; a live OpenAI adapter trial; broader independent quality checks; a live Muse model choosing the tool unprompted. |
+| R11 Resource efficiency | Signed-in host, active workloads and window states; Windows and Linux baselines; revalidation on the current SDK and packaged build; automated regression thresholds. |
+| R12 Security review | Adversarial OS testing on all three platforms; installed signed acceptance of peer binding; independent review; findings closure with regression evidence. |
+| R13 UX, DX and language review | Full journey review and findings register; native accessibility journeys. |
+| R14 Attachments | Linux drops; remaining pick/paste and failure cases; real-provider media; R11/R12 checks for this boundary. |
+| R15 Sessions and Projects | Linux folder intake; a live multi-repository task on all three OSes; permission, Git and recovery matrix; Project naming at creation. |
+| R16 Session communication | Connect sessions flow; Linux desktop and live-provider proof; the complete target and lifecycle matrix. |
+| R17 Account menu and Help | Native identity, Log out and Help runs on all three OSes; Help content reconciled with the current release. |
+| R18 Session permissions (v0.1.9) | Windows and Linux interactive native and live-provider acceptance; positive sandbox execution where the host reports support unavailable. macOS live-subscription QA, controlled-provider lifecycle tests and three-OS hosted checks passed. |
+| D1 guarded commit, D2 editor hand-off, D3 search/export, D4 notifications | D1/D2 native runs on all three OSes; D3 native export on macOS and Windows; D4 native delivery on macOS and Windows. |
+| T1 to T5 token efficiency | Native checks for each policy; a broader T5 benchmark showing savings with preserved correctness. |
+
+### Planned
+
+Selected file/hunk staging, branches, push and pull requests, merge/conflict help and hooks/signing (after D1); an embedded editor and interactive terminal (after D2); Muse skill, plugin, MCP and settings management (D5); Windows publisher signing; and the research candidates. See the [roadmap](../ROADMAP.md). None is authorised for implementation by this document.
+
+The sections below keep the detailed acceptance contract and dated evidence. Dated notes describe the state on their date.
 
 ## Release blockers
 
@@ -40,7 +84,7 @@ Reference: [official Muse installation documentation](https://dev.meta.ai/docs/m
 - [ ] Download with progress/cancellation and offer explicit **Install and restart** or **Later**. Automatic checking does not imply forced installation or interruption of active work.
 - [ ] Coordinate the UI, Rust supervisor, Node worker and Muse compatibility as one versioned contract. Current bundles replace the complete runtime, so all operating systems require explicit pause/stop before installation. Rust must independently exclude an active service or another installer, then recover retained state after replacement without replay. A future UI-only update may retain work only with a separately negotiated immutable runtime; that is not the current path. Never spawn two writers or let an obsolete supervisor spawn workers from replaced resources.
 - [ ] Preserve account policy, inactive API keys, drafts once durable, worktrees, sessions and evidence. Validate migrations and a recoverable failed-update path. Do not promise binary downgrade when a newer database schema refuses it; backup/restore and rollback policy must agree.
-- [ ] CI builds/tests each supported target, creates signed updater artifacts and publishes versioned GitHub releases/manifests only after gates pass. Anonymous public installs must not contain a GitHub personal access token; public availability is a separate release step while this repository remains private.
+- [ ] CI builds/tests each supported target, creates signed updater artifacts and publishes versioned GitHub releases/manifests only after gates pass. Anonymous public installs must not contain a GitHub personal access token. Status (4 November): the production workflow has built, validated and published v0.1.2 to v0.1.9 (latest [run 41588667199](https://github.com/kabudu/lascoria/actions/runs/41588667199)); this item stays open until the absence of any GitHub token in installed builds is recorded as evidence.
 - [ ] Exercise real packaged N-to-N+1 install, idle and active-session update, question/approval waiting states, UI reopen, interrupted download/install, invalid signature, unavailable GitHub/rate limits, incompatible supervisor, migration failure and unsupported target. Verify no command/tool replay and correct restored progress.
 
 Reference: [Tauri v2 updater](https://v2.tauri.app/plugin/updater/) supports signed update artifacts and static manifests on GitHub Releases. Integrated 18 October with a prepared release pipeline ([Cutting a release](RELEASE.md#cutting-a-release)); the acceptance items above still need the complete target/failure matrix; scoped macOS signed replacement/restart is recorded below. Existing live UI-close/reconnect and graceful-logout proofs in [accounts](accounts.md) are prerequisites, not an update-install proof.
@@ -51,21 +95,21 @@ Reference: [Tauri v2 updater](https://v2.tauri.app/plugin/updater/) supports sig
 - [x] Make full-runtime update ownership explicit on all OSes: pause/stop first and hold the native owner lock during install. Announced and received download bytes share a 256 MB limit and a five-minute deadline; cancellation and signed-version failures stay failures.
 - [x] Scoped macOS arm64 native signed 0.1.1-to-0.1.2 QA installation/restart: both endpoints freshly notarized/stapled; post-install deep strict signature, ticket and Gatekeeper checks passed. A new service retained six session IDs, completed progress and an unsent draft. Real Muse SDK pending-question, permission and active-call states, driven by a controlled local provider, became saved stops with no stale question/approval, no approval-sensitive file and no automatic request replay. An explicit follow-up in the same session completed. The original user service was preserved.
 - [x] Scoped native failure checks: reject tampered signature, announced 300 MiB download and wrong platform; cancel a slow download and retry. Installation failure exposed a repeated-stop bug, fixed with an app-lifetime stop marker, required draft/layout flush and a Settings-remount retry regression. Release manifests reject artifacts above the same 256 MiB client budget.
-- [ ] Complete Windows/Linux signed replacement/restart, real production GitHub pipeline acceptance, migration failure, incompatible-supervisor and remaining network/install recovery checks. The macOS local-provider QA proof does not close the full R3 gate or establish paid live-provider acceptance.
+- [ ] Complete Windows/Linux signed replacement/restart, migration failure, incompatible-supervisor and remaining network/install recovery checks. The real production GitHub pipeline has since published and served v0.1.2 to v0.1.9. The macOS local-provider QA proof does not close the full R3 gate or establish paid live-provider acceptance.
 
 ### R4 - Repository rename and public-release preparation
 
-Use [the tailored public-launch gates](public-launch.md), adopted from the bootstrap skill, alongside the detailed R1–R17 checks. Local CI is authoritative while private; public opening, hosted CI activation and publication require their explicit gate.
+Use [the tailored public-launch gates](public-launch.md), adopted from the bootstrap skill, alongside the detailed R1–R18 checks. Public opening and hosted CI activation completed on 21 October; each release still requires final-head local CI, the three hosted native checks and its own explicit publication authority.
 
-- [x] Disable GitHub Actions at repository level while private, per the user's instruction. Verified `repos/kabudu/lascoria/actions/permissions` reports `enabled: false`; workflow source stays committed.
-- [ ] When public visibility is explicitly authorised and applied, re-enable GitHub Actions, run the prepared cross-platform workflow and inspect actual results before relying on CI or publishing. Do not automatically change visibility or enable Actions from local development.
+- [x] Disable GitHub Actions at repository level while private, per the user's instruction (historical; the private phase ended on 21 October).
+- [x] When public visibility is explicitly authorised and applied, re-enable GitHub Actions, run the prepared cross-platform workflow and inspect actual results before relying on CI or publishing. Done 21 October: the repository is public, `actions/permissions` reports `enabled: true`, and the three native checks run and are required on every pull request (for example [run 41586804560](https://github.com/kabudu/lascoria/actions/runs/41586804560) for the v0.1.9 release head).
 
 
 - [x] Rename `kabudu/spatial-constellation-harness` to `kabudu/lascoria`, checking target availability immediately before the operation. Update and verify local origin, package metadata, README links, issue/repository URLs, CI, badges and future release/updater endpoints. Preserve Git history and verify fetch/push against the renamed repository.
 - [ ] Keep existing application identifiers, persistent state paths, task branches and evidence fingerprints compatible unless a separate migration is implemented. Renaming the local checkout is optional and must not break installed/development resource paths.
-- [ ] Before making the repository public, complete tracked-file/history privacy and licensing/redistribution review, security reporting, support expectations and contributor guidance. Keep local `.dev` credentials and live transcripts excluded. The owner selected [a public-history cleanup plan](public-history-cleanup.md): current minimisation does not erase the nine historical private-session trailers or old document identifiers. Preserve the existing stack until delivery is resolved and separately authorise rewrite/ref replacement; then validate the actual public candidate. A rename or prepared plan is not authority to make the repository public.
-- [ ] Finish reproducible CI/build/release instructions, supported versions, changelog/tag policy, artifact checksums/provenance and clean-machine installation documentation. The prepared release workflow now requires reusable validation before building and uses immutable artifact reconciliation; actual hosted/public results remain open. Publish only targets that passed R2/R3.
-- [x] Prepare `.github/master-protection.json` for review: one approval, resolved conversations, linear history, strict three-OS native checks, and no force pushes/deletions. The policy is not applied; verify actual check contexts and obtain the separate application authority before activating it.
+- [x] Before making the repository public, complete tracked-file/history privacy and licensing/redistribution review, security reporting, support expectations and contributor guidance. Completed for the 21 October opening under PL03: Apache-2.0 [LICENSE](../LICENSE) and [NOTICE](../NOTICE), [SECURITY](../SECURITY.md), [SUPPORT](../SUPPORT.md) and [CONTRIBUTING](../CONTRIBUTING.md) are published, and the scoped history result is in [history cleanup](public-history-cleanup.md). Original preparation text follows. Keep local `.dev` credentials and live transcripts excluded. The owner selected [a public-history cleanup plan](public-history-cleanup.md): current minimisation does not erase the nine historical private-session trailers or old document identifiers. Preserve the existing stack until delivery is resolved and separately authorise rewrite/ref replacement; then validate the actual public candidate. A rename or prepared plan is not authority to make the repository public.
+- [ ] Finish reproducible CI/build/release instructions, supported versions, changelog/tag policy, artifact checksums/provenance and clean-machine installation documentation. The release workflow requires reusable validation before building and uses immutable artifact reconciliation; it has published v0.1.2 to v0.1.9. Remaining: clean-machine installation guidance validated per platform and demonstrated build reproducibility. Publish only targets that passed R2/R3.
+- [x] Prepare `.github/master-protection.json` for review: one approval, resolved conversations, linear history, strict three-OS native checks, and no force pushes/deletions. Applied on 21 October after the real check contexts were verified; on 22 October the active policy was set to zero required approving reviews, keeping strict three-OS checks, resolved conversations, administrator enforcement, linear history and disabled force pushes/deletions.
 
 ### R5 - Durable data, authentication and lifecycle acceptance
 
@@ -154,7 +198,7 @@ Added 15 October at the user's request. Efficiency is a release requirement. Mea
 
 18 October: the user accepted the measured macOS RSS overage (327–329 MB control + GUI RSS, 226 MB footprint, ten sessions idle, signed out) as a [scoped exception](resource-efficiency.md#scoped-exception-macos-resident-memory-18-october). It does not cover other platforms, the signed-in host or active workloads, and does not close this gate.
 
-Historical reference only: [14 October Stage C memory results](stage-c-memory.md#measured-results-14-october-2026) recorded 207.7 MB UI/control RSS and 0.68% of one core idle for ten sessions, but 1,613.5 MB and 5.60% including ten native Muse hosts. That used SDK/Muse 1.4.8 and does not certify current 1.4.9 builds.
+Historical reference only: [14 October Stage C memory results](stage-c-memory.md#measured-results-14-october-2026) recorded 207.7 MB UI/control RSS and 0.68% of one core idle for ten sessions, but 1,613.5 MB and 5.60% including ten native Muse hosts. That used SDK/Muse 1.4.8 and does not certify current builds (pinned to 1.4.14 since v0.1.9).
 
 ### R12 - Full security review before public release
 
@@ -262,7 +306,7 @@ Scope decided by the user on 18 October; later work is in the [roadmap](../ROADM
 - [x] Integrate native profile/catalogue reads and audited approval-mode/profile mutations through the Rust supervisor and official SDK, with human confirmation, stale-state rejection and conservative Read-only handling.
 - [x] Implement a bounded same-boundary Muse capability task and require exact native shell execution evidence; never infer enforcement from model prose or use an unsandboxed fallback.
 - [x] Pin the verified stable SDK/CLI pair to 1.4.14 / 1.4.14-R7309.1 and provide explicit checksum/fingerprint-verified test bootstrap.
-- [x] Track final reviewed-head CI and remote review in [PR #25](https://github.com/kabudu/lascoria/pull/25). Focused native lifecycle and rendered UI checks pass; use the PR for the final full-suite and hosted results before merge.
+- [x] Track final reviewed-head CI and remote review in [PR #25](https://github.com/kabudu/lascoria/pull/25), merged as `3ca8658` after final local CI and the three hosted native checks, and shipped in [v0.1.9](https://github.com/kabudu/lascoria/releases/tag/v0.1.9).
 - [x] macOS arm64 native QA with a live subscription: Wonder and Spark turns, model/effort changes, cancelled/confirmed profile changes, a denied Read-only write, saved-default restart, exact native capability evidence and visible busy-node activity. This is an isolated ad hoc QA app, not signed distribution acceptance.
 - [ ] Windows/Linux interactive native and live-provider acceptance for this increment. Hosted CI verifies fail-closed capability handling where sandbox support is unavailable; it does not establish positive sandbox execution or physical UI interaction on those platforms.
 - [x] Make working nodes and helper agents visible with a bounded, indeterminate activity bar. Waiting, stale and completed states stay still; reduced motion and long-label layout are covered by rendered workflow tests.
@@ -284,9 +328,9 @@ The user decided on 18 October that T1–T5 ship in the first release. They rema
 - [ ] Evaluate a Rust-native interactive MSP adapter using the staged conformance/performance gates in [the SDK assessment](rust-sdk-assessment.md). Keep the official SDK as production/reference until parity is proven. This is not a prerequisite for onboarding or app updates, and it does not solve provider billing or credential expiry.
 - [ ] A dependency-aware task scheduler and automatic evidence acceptance need separately agreed semantics and trust boundaries; current graph assertions and human evidence do not implement them.
 
-## Active implementation order
+## Release history
 
-Follow the [running completion sequence](implementation-progress.md#active-completion-sequence). All three operating systems remain release requirements. Hosted CI runs are deferred until the repository is public, as requested; skipped jobs are not validation evidence.
+The original dependency-ordered sequence is kept as history in [implementation progress](implementation-progress.md#original-completion-sequence-15-october). All three operating systems remain release requirements. New work is scheduled only by explicit authorisation, against the open gates above or a roadmap item. Each release below records distribution evidence only; it does not extend native platform acceptance or close unrelated gates.
 
 ### Universal macOS distribution
 
@@ -320,3 +364,11 @@ These publication checks do not change the scope of earlier native acceptance ev
 ### Session continuity and viewport discovery follow-up (2 November)
 
 - [x] Link successive same-session turns as conversation order, distinguish real ownership/manual relationships, reveal active and offscreen work, and prefer free current-viewport space for new cards without rearranging saved cards. Standalone/Project, reload, interaction, crowded/occluded/narrow and bounded-storage regression workflows pass; isolated native macOS Echo QA confirms the presentation. This is not a live-provider trial or Windows/Linux native interaction acceptance. See [implementation progress](implementation-progress.md#session-continuity-and-viewport-discovery-2-november) for scope and the PR for final-head CI.
+
+### v0.1.8 distribution (2 November)
+
+- [x] Ship session-order curves, current-work reveal and viewport-aware card placement as [v0.1.8](https://github.com/kabudu/lascoria/releases/tag/v0.1.8) after PR #23 and release PR #24. Final local and three-OS checks, all four package builds and production publication passed; all public downloads, updater signatures, universal Mac containers, Windows installer version, both Linux architectures and update channels were independently verified.
+
+### v0.1.9 distribution (3 November)
+
+- [x] Ship visible session permissions, direct model/effort controls, working-node activity and the Muse 1.4.14 / 1.4.14-R7309.1 pin as [v0.1.9](https://github.com/kabudu/lascoria/releases/tag/v0.1.9). Implementation PR #25 merged as `3ca8658`; release PR #26 merged as `0d7a993`, which annotated tag `v0.1.9` points to. [Production run 41588667199](https://github.com/kabudu/lascoria/actions/runs/41588667199) passed validation, four platform builds and publication. Independent verification passed for all 13 assets and checksums, four production-key updater signatures, five manifest platform entries, universal Mac slices/signatures/notarization/Gatekeeper, an isolated packaged-runtime Echo lifecycle, Windows PE/version and Linux x64/ARM64 AppImage/Deb/runtime metadata. All 11 binary/signature files match the original build artifacts; stable, version-specific and beta manifests match; website release routing passes. See [implementation progress](implementation-progress.md#v019-release-checklist-3-november). These package checks do not establish new physical Windows or Linux acceptance; R18 platform acceptance stays open.
