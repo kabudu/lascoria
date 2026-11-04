@@ -6,9 +6,8 @@ Everything below is **planned**: a proposal, not available, not scheduled and no
 
 ## Git delivery (after D1)
 
-Shipped today: the guarded commit stages every Git-visible change in the session's folder, shows exactly what will be committed and never pushes. Hooks and commit signing are off for that commit. Proposed:
+Implemented, not yet released: in isolated task worktrees, stage and unstage whole files or individual hunks and commit exactly the staged content ([selective staging](docs/staging.md)). Commits never push; hooks and commit signing are not run. Proposed:
 
-- Choose which files, and which hunks, go into a commit.
 - Show and switch branches, with clear warnings before anything changes the working tree.
 - Push to a remote and open a pull request, using the user's own Git credentials and hosting account.
 - Help with merges and conflicts, without resolving them silently.

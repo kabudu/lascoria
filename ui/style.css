@@ -3746,3 +3746,120 @@ button.link {
     gap: 0.35rem;
   }
 }
+
+/* Selective staging in the Workspace inspector. */
+.staging {
+  display: grid;
+  gap: 12px;
+}
+.staging-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.staging-toolbar h3,
+.staging-toolbar h4 {
+  margin: 0;
+  margin-right: auto;
+}
+.staging-side {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.staging-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.staging-files > li {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.staging-files > li:last-child {
+  border-bottom: 0;
+}
+.staging-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+}
+.staging-file input,
+.staging-hunk input {
+  margin: 0;
+  flex: none;
+}
+.staging-files summary {
+  padding: 2px 0 2px 24px;
+}
+.staging-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1;
+}
+.staging-badge {
+  flex: none;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.staging-hunk {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+.staging-hunk > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0;
+  font-size: 12px;
+}
+.developer-workspace pre.staging-diff {
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--raised);
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 260px;
+  white-space: pre;
+  overflow: auto;
+}
+.staging-diff .diff-header {
+  color: var(--muted);
+}
+.staging-diff .diff-add {
+  color: var(--success);
+}
+.staging-diff .diff-remove {
+  color: var(--error);
+}
+.staging-commit-files {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@media (forced-colors: active) {
+  .staging-diff .diff-add,
+  .staging-diff .diff-remove,
+  .staging-diff .diff-header {
+    color: CanvasText;
+  }
+}

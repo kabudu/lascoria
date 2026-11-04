@@ -624,6 +624,7 @@ export function outcomeNotice(operation: string, status?: string) {
     'artifact/capture': 'Snapshot',
     'evidence/record': 'Evidence',
     'workspace/run': 'Test command',
+    'workspace/stage': 'Staging change',
     'workspace/commit': 'Commit',
     'workspace/discard': 'Worktree discard',
     'session/archive': 'Archive',

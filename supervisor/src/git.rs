@@ -2,7 +2,7 @@
 use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeSet, path::Path, process::Stdio};
 use tokio::{
-    io::AsyncReadExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     process::Command,
     time::{Duration, timeout},
 };
@@ -28,19 +28,37 @@ fn base(root: &Path) -> Command {
 async fn output(
     mut command: Command,
     limit: usize,
+    input: Option<&[u8]>,
 ) -> Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>)> {
+    if input.is_some() {
+        command.stdin(Stdio::piped());
+    }
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()?;
+    let stdin = child.stdin.take();
     let mut stdout = child.stdout.take().unwrap().take(limit as u64 + 1);
     let mut stderr = child.stderr.take().unwrap().take(8193);
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let (a, b) = tokio::join!(stdout.read_to_end(&mut out), stderr.read_to_end(&mut err));
+    // Write and read together: a large patch must not deadlock against Git's own output.
+    let write = async {
+        if let (Some(mut stdin), Some(bytes)) = (stdin, input) {
+            stdin.write_all(bytes).await?;
+            stdin.shutdown().await?;
+        }
+        Ok::<_, std::io::Error>(())
+    };
+    let (a, b, c) = tokio::join!(
+        stdout.read_to_end(&mut out),
+        stderr.read_to_end(&mut err),
+        write
+    );
     a?;
     b?;
+    c?;
     ensure!(
         out.len() <= limit && err.len() <= 8192,
         "Git output exceeds budget"
@@ -69,16 +87,45 @@ fn drivers(bytes: &[u8]) -> Result<BTreeSet<String>> {
     Ok(drivers)
 }
 
+/// Options for the staging operations: bytes on standard input, an alternate index file
+/// (always absolute) and literal pathspecs, so a path such as `*` or `:(top)` names itself.
+#[derive(Default, Clone, Copy)]
+pub struct Options<'a> {
+    pub read_only: bool,
+    pub input: Option<&'a [u8]>,
+    pub index_file: Option<&'a Path>,
+    pub literal_pathspecs: bool,
+}
+
 pub async fn run(
     root: &Path,
     args: &[&str],
     deadline: Duration,
     read_only: bool,
 ) -> Result<Vec<u8>> {
+    run_with(
+        root,
+        args,
+        deadline,
+        Options {
+            read_only,
+            ..Options::default()
+        },
+    )
+    .await
+}
+
+pub async fn run_with(
+    root: &Path,
+    args: &[&str],
+    deadline: Duration,
+    options: Options<'_>,
+) -> Result<Vec<u8>> {
+    let read_only = options.read_only;
     timeout(deadline, async {
         let mut config = base(root);
         config.args(["config", "--null", "--name-only", "--get-regexp", r"^filter\..*\.(clean|smudge|process)$"]);
-        let (status, names, error) = output(config, 16384).await?;
+        let (status, names, error) = output(config, 16384, None).await?;
         ensure!(status.success() || status.code() == Some(1), "Git configuration could not be read: {}", String::from_utf8_lossy(&error));
         let mut command = base(root);
         let mut budget = 0;
@@ -96,7 +143,12 @@ pub async fn run(
         }
         command.args(args);
         if read_only { command.env("GIT_OPTIONAL_LOCKS", "0"); }
-        let (status, out, err) = output(command, 1024 * 1024).await?;
+        if options.literal_pathspecs { command.env("GIT_LITERAL_PATHSPECS", "1"); }
+        if let Some(index) = options.index_file {
+            ensure!(index.is_absolute(), "Alternate index path must be absolute");
+            command.env("GIT_INDEX_FILE", index);
+        }
+        let (status, out, err) = output(command, 1024 * 1024, options.input).await?;
         ensure!(status.success(), "Git operation refused or failed: {}{}", String::from_utf8_lossy(&err), if has_filters { ". Lascoria does not run Git clean, smudge or process filters. Use your editor or Git client for files that require them." } else { "" });
         Ok(out)
     }).await.context("Git operation timed out")?

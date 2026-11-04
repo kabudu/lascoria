@@ -15,6 +15,7 @@ mod relay_mcp;
 mod review;
 mod search;
 mod session_names;
+mod staging;
 mod support;
 mod unsaved;
 mod usage;
@@ -451,12 +452,16 @@ impl Actor {
             if operation == "workspace/inspect" {
                 return workspace::inspect(&row).await;
             }
+            if operation == "workspace/changes" {
+                return staging::changes(&row).await;
+            }
             if operation == "workspace/reusable" {
                 return workspace::reusable(&self.db, &row, &params).await;
             }
             ensure!(
                 [
                     "workspace/run",
+                    "workspace/stage",
                     "workspace/commit",
                     "workspace/discard",
                     "session/archive"
@@ -501,8 +506,18 @@ impl Actor {
                     Err(error) => workspace::finish(&self.db, id, Err(error)),
                 };
             }
+            if operation == "workspace/stage" {
+                return workspace::finish(&self.db, id, staging::stage(&row, &params).await);
+            }
             if operation == "workspace/commit" {
-                return workspace::finish(&self.db, id, workspace::commit(&row, &params).await);
+                // A revision selects the commit of exactly the staged index; without one, the
+                // original guarded commit of every Git-visible change (protocol compatibility).
+                let result = if params.get("revision").is_some() {
+                    staging::commit(&row, &params).await
+                } else {
+                    workspace::commit(&row, &params).await
+                };
+                return workspace::finish(&self.db, id, result);
             }
             if operation == "workspace/discard" {
                 // Validate the exact content before stopping the worker, then check again before removal.

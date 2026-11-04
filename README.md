@@ -36,7 +36,7 @@ These workflows are implemented. Their platform-by-platform release acceptance i
 | **Connect local sessions**   | An opt-in relay between Muse sessions on the same computer, with explicit connections, local conversations, read state and scoped agent tools.                                                                      |
 | **Add optional advice**      | Separate-key adapters for Jev/TypeSafe, SubQ and OpenAI Decisions: snapshot reviews, background triage or a Muse-callable tool, with workspace consent and inspectable request metrics.                             |
 
-Lascoria is not a complete IDE. The first-release scope uses your existing editor and a bounded, non-interactive command runner. Guarded commits include all Git-visible changes and do not push; hooks and commit signing are disabled for that operation. Selected-hunk staging, push/pull requests, an embedded terminal and plugin/MCP management are on the [roadmap](ROADMAP.md).
+Lascoria is not a complete IDE. The first-release scope uses your existing editor and a bounded, non-interactive command runner. In isolated task worktrees you stage whole files or individual hunks and commit exactly the staged content; commits never push, and hooks and commit signing are not run. Branches, push/pull requests, an embedded terminal and plugin/MCP management are on the [roadmap](ROADMAP.md).
 
 ## Architecture
 
