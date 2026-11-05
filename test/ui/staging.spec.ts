@@ -246,6 +246,26 @@ test('Selective file and hunk staging commits only the index, refuses stale view
     await expect(form.locator('pre')).toContainText('+line 2 edited');
     await expect(form.locator('pre')).not.toContainText('line 28 edited');
     await expect(form.locator('pre')).not.toContainText('x edited');
+    // Long diff lines and the branch name scroll or wrap inside the form; they never widen
+    // the inspector (found in native acceptance with a long path).
+    for (const width of [1440, 820]) {
+      await page.setViewportSize({ width, height: 1000 });
+      expect(
+        await staging.evaluate((section) => {
+          // Measure against the inspector body that holds the section: a widened section
+          // contains its own children, so only the container shows the overflow.
+          const body = section.closest('.inspector-body') ?? section.parentElement!;
+          const right = body.getBoundingClientRect().right + 1;
+          return (
+            body.scrollWidth <= body.clientWidth + 1 &&
+            [section, ...section.querySelectorAll('form, pre, li, p, label')].every(
+              (element) => element.getBoundingClientRect().right <= right,
+            )
+          );
+        }),
+      ).toBe(true);
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await form.getByLabel('Commit message').fill('Selected work');
     await git(appTree, 'add', 'x.txt');
     const headBefore = (await git(appTree, 'rev-parse', 'HEAD')).trim();

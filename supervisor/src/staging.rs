@@ -678,11 +678,11 @@ pub async fn stage(row: &Value, params: &Value) -> Result<Value> {
         let view = view(&root).await?;
         if view.revision != expected {
             return Err(reject(
-                "Files or the index changed since this view was loaded. Nothing was staged; review the refreshed changes",
+                "Files or the index changed since this view was loaded. Nothing was changed; review the refreshed changes",
             ));
         }
         if row["managedWorkspace"]["branch"] != json!(view.branch) {
-            return Err(reject("The task branch changed; nothing was staged"));
+            return Err(reject("The task branch moved. Nothing was changed"));
         }
         if !view.conflicts.is_empty() {
             return Err(reject(
@@ -730,7 +730,7 @@ pub async fn stage(row: &Value, params: &Value) -> Result<Value> {
                 },
             )
             .await
-            .map_err(|e| reject(format!("Git could not apply the selected hunks; nothing was staged ({e})")))?;
+            .map_err(|e| reject(format!("Git could not apply the selected hunks; nothing was changed ({e})")))?;
         }
         if !wanted.files.is_empty() {
             let mut list = Vec::new();
@@ -760,13 +760,15 @@ pub async fn stage(row: &Value, params: &Value) -> Result<Value> {
                 },
             )
             .await
-            .map_err(|e| reject(format!("Git refused the selected files; nothing was staged ({e})")))?;
+            .map_err(|e| reject(format!("Git refused the selected files; nothing was changed ({e})")))?;
         }
+        #[cfg(test)]
+        tests::before_publish(&root);
         // `git add` reads files as they are now: anything edited since the view was read would
         // be staged unseen, so the working tree must still match before publishing.
         if workspace::content_fingerprint(&root).await? != view.content {
             return Err(reject(
-                "Files changed while staging. Nothing was staged; review the refreshed changes",
+                "Files changed while staging. Nothing was changed; review the refreshed changes",
             ));
         }
         let after = index_entries(&root, Some(&guard.temp)).await?;
@@ -784,7 +786,7 @@ pub async fn stage(row: &Value, params: &Value) -> Result<Value> {
         }))
     })
     .await
-    .map_err(|_| reject("Staging timed out; nothing was staged"))?
+    .map_err(|_| reject("Staging timed out; nothing was changed"))?
     // Every step before `publish` works on a private copy, and `publish` cannot be
     // interrupted between awaits, so any error here means the index is unchanged.
     .map_err(definite)
@@ -938,6 +940,90 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    type Hook = Box<dyn FnOnce() + Send>;
+    /// Test-only pause between the Git steps and the final working-tree check, so an edit can
+    /// land exactly while an action is in progress. Keyed by worktree; parallel tests differ.
+    static BEFORE_PUBLISH: std::sync::Mutex<Vec<(PathBuf, Hook)>> =
+        std::sync::Mutex::new(Vec::new());
+
+    pub(super) fn before_publish(root: &Path) {
+        let hook = {
+            let mut hooks = BEFORE_PUBLISH.lock().unwrap();
+            let found = hooks.iter().position(|(r, _)| r == root);
+            found.map(|i| hooks.remove(i).1)
+        };
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
+
+    fn pause_before_publish(root: &Path, hook: impl FnOnce() + Send + 'static) {
+        BEFORE_PUBLISH
+            .lock()
+            .unwrap()
+            .push((root.to_path_buf(), Box::new(hook)));
+    }
+
+    #[tokio::test]
+    async fn edits_during_an_action_are_refused_and_leave_the_index_unchanged() -> Result<()> {
+        let (root, row) = fixture(&[("a.txt", lines(10, &[])), ("b.txt", "b\n".into())]).await?;
+        let result = async {
+            std::fs::write(root.join("a.txt"), lines(10, &[2]))?;
+            std::fs::write(root.join("b.txt"), "b edited\n")?;
+            let index = index_path(&root).await?;
+            for (target, text) in [
+                ("a.txt", lines(10, &[2, 9])),
+                ("b.txt", "b edited twice\n".to_owned()),
+            ] {
+                let view = changes(&row).await?;
+                let before = std::fs::read(&index)?;
+                // Selected file edited after `git add` read it, then an unselected file.
+                let path = root.join(target);
+                pause_before_publish(&root, move || std::fs::write(path, text).unwrap());
+                let refused = rejected(
+                    stage(
+                        &row,
+                        &json!({"revision":view["revision"],"action":"stage","files":["a.txt"]}),
+                    )
+                    .await,
+                );
+                assert!(refused.contains("Files changed while staging"), "{refused}");
+                assert_eq!(
+                    std::fs::read(&index)?,
+                    before,
+                    "index unchanged after {target} edit"
+                );
+                assert!(!index.with_file_name("index.lock").exists());
+                assert!(
+                    !std::fs::read_dir(index.parent().unwrap())?
+                        .filter_map(|e| e.ok())
+                        .any(|e| e
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with("index.lascoria-"))
+                );
+            }
+            // A fresh view stages exactly what is on disk now.
+            let view = changes(&row).await?;
+            stage(
+                &row,
+                &json!({"revision":view["revision"],"action":"stage","files":["a.txt"]}),
+            )
+            .await?;
+            assert_eq!(git(&root, &["show", ":a.txt"]).await?, lines(10, &[2, 9]));
+            assert!(
+                git(&root, &["diff", "--cached", "--name-only"])
+                    .await?
+                    .trim()
+                    == "a.txt"
+            );
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        cleanup(&root);
+        result
     }
 
     /// A disposable repository on its task branch, and the session row that owns it.

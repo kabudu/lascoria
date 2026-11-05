@@ -44,7 +44,7 @@ Everything here is in the public builds. Unless a row says otherwise, macOS has 
 
 ### Implemented, not yet released
 
-D6 selective file and hunk staging (4 November) is not yet in a public build. Rust real-repository tests and the rendered Rust-backed UI workflow pass; release and native packaged-app interaction on macOS, Windows and Linux remain. See [selective staging](staging.md).
+D6 selective file and hunk staging (4 November) is not yet in a public build. Rust real-repository tests and the rendered Rust-backed UI workflow pass; packaged macOS interaction passed on 5 November with three fixes; Linux passed in a container without a packaged window. Windows packaged interaction (remote access declined), native dark theme and release remain. See [selective staging](staging.md).
 
 ### Planned
 
@@ -306,7 +306,10 @@ Scope decided by the user on 18 October; later work is in the [roadmap](../ROADM
   - [x] Revision-bound `workspace/changes`, atomic `workspace/stage` under Git's index lock and exact-index `workspace/commit` with a compare-and-swap branch update; definite refusals recorded as `rejected`.
   - [x] Workspace tab UI: Not staged / Staged lists, file and hunk checkboxes, Stage all, exact commit preview, loading/refusal states, keyboard operation, light/dark and narrow layouts.
   - [x] Rust real-repository tests and the rendered Rust-backed UI workflow (hunks in one file, multi-file selection, pre-staged plus unstaged, stage/unstage, commit leaving unselected edits, stale working-tree/index/commit refusal, special paths, Project folder isolation).
-  - [ ] Ship in a release and complete native packaged-app interaction on macOS, Windows and Linux.
+  - [x] Packaged macOS interaction (5 November, ST1-ST8 in [native acceptance](native-acceptance.md#selective-staging-d6-5-november)); the inspector overflow, in-progress wording and refusal wording findings were fixed. Native dark theme not exercised.
+  - [x] Linux arm64 container: Rust staging tests and rendered workflows with Linux binaries. No packaged WebKitGTK window.
+  - [ ] Windows packaged interaction (remote access declined on 5 November; hosted Windows CI runs the Rust staging tests).
+  - [ ] Ship in a release.
 - [x] **D5 - Muse capabilities management: roadmap.** Skill discovery, invocation and attribution remain a release requirement under R9. Activation management and the plugin/MCP/settings workflow are on the roadmap, not the first release.
 
 ### R18 - Visible session permissions and capability checks

@@ -269,7 +269,8 @@ export function Staging({
       </p>
       {loading && <p role="status">Loading changes…</p>}
       {error && <p role="alert">{error}</p>}
-      {!ready && changes && (
+      {busy && changes && <p role="status">Applying the change…</p>}
+      {!ready && !busy && changes && (
         <small>Wait for a current, idle Muse session and any running test command to stage.</small>
       )}
       {changes && conflicts.length > 0 && (

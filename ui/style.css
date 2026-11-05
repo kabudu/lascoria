@@ -3751,6 +3751,20 @@ button.link {
 .staging {
   display: grid;
   gap: 12px;
+  min-width: 0;
+}
+/* Grid and flex items default to their content's width: a long diff line, path or branch
+   name would widen the inspector. Keep them in the column; long text wraps, diffs scroll. */
+.staging > *,
+.staging-side > *,
+.staging-files > li > *,
+.staging-hunk > *,
+.staging details,
+.staging form {
+  min-width: 0;
+}
+.staging p {
+  overflow-wrap: anywhere;
 }
 .staging-toolbar {
   display: flex;
