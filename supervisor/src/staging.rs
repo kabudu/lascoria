@@ -508,7 +508,7 @@ fn lock_index(index: &Path) -> Result<IndexLock> {
                 "Another Git process is updating this worktree's index. Try again when it finishes",
             ));
         }
-        Err(e) => return Err(e.into()),
+        Err(e) => return Err(anyhow::Error::from(e).context("Could not lock the index")),
     }
     let temp = index.with_file_name(format!("index.lascoria-{}", uuid::Uuid::new_v4()));
     let guard = IndexLock {
@@ -517,15 +517,21 @@ fn lock_index(index: &Path) -> Result<IndexLock> {
         published: false,
     };
     ensure!(index.is_file(), "This worktree has no index to stage into");
-    std::fs::copy(index, &guard.temp)?;
+    std::fs::copy(index, &guard.temp).context("Could not copy the index")?;
     Ok(guard)
 }
 
 fn publish(mut guard: IndexLock, index: &Path) -> Result<()> {
     // Same protocol as Git: the complete new index replaces the lock, then the index.
-    std::fs::File::open(&guard.temp)?.sync_all()?;
-    std::fs::rename(&guard.temp, &guard.lock)?;
-    std::fs::rename(&guard.lock, index)?;
+    // Windows flushes only through a handle with write access (FlushFileBuffers needs
+    // GENERIC_WRITE); a read-only handle fails with "Access is denied".
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&guard.temp)
+        .and_then(|file| file.sync_all())
+        .context("Could not flush the new index")?;
+    std::fs::rename(&guard.temp, &guard.lock).context("Could not publish the new index")?;
+    std::fs::rename(&guard.lock, index).context("Could not publish the new index")?;
     guard.published = true;
     Ok(())
 }
