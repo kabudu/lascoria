@@ -518,6 +518,20 @@ fn lock_index(index: &Path) -> Result<IndexLock> {
     };
     ensure!(index.is_file(), "This worktree has no index to stage into");
     std::fs::copy(index, &guard.temp).context("Could not copy the index")?;
+    // Git trusts cached file stat data only for entries older than the index file itself
+    // ("racy Git"); a same-size edit within that window is found only by comparing with the
+    // index's mtime. A copy with a fresh mtime (Linux `copy`, unlike a macOS clone) would make
+    // Git skip such an edit: `add` would leave it unstaged and later views would hide it.
+    let modified = std::fs::metadata(index)?.modified()?;
+    std::fs::File::options()
+        .write(true)
+        .open(&guard.temp)
+        .and_then(|file| file.set_modified(modified))
+        .context("Could not copy the index")?;
+    ensure!(
+        std::fs::metadata(&guard.temp)?.modified()? == modified,
+        "Could not copy the index timestamp exactly"
+    );
     Ok(guard)
 }
 
@@ -1228,6 +1242,73 @@ mod tests {
                 git(&root, &["show", "HEAD:planned.txt"]).await?,
                 "planned\n"
             );
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        cleanup(&root);
+        result
+    }
+
+    /// Git detects a same-size edit made within the index's timestamp granularity only by
+    /// comparing the file's mtime with the index file's mtime ("racy Git"). Pin that case
+    /// exactly: stat data says unchanged, only the content and the index time say otherwise.
+    #[tokio::test]
+    async fn same_size_edits_in_the_index_timestamp_are_staged_not_falsely_applied() -> Result<()> {
+        let (root, row) =
+            fixture(&[("a.bin", "\0\x01\x02".into()), ("b.txt", "bbb\n".into())]).await?;
+        let result = async {
+            let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+            let set = |path: &Path| -> Result<()> {
+                std::fs::File::options()
+                    .write(true)
+                    .open(path)?
+                    .set_modified(past)?;
+                Ok(())
+            };
+            git(&root, &["config", "core.trustctime", "false"]).await?;
+            set(&root.join("a.bin"))?;
+            set(&root.join("b.txt"))?;
+            git(&root, &["add", "a.bin", "b.txt"]).await?;
+            std::fs::write(root.join("a.bin"), "\0\x01\x03")?;
+            std::fs::write(root.join("b.txt"), "BBB\n")?;
+            set(&root.join("a.bin"))?;
+            set(&root.join("b.txt"))?;
+            let index = index_path(&root).await?;
+            set(&index)?;
+            let view = changes(&row).await?;
+            assert!(entry(&view, "unstaged", "a.bin").is_some());
+            // An unselected same-size edit must stay visible after another change is staged.
+            let b = hunk(&view, "unstaged", "b.txt", 0);
+            stage(
+                &row,
+                &json!({"revision":view["revision"],"action":"stage","hunks":[b]}),
+            )
+            .await?;
+            let view = changes(&row).await?;
+            assert!(
+                entry(&view, "unstaged", "a.bin").is_some(),
+                "a.bin hidden after staging b.txt"
+            );
+            stage(
+                &row,
+                &json!({"revision":view["revision"],"action":"stage","files":["a.bin"]}),
+            )
+            .await?;
+            let view = changes(&row).await?;
+            assert!(
+                entry(&view, "unstaged", "a.bin").is_none(),
+                "a.bin left unstaged after an applied stage"
+            );
+            assert!(entry(&view, "staged", "a.bin").is_some());
+            assert!(entry(&view, "staged", "b.txt").is_some());
+            assert!(entry(&view, "unstaged", "b.txt").is_none());
+            commit(&row, &json!({"revision":view["revision"],"message":"Racy"})).await?;
+            assert_eq!(git(&root, &["show", "HEAD:b.txt"]).await?, "BBB\n");
+            assert_eq!(
+                git(&root, &["cat-file", "-s", "HEAD:a.bin"]).await?.trim(),
+                "3"
+            );
+            assert_eq!(git(&root, &["diff", "HEAD", "--stat"]).await?, "");
             Ok::<_, anyhow::Error>(())
         }
         .await;
