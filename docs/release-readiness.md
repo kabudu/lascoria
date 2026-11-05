@@ -4,7 +4,7 @@ Updated 4 November 2026, after v0.1.9. This is the consolidated product/release 
 
 ## Status summary (4 November)
 
-Three states are used. **Shipped** means available in the public release and every acceptance item has evidence. **Implemented, incompletely validated** means the code is in the public release but the gate still has the exact remaining scope listed. **Planned** means a proposal in the [roadmap](../ROADMAP.md), not available and not scheduled.
+Three states are used for public work, and unreleased work is listed separately. **Shipped** means available in the public release and every acceptance item has evidence. **Implemented, incompletely validated** means the code is in the public release but the gate still has the exact remaining scope listed. **Planned** means a proposal in the [roadmap](../ROADMAP.md), not available and not scheduled.
 
 ### Shipped
 
@@ -42,9 +42,13 @@ Everything here is in the public builds. Unless a row says otherwise, macOS has 
 | D1 guarded commit, D2 editor hand-off, D3 search/export, D4 notifications | D1/D2 native runs on all three OSes; D3 native export on macOS and Windows; D4 native delivery on macOS and Windows. |
 | T1 to T5 token efficiency | Native checks for each policy; a broader T5 benchmark showing savings with preserved correctness. |
 
+### Implemented, not yet released
+
+D6 selective file and hunk staging (4 November) is not yet in a public build. Rust real-repository tests and the rendered Rust-backed UI workflow pass; packaged macOS and Windows interaction passed on 5 November (three macOS findings fixed); Linux passed in a container without a packaged window. Native dark theme and release remain. See [selective staging](staging.md).
+
 ### Planned
 
-Selected file/hunk staging, branches, push and pull requests, merge/conflict help and hooks/signing (after D1); an embedded editor and interactive terminal (after D2); Muse skill, plugin, MCP and settings management (D5); Windows publisher signing; and the research candidates. See the [roadmap](../ROADMAP.md). None is authorised for implementation by this document.
+Branches, push and pull requests, merge/conflict help and hooks/signing (after D1); an embedded editor and interactive terminal (after D2); Muse skill, plugin, MCP and settings management (D5); Windows publisher signing; and the research candidates. See the [roadmap](../ROADMAP.md). None is authorised for implementation by this document.
 
 The sections below keep the detailed acceptance contract and dated evidence. Dated notes describe the state on their date.
 
@@ -292,12 +296,20 @@ Requested 15 October from the supplied menu screenshots. Keep the menu compact a
 
 Scope decided by the user on 18 October; later work is in the [roadmap](../ROADMAP.md).
 
-- [ ] **D1 - Git delivery: guarded commit only.** The first release ships the existing guarded commit, which stages all Git-visible changes in the session's folder and does not push. The UI and Help must say so plainly. Selected-file/hunk staging, branches, push, pull requests, merge/conflict help and hooks/signing are on the roadmap.
+- [ ] **D1 - Git delivery: guarded commit only.** The first release ships the existing guarded commit, which stages all Git-visible changes in the session's folder and does not push. The UI and Help must say so plainly. Selective file and hunk staging is D6 below. Branches, push, pull requests, merge/conflict help and hooks/signing are on the roadmap.
 - [ ] **D2 - Editing: hand off to the user's editor.** Open a session's folder or a changed file in the user's own editor from the inspector, with validated paths and no shell. An embedded editor and an interactive terminal are on the roadmap; the present runner stays bounded and non-interactive.
 - [ ] **D3 - Find and retain work:** global/session transcript search, export, archive browsing and a continuation path for archived work without accidental duplication or deletion.
 21 October D3 increment: Search in now selects all sessions or one live/archived session; clear/scope changes invalidate late replies, temporary failures offer Retry search, and retained results select the matching task/message. Invalid or missing task targets are explained rather than misattributed. These workflow checks do not complete the native export/platform gate.
 
 - [ ] **D4 - Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
+- [ ] **D6 - Selective file and hunk staging** (authorised 4 November; implemented, unreleased). In isolated task worktrees: view staged and unstaged changes, stage/unstage whole files or hunks, preview the exact commit content and commit only the staged index, leaving unselected edits in place. Rust owns mutations and receipts; actions are bound to a repository/index/working-tree revision and refused when stale. See [selective staging](staging.md).
+  - [x] Revision-bound `workspace/changes`, atomic `workspace/stage` under Git's index lock and exact-index `workspace/commit` with a compare-and-swap branch update; definite refusals recorded as `rejected`.
+  - [x] Workspace tab UI: Not staged / Staged lists, file and hunk checkboxes, Stage all, exact commit preview, loading/refusal states, keyboard operation, light/dark and narrow layouts.
+  - [x] Rust real-repository tests and the rendered Rust-backed UI workflow (hunks in one file, multi-file selection, pre-staged plus unstaged, stage/unstage, commit leaving unselected edits, stale working-tree/index/commit refusal, special paths, Project folder isolation).
+  - [x] Packaged macOS interaction (5 November, ST1-ST8 in [native acceptance](native-acceptance.md#selective-staging-d6-5-november)); the inspector overflow, in-progress wording and refusal wording findings were fixed. Native dark theme not exercised.
+  - [x] Linux arm64 container: Rust staging tests and rendered workflows with Linux binaries. No packaged WebKitGTK window.
+  - [x] Packaged Windows x64 interaction (5 November, Windows 10 build 19045.6466).
+  - [ ] Ship in a release.
 - [x] **D5 - Muse capabilities management: roadmap.** Skill discovery, invocation and attribution remain a release requirement under R9. Activation management and the plugin/MCP/settings workflow are on the roadmap, not the first release.
 
 ### R18 - Visible session permissions and capability checks

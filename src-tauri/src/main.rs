@@ -38,6 +38,8 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "account/useKey",
         "account/forgetKey",
         "workspace/inspect",
+        "workspace/changes",
+        "workspace/stage",
         "workspace/files",
         "workspace/file",
         "workspace/run",

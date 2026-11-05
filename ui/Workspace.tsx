@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
+import { Staging } from './Staging';
 import type { Json, SessionRow } from './types';
 
 /**
@@ -46,7 +47,7 @@ export function Workspace({
   const [paths, setPaths] = useState<string[]>([]);
   const [file, setFile] = useState<Json>(null);
   const [confirmation, setConfirmation] = useState('');
-  const [action, setAction] = useState<'commit' | 'discard' | 'archive' | null>(null);
+  const [action, setAction] = useState<'discard' | 'archive' | null>(null);
   // R15: a Project session's tab works on one folder at a time; each isolated folder has
   // its own worktree and task branch. The supervisor resolves the folder ID itself.
   const folders = session.projectContext?.folders;
@@ -132,7 +133,7 @@ export function Workspace({
         <p className="muted">
           {managed
             ? 'Isolated from your original checkout. Commits stay on this task branch.'
-            : 'Muse works directly in this checkout. Isolate a new task to enable commit and discard controls.'}
+            : 'Muse works directly in this checkout. Isolate a new task to enable staging, commit and discard controls.'}
         </p>
         {archived && <p role="status">Archived. History is retained; execution is disabled.</p>}
         {error && <p role="alert">{error}</p>}
@@ -167,6 +168,16 @@ export function Workspace({
           </>
         )}
       </section>
+      {!removed && !archived && (
+        <Staging
+          sessionId={session.id}
+          folderId={folderId}
+          isolated={Boolean(managed)}
+          ready={ready}
+          busy={busy}
+          mutate={mutate}
+        />
+      )}
       {removed && (
         <p>
           {session.managedWorkspaces
@@ -359,9 +370,6 @@ export function Workspace({
         <section>
           <h3>Finish task</h3>
           <div className="row">
-            <button disabled={!ready || !preview || !managed} onClick={() => setAction('commit')}>
-              Commit changes…
-            </button>
             <button disabled={!canArchive || archived} onClick={() => setAction('archive')}>
               Archive session…
             </button>
@@ -401,39 +409,6 @@ export function Workspace({
               Discard worktree…
             </button>
           </div>
-          {action === 'commit' && (
-            <form
-              className="decision"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const message = String(new FormData(e.currentTarget).get('message'));
-                const r = await mutate('workspace/commit', {
-                  sessionId: session.id,
-                  fingerprint: preview.fingerprint,
-                  message,
-                  ...scope,
-                });
-                if (r?.status === 'applied') {
-                  setAction(null);
-                  await inspect();
-                }
-              }}
-            >
-              <h4>Commit all Git-visible changes</h4>
-              <p>
-                Stages tracked changes and non-ignored new files on this isolated branch. Hooks and
-                signing are disabled for this bounded operation. Nothing is pushed.
-              </p>
-              <label>
-                Commit message
-                <input name="message" required maxLength={4000} />
-              </label>
-              <button disabled={!ready}>Commit changes</button>
-              <button type="button" onClick={() => setAction(null)}>
-                Cancel
-              </button>
-            </form>
-          )}
           {action === 'archive' && (
             <div className="decision">
               <h4>Archive this session?</h4>

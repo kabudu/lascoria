@@ -233,7 +233,7 @@ pub async fn confirm_discard(row: &Value, params: &Value) -> Result<()> {
 }
 
 // Content identity is independent of whether a file is staged, untracked or deleted from the index.
-async fn content_fingerprint(root: &Path) -> Result<String> {
+pub(crate) async fn content_fingerprint(root: &Path) -> Result<String> {
     let root = std::fs::canonicalize(root)?;
     let head = git(&root, &["rev-parse", "HEAD"]).await?;
     let mut names = git(&root, &["ls-tree", "-r", "--name-only", "-z", "HEAD"]).await?;
@@ -334,6 +334,11 @@ pub fn finish(db: &SharedDb, id: &str, result: Result<Value>) -> Result<Value> {
         Ok(value) => {
             command["status"] = json!("applied");
             command["result"] = value;
+        }
+        // A refusal before any change is final; anything else may have changed something.
+        Err(error) if error.downcast_ref::<crate::staging::Rejected>().is_some() => {
+            command["status"] = json!("rejected");
+            command["error"] = json!({"message":error.to_string()});
         }
         Err(error) => {
             command["status"] = json!("outcomeUnknown");

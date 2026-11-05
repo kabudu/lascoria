@@ -241,10 +241,17 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
       .analyze();
     expect(accessibility.violations).toEqual([]);
-    await page.getByRole('button', { name: 'Commit changes…', exact: true }).click();
+    // Commit through selective staging: stage everything, then commit exactly the index.
+    const staging = page.locator('section.staging');
+    await staging.getByRole('button', { name: 'Refresh changes', exact: true }).click();
+    await expect(staging).toContainText('result.txt');
+    await staging.getByRole('button', { name: 'Stage all', exact: true }).click();
+    await expect(staging.getByRole('heading', { name: 'Staged (1)' })).toBeVisible();
+    await staging.getByRole('button', { name: 'Commit staged changes…', exact: true }).click();
     await page.getByLabel('Commit message').fill('Record task result');
-    await page.getByRole('button', { name: 'Commit changes', exact: true }).click();
-    await expect(page.getByText('New files (0)', { exact: true })).toBeVisible();
+    await staging.getByRole('button', { name: 'Commit staged changes', exact: true }).click();
+    await expect(staging.getByText('No unstaged changes.', { exact: true })).toBeVisible();
+    await expect(staging.getByText('Nothing staged yet.', { exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'transcript', exact: true }).click();
     const archive = page
       .getByRole('region', { name: 'Sessions panel' })
