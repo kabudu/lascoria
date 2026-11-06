@@ -1,8 +1,8 @@
 # Lascoria release-readiness backlog
 
-Updated 4 November 2026, after v0.1.9. This is the consolidated product/release backlog; evidence lives in the [running checklist](implementation-progress.md) and the stage documents. The repository has been public since 21 October, hosted three-OS CI runs on every pull request and master push, and versioned binaries have been public since v0.1.2. Publishing a release does not close a gate: an unchecked item stays open until its own acceptance evidence exists, and a checked subtask does not close its parent.
+Updated 6 November 2026, after v0.2.0. This is the consolidated product/release backlog; evidence lives in the [running checklist](implementation-progress.md) and the stage documents. The repository has been public since 21 October, hosted three-OS CI runs on every pull request and master push, and versioned binaries have been public since v0.1.2. Publishing a release does not close a gate: an unchecked item stays open until its own acceptance evidence exists, and a checked subtask does not close its parent.
 
-## Status summary (4 November)
+## Status summary (6 November)
 
 Three states are used for public work, and unreleased work is listed separately. **Shipped** means available in the public release and every acceptance item has evidence. **Implemented, incompletely validated** means the code is in the public release but the gate still has the exact remaining scope listed. **Planned** means a proposal in the [roadmap](../ROADMAP.md), not available and not scheduled.
 
@@ -11,7 +11,7 @@ Three states are used for public work, and unreleased work is listed separately.
 | Area | Evidence |
 | --- | --- |
 | Public source and repository policy (R4 rename/opening, PL01 to PL04) | Renamed to `kabudu/lascoria`; public since 21 October; Actions enabled; master protection requires `native (macos-latest)`, `native (windows-latest)` and `native (ubuntu-latest)`. |
-| Versioned binary distribution, v0.1.2 to v0.1.9 | Each release has one universal macOS installer/updater, Windows x64 and Linux x64/ARM64 packages, 13 public assets and matching stable/beta manifests, independently verified after publication. Latest: [v0.1.9](https://github.com/kabudu/lascoria/releases/tag/v0.1.9) from tag `v0.1.9` at `0d7a993`, [production run 41588667199](https://github.com/kabudu/lascoria/actions/runs/41588667199). See [v0.1.9 evidence](implementation-progress.md#v019-release-checklist-3-november). |
+| Versioned binary distribution, v0.1.2 to v0.2.0 | Each release has one universal macOS installer/updater, Windows x64 and Linux x64/ARM64 packages, 13 public assets and matching stable/beta manifests, independently verified after publication. Latest: [v0.2.0](https://github.com/kabudu/lascoria/releases/tag/v0.2.0) from tag `v0.2.0` at `ca899ff`, [production run 42133660750](https://github.com/kabudu/lascoria/actions/runs/42133660750). See [v0.1.9 evidence](implementation-progress.md#v019-release-checklist-3-november). |
 | Universal macOS distribution | Both architecture slices, Developer ID signatures, stapled notarization and Gatekeeper pass in the public installer and updater for every release since v0.1.2. |
 | Curated release notes and fail-closed release metadata (PL13, PL14) | Versioned sources in `docs/releases/`, checked against the tag by release automation. Rendered previews are recorded in each release PR; the canonical page was inspected at desktop and mobile widths for v0.1.2. |
 
@@ -41,10 +41,7 @@ Everything here is in the public builds. Unless a row says otherwise, macOS has 
 | R18 Session permissions (v0.1.9) | Windows and Linux interactive native and live-provider acceptance; positive sandbox execution where the host reports support unavailable. macOS live-subscription QA, controlled-provider lifecycle tests and three-OS hosted checks passed. |
 | D1 guarded commit, D2 editor hand-off, D3 search/export, D4 notifications | D1/D2 native runs on all three OSes; D3 native export on macOS and Windows; D4 native delivery on macOS and Windows. |
 | T1 to T5 token efficiency | Native checks for each policy; a broader T5 benchmark showing savings with preserved correctness. |
-
-### Implemented, not yet released
-
-D6 selective file and hunk staging (4 November) is not yet in a public build. Rust real-repository tests and the rendered Rust-backed UI workflow pass; packaged macOS and Windows interaction passed on 5 November (three macOS findings fixed); Linux passed in a container without a packaged window. Native dark theme and release remain. See [selective staging](staging.md).
+| D6 Selective file and hunk staging | Shipped in v0.2.0. Packaged macOS and Windows staging, refusal, commit and folder checks passed on 5 November; Linux passed in a container with the rendered workflows. Remaining: a packaged Linux (WebKitGTK) window and native dark-theme interaction in a packaged app; dark and light are covered by the rendered workflow. |
 
 ### Planned
 
@@ -296,20 +293,21 @@ Requested 15 October from the supplied menu screenshots. Keep the menu compact a
 
 Scope decided by the user on 18 October; later work is in the [roadmap](../ROADMAP.md).
 
-- [ ] **D1 - Git delivery: guarded commit only.** The first release ships the existing guarded commit, which stages all Git-visible changes in the session's folder and does not push. The UI and Help must say so plainly. Selective file and hunk staging is D6 below. Branches, push, pull requests, merge/conflict help and hooks/signing are on the roadmap.
+- [ ] **D1 - Git delivery: guarded commit only.** The first releases shipped a guarded commit of all Git-visible changes in the session's folder. Since v0.2.0 the app commits through selective staging (D6 below); the all-changes commit remains only as a protocol-compatible request without a revision. Commits never push, and the UI and Help say so. Branches, push, pull requests, merge/conflict help and hooks/signing are on the roadmap.
 - [ ] **D2 - Editing: hand off to the user's editor.** Open a session's folder or a changed file in the user's own editor from the inspector, with validated paths and no shell. An embedded editor and an interactive terminal are on the roadmap; the present runner stays bounded and non-interactive.
 - [ ] **D3 - Find and retain work:** global/session transcript search, export, archive browsing and a continuation path for archived work without accidental duplication or deletion.
 21 October D3 increment: Search in now selects all sessions or one live/archived session; clear/scope changes invalidate late replies, temporary failures offer Retry search, and retained results select the matching task/message. Invalid or missing task targets are explained rather than misattributed. These workflow checks do not complete the native export/platform gate.
 
 - [ ] **D4 - Attention:** desktop notifications with preferences, useful background-session status, persistent drafts and clear completion/stop/reconnect states.
-- [ ] **D6 - Selective file and hunk staging** (authorised 4 November; implemented, unreleased). In isolated task worktrees: view staged and unstaged changes, stage/unstage whole files or hunks, preview the exact commit content and commit only the staged index, leaving unselected edits in place. Rust owns mutations and receipts; actions are bound to a repository/index/working-tree revision and refused when stale. See [selective staging](staging.md).
+- [ ] **D6 - Selective file and hunk staging** (authorised 4 November; shipped in v0.2.0, incompletely validated). In isolated task worktrees: view staged and unstaged changes, stage/unstage whole files or hunks, preview the exact commit content and commit only the staged index, leaving unselected edits in place. Rust owns mutations and receipts; actions are bound to a repository/index/working-tree revision and refused when stale. See [selective staging](staging.md).
   - [x] Revision-bound `workspace/changes`, atomic `workspace/stage` under Git's index lock and exact-index `workspace/commit` with a compare-and-swap branch update; definite refusals recorded as `rejected`.
   - [x] Workspace tab UI: Not staged / Staged lists, file and hunk checkboxes, Stage all, exact commit preview, loading/refusal states, keyboard operation, light/dark and narrow layouts.
   - [x] Rust real-repository tests and the rendered Rust-backed UI workflow (hunks in one file, multi-file selection, pre-staged plus unstaged, stage/unstage, commit leaving unselected edits, stale working-tree/index/commit refusal, special paths, Project folder isolation).
   - [x] Packaged macOS interaction (5 November, ST1-ST8 in [native acceptance](native-acceptance.md#selective-staging-d6-5-november)); the inspector overflow, in-progress wording and refusal wording findings were fixed. Native dark theme not exercised.
   - [x] Linux arm64 container: Rust staging tests and rendered workflows with Linux binaries. No packaged WebKitGTK window.
   - [x] Packaged Windows x64 interaction (5 November, Windows 10 build 19045.6466).
-  - [ ] Ship in a release.
+  - [x] Ship in a release: [v0.2.0](https://github.com/kabudu/lascoria/releases/tag/v0.2.0), 6 November.
+  - [ ] Packaged Linux (WebKitGTK) window and native dark-theme interaction.
 - [x] **D5 - Muse capabilities management: roadmap.** Skill discovery, invocation and attribution remain a release requirement under R9. Activation management and the plugin/MCP/settings workflow are on the roadmap, not the first release.
 
 ### R18 - Visible session permissions and capability checks

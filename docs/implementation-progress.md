@@ -946,7 +946,7 @@ Authorised 4 November as the next milestone. Branch `codex/selective-staging` fr
 - [x] Native macOS acceptance (5 November, [ST1-ST8](native-acceptance.md#selective-staging-d6-5-november)): pointer and keyboard selection of files and hunks, unstage, stale external-edit refusal and recovery for staging and commit, exact preview and committed Git state, preserved unselected edits, Project folder isolation and long paths in the narrow inspector all passed in the packaged QA app. Three findings were fixed: the commit form widened the inspector with long lines (CSS; the rendered workflow now asserts nothing inside the inspector overflows it, and failed before the fix); the in-progress state read as "wait for an idle session" (now "Applying the change…"); unstage refusals said "Nothing was staged" (now "Nothing was changed"). Native dark theme was not exercised (ST8).
 - [x] Linux arm64 container (Debian bookworm, Git 2.39.5): 9/9 Rust staging tests and the rendered staging and workspace workflows passed with Linux-built supervisor and bridge binaries. A packaged WebKitGTK window was not driven; no Linux desktop session is available.
 - [x] Windows x64 packaged-app interaction (5 November, Windows 10 build 19045.6466, QA package of `ab69247`): pointer and keyboard staging, stale outside-edit refusal with an identical index and recovery for unstage and commit, exact preview and committed content, preserved unselected edits and API folder isolation all passed. See [native acceptance](native-acceptance.md#selective-staging-d6-5-november).
-- [ ] Release in a version.
+- [x] Release in [v0.2.0](https://github.com/kabudu/lascoria/releases/tag/v0.2.0) (6 November). A packaged Linux (WebKitGTK) window and native dark-theme interaction remain open; see [release readiness](release-readiness.md).
 
 ## v0.2.0 release checklist (5 November)
 
@@ -955,7 +955,8 @@ Owner-authorised on 5 November after the agreed staging gates. Version 0.2.0 is 
 - [x] Merge PR #28 as `1dad8f3bc1fb3b54e10d9b268f757f6ae18a2375` after final local CI, three hosted native checks on its final head (run 42125666354) and recorded native macOS, Windows and Linux-container staging acceptance.
 - [x] Prepare consistent 0.2.0 package/lockfile versions and curated release notes for selective staging.
 - [x] Preview curated notes rendered by GitHub's Markdown API in light/dark at 900 and 360 pixels (no overflow, expected headings, repository links only) and pass the online supply-chain audit (0 npm vulnerabilities, 843 Rust crates, reviewed warnings only).
-- [ ] Final release-head local CI and hosted checks.
-- [ ] Merge the release PR and push annotated tag `v0.2.0` pointing to that master commit.
-- [ ] Production workflow passes validation, four platform builds and publication.
-- [ ] Independent public verification of assets, checksums, updater signatures and stable/version/beta manifests.
+- [x] Final release-head local CI at `679fd6f` (`./scripts/ci-local.sh`: Rust 107 passed, 105 Node tests with one Linux-only skip, 55 UI workflows; macOS 27.0.1, Node 24.17.0, Rust 1.97.0) and three hosted native checks (run 42130480059).
+- [x] Merge release PR #29 as `ca899ff85ccaab2cef21db198de2ca7114a9c170` (tree identical to `679fd6f`) and push annotated tag `v0.2.0` pointing to it.
+- [x] [Production run 42133660750](https://github.com/kabudu/lascoria/actions/runs/42133660750) passed planning, four platform builds, three native validations and publication of [v0.2.0](https://github.com/kabudu/lascoria/releases/tag/v0.2.0), now the latest release.
+- [x] Independent public verification: all 13 assets match published sizes and SHA-256 checksums; all 11 binary/signature files are byte-identical to the original build artifacts; four updater signatures verify against the unchanged production key; five manifest platform entries; stable, version-specific and beta manifests byte-identical at 0.2.0; universal Mac slices, strict signing, stapled tickets, Gatekeeper and an isolated packaged-runtime echo lifecycle; Windows installer version 0.2.0.0; Linux x64/ARM64 AppImage, Debian and packaged executables; website latest-release routing and apex redirect.
+- These are package and distribution checks. They do not add installed-update acceptance on any platform.
