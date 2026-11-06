@@ -947,3 +947,15 @@ Authorised 4 November as the next milestone. Branch `codex/selective-staging` fr
 - [x] Linux arm64 container (Debian bookworm, Git 2.39.5): 9/9 Rust staging tests and the rendered staging and workspace workflows passed with Linux-built supervisor and bridge binaries. A packaged WebKitGTK window was not driven; no Linux desktop session is available.
 - [x] Windows x64 packaged-app interaction (5 November, Windows 10 build 19045.6466, QA package of `ab69247`): pointer and keyboard staging, stale outside-edit refusal with an identical index and recovery for unstage and commit, exact preview and committed content, preserved unselected edits and API folder isolation all passed. See [native acceptance](native-acceptance.md#selective-staging-d6-5-november).
 - [ ] Release in a version.
+
+## v0.2.0 release checklist (5 November)
+
+Owner-authorised on 5 November after the agreed staging gates. Version 0.2.0 is the next unused semantic version; selective staging is a new user-facing capability.
+
+- [x] Merge PR #28 as `1dad8f3bc1fb3b54e10d9b268f757f6ae18a2375` after final local CI, three hosted native checks on its final head (run 42125666354) and recorded native macOS, Windows and Linux-container staging acceptance.
+- [x] Prepare consistent 0.2.0 package/lockfile versions and curated release notes for selective staging.
+- [x] Preview curated notes rendered by GitHub's Markdown API in light/dark at 900 and 360 pixels (no overflow, expected headings, repository links only) and pass the online supply-chain audit (0 npm vulnerabilities, 843 Rust crates, reviewed warnings only).
+- [ ] Final release-head local CI and hosted checks.
+- [ ] Merge the release PR and push annotated tag `v0.2.0` pointing to that master commit.
+- [ ] Production workflow passes validation, four platform builds and publication.
+- [ ] Independent public verification of assets, checksums, updater signatures and stable/version/beta manifests.

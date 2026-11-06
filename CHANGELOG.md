@@ -4,6 +4,8 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-05
+
 - Stage and unstage whole files or individual hunks in an isolated task's Workspace tab, preview the exact commit content and commit only what is staged; unselected edits stay in the worktree. Actions are refused, with nothing changed, if files or the index changed after the list loaded. Commits still never push and do not run hooks or signing.
 
 ## 0.1.9 - 2026-11-03
