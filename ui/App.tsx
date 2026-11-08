@@ -1306,9 +1306,12 @@ export function App() {
       view: 'map',
       collapsed: (latestPrefs.current.collapsed ?? []).filter((id) => id !== entry.target),
     });
-    setTab(entry.kind === 'review' ? 'diff' : 'transcript');
+    const tab = entry.kind === 'review' ? 'diff' : 'transcript';
+    setTab(tab);
     openInspector();
     if (entry.target) setRevealTarget(entry.target);
+    // Keyboard and screen-reader users land where the item is, not back on the canvas.
+    requestAnimationFrame(() => document.getElementById(`tab-${tab}`)?.focus());
   }
   const jump = useRef(goToAttention);
   jump.current = goToAttention;
