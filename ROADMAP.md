@@ -9,7 +9,7 @@ Everything below is **planned**: a proposal, not available, not scheduled and no
 Shipped in v0.2.0: in isolated task worktrees, stage and unstage whole files or individual hunks and commit exactly the staged content ([selective staging](docs/staging.md)). Commits never push; hooks and commit signing are not run. Proposed:
 
 - Show and switch branches, with clear warnings before anything changes the working tree.
-- Push to a remote and open a pull request, using the user's own Git credentials and hosting account.
+- Push to a remote and open a pull request, using the user's own Git credentials and hosting account. In development, unreleased: [review to delivery](docs/review-to-delivery.md) (GitHub pull requests through the GitHub CLI).
 - Help with merges and conflicts, without resolving them silently.
 - Respect repository hooks and commit signing where the user has set them up.
 

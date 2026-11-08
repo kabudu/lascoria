@@ -2,7 +2,7 @@
 
 Shipped in [v0.2.0](https://github.com/kabudu/lascoria/releases/tag/v0.2.0) (6 November 2026). In an isolated task worktree, the Workspace tab's **Stage and commit** section shows what is staged and what is not, stages and unstages whole files or individual hunks, previews the exact commit content and commits only the staged index. Unselected edits and new files stay in the worktree.
 
-Not included: branches, push, pull requests, merge or conflict resolution, discard of individual changes, an embedded editor or terminal. Those remain on the [roadmap](../ROADMAP.md).
+Push and pull requests are in development, unreleased: see [review to delivery](review-to-delivery.md). Not included: branches, merge or conflict resolution, discard of individual changes, an embedded editor or terminal. Those remain on the [roadmap](../ROADMAP.md).
 
 ## Where it applies
 

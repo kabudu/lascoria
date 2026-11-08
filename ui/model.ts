@@ -12,7 +12,7 @@ export function tasks(session: SessionRow, prefs: Prefs): Task[] {
       label:
         prefs.labels?.[id] ??
         // displayText is what the user typed when Lascoria added a model-visible note.
-        (prompt?.displayText ?? prompt?.text)?.trim().split('\n')[0]?.slice(0, 100) ??
+        taskTitle(prompt?.displayText ?? prompt?.text) ??
         `Turn ${turn.turnId.slice(-8)}`,
       status: turn.terminal ?? 'running',
       error: turn.error,
@@ -626,6 +626,8 @@ export function outcomeNotice(operation: string, status?: string) {
     'workspace/run': 'Test command',
     'workspace/stage': 'Staging change',
     'workspace/commit': 'Commit',
+    'workspace/push': 'Push',
+    'workspace/pullRequest': 'Pull request',
     'workspace/discard': 'Worktree discard',
     'session/archive': 'Archive',
   };
@@ -636,7 +638,7 @@ export function outcomeNotice(operation: string, status?: string) {
     case 'accepted':
       return `${what} sent to Muse.`;
     case 'running':
-      return `${what} running.`;
+      return `${what} started.`;
     case 'rejected':
       return `${what} refused; nothing changed.`;
     case 'outcomeUnknown':
@@ -774,4 +776,124 @@ export function nodeKind(node: {
     reminderChild: 'Background check',
   };
   return kinds[node.item?.kind ?? ''] ?? 'Muse activity';
+}
+
+/**
+ * A readable task name from what the user typed: the first line with words, without Markdown
+ * markers, cut at a word boundary. Explicit names and native objectives take precedence.
+ */
+export function taskTitle(text?: string, limit = 80): string | undefined {
+  const line = text
+    ?.split('\n')
+    .map((l) =>
+      l
+        .replace(/^\s*(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)/, '')
+        .replace(/^\[[ xX]\]\s*/, '')
+        // Emphasis and code markers only; underscores inside names such as snake_case stay.
+        .replace(/[`*]{1,3}/g, '')
+        .replace(/(^|\s)_{1,3}(?=\S)|(?<=\S)_{1,3}(?=\s|$)/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .find((l) => /[\p{L}\p{N}]/u.test(l));
+  if (!line) return undefined;
+  if (line.length <= limit) return line;
+  const cut = line.slice(0, limit);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > limit / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.-]+$/, '')}…`;
+}
+
+/** Who a task belongs to, from native provenance only. */
+export function taskOwner(task: Task, nodes: Task[]) {
+  if (task.provenance === 'derived') return 'Your task';
+  const parent = nodes.find((n) => n.id === task.parentId);
+  const kind = task.nativeChild
+    ? 'Workflow step'
+    : task.item?.kind === 'subagent'
+      ? 'Subagent'
+      : task.item?.kind === 'workflow'
+        ? 'Workflow'
+        : 'Started by Muse';
+  if (!parent) return kind;
+  return kind === 'Started by Muse'
+    ? `Started by Muse during ${parent.label}`
+    : `${kind} of ${parent.label}`;
+}
+
+/** Every native descendant of a task (subagents, workflows and their steps). */
+export function descendants(nodes: Task[], id: string): Task[] {
+  const children = new Map<string, Task[]>();
+  for (const n of nodes)
+    if (n.parentId) children.set(n.parentId, [...(children.get(n.parentId) ?? []), n]);
+  const out: Task[] = [];
+  const seen = new Set([id]);
+  const stack = [...(children.get(id) ?? [])];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (seen.has(n.id)) continue; // Presentation never trusts parent links to be acyclic.
+    seen.add(n.id);
+    out.push(n);
+    stack.push(...(children.get(n.id) ?? []));
+  }
+  return out;
+}
+
+/**
+ * Tasks hidden because their group is collapsed. A task that needs attention, and the chain
+ * of tasks above it, is never hidden by a collapsed group.
+ */
+export function groupHidden(nodes: Task[], collapsed: string[] = [], keep: Set<string>) {
+  const hidden = new Set<string>();
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const kept = new Set<string>();
+  for (const id of keep) {
+    let n = byId.get(id);
+    const seen = new Set<string>();
+    while (n && !seen.has(n.id)) {
+      seen.add(n.id);
+      kept.add(n.id);
+      n = n.parentId ? byId.get(n.parentId) : undefined;
+    }
+  }
+  for (const root of collapsed)
+    if (byId.has(root))
+      for (const n of descendants(nodes, root)) if (!kept.has(n.id)) hidden.add(n.id);
+  return hidden;
+}
+
+const attentionRank: Record<string, number> = {
+  approval: 0,
+  question: 1,
+  failure: 2,
+  interruption: 3,
+  review: 4,
+};
+
+/**
+ * Attention in the order to handle it: decisions and questions that block Muse first, then
+ * failures, interruptions and completed work to inspect. Runtime history is not included.
+ */
+export function attentionOrder(queue: AttentionItem[]) {
+  return (
+    queue
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => !('historical' in item && item.historical))
+      // Muse's own runtime reminders come after everything that is the user's work.
+      .sort(
+        (a, b) =>
+          Number('background' in a.item && !!a.item.background) -
+            Number('background' in b.item && !!b.item.background) ||
+          (attentionRank[a.item.kind] ?? 9) - (attentionRank[b.item.kind] ?? 9) ||
+          a.index - b.index,
+      )
+      .map(({ item }) => item)
+  );
+}
+
+/** The attention item after the one the user is on, wrapping around; first when on none. */
+export function nextAttention(queue: AttentionItem[], currentId?: string) {
+  const ordered = attentionOrder(queue);
+  if (!ordered.length) return undefined;
+  const at = ordered.findIndex((item) => item.id === currentId);
+  return ordered[(at + 1) % ordered.length];
 }

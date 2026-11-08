@@ -149,6 +149,9 @@ test('Selective file and hunk staging commits only the index, refuses stale view
     const staging = page.locator('section.staging');
     const notStaged = staging.getByRole('group', { name: /^Not staged/ });
     const staged = staging.getByRole('group', { name: /^Staged/ });
+    // File and hunk choice is an advanced control: disclosed, not shown by default.
+    await expect(notStaged).toBeHidden();
+    await staging.getByText(/^Choose files and hunks/).click();
     const unstagedCount = unix ? 7 : 6;
     await expect(
       notStaged.getByRole('heading', { name: `Not staged (${unstagedCount})` }),

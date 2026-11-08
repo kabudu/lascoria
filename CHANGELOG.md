@@ -4,6 +4,9 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+- Deliver work from an isolated task's Workspace tab with one next step at a time: check the changes, send a failing check to Muse, stage, commit, push and open a pull request. Test results count only for the exact files they ran on. Push and pull requests show the destination, branch and commits first, use your own Git and GitHub CLI sign-in, never force-push and never open a duplicate.
+- Make larger maps easier to read: clearer task names, who owns each task, subtasks folded into their task's card, and Next to review (⌘J or Ctrl+J) to go straight to what needs you. Folding never hides work that needs attention.
+
 ## 0.2.0 - 2026-11-05
 
 - Stage and unstage whole files or individual hunks in an isolated task's Workspace tab, preview the exact commit content and commit only what is staged; unselected edits stay in the worktree. Actions are refused, with nothing changed, if files or the index changed after the list loaded. Commits still never push and do not run hooks or signing.

@@ -245,13 +245,13 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
     const staging = page.locator('section.staging');
     await staging.getByRole('button', { name: 'Refresh changes', exact: true }).click();
     await expect(staging).toContainText('result.txt');
+    await staging.getByText(/^Choose files and hunks/).click();
     await staging.getByRole('button', { name: 'Stage all', exact: true }).click();
     await expect(staging.getByRole('heading', { name: 'Staged (1)' })).toBeVisible();
     await staging.getByRole('button', { name: 'Commit staged changes…', exact: true }).click();
     await page.getByLabel('Commit message').fill('Record task result');
     await staging.getByRole('button', { name: 'Commit staged changes', exact: true }).click();
-    await expect(staging.getByText('No unstaged changes.', { exact: true })).toBeVisible();
-    await expect(staging.getByText('Nothing staged yet.', { exact: true })).toBeVisible();
+    await expect(staging.getByText('No uncommitted changes.', { exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'transcript', exact: true }).click();
     const archive = page
       .getByRole('region', { name: 'Sessions panel' })
