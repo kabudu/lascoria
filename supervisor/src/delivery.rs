@@ -603,7 +603,12 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
             Ok(None) => json!({"checked": true, "head": null}),
             Err(e) => json!({"checked": false, "error": redact(&format!("{e:#}"))}),
         };
-        if let Some(repository) = &repository {
+        // Only ask GitHub when it could answer: the CLI is installed and the branch is pushed.
+        if let (Some(repository), true, true) = (
+            &repository,
+            gh_path().is_some(),
+            checked["head"].is_string(),
+        ) {
             pull_request = match open_pull_requests(root, repository, &local.branch).await {
                 Ok(list) => json!({"checked": true, "open": list}),
                 Err(e) => json!({"checked": false, "error": redact(&format!("{e:#}"))}),

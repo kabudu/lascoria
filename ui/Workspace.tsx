@@ -62,9 +62,11 @@ export function Workspace({
   const selectedRoot =
     managed?.path ?? folders?.find((f) => f.id === folderId)?.path ?? session.workspace;
   const [discarding, setDiscarding] = useState<Json[] | null>(null);
-  const [version, setVersion] = useState(0);
+  // Each panel reloads after the other changes the index, never after its own change: a
+  // second reload could silently refresh a view the user is about to act on.
+  const [deliveryVersion, setDeliveryVersion] = useState(0);
+  const [stagingVersion, setStagingVersion] = useState(0);
   const [commitRequest, setCommitRequest] = useState(0);
-  const changed = () => setVersion((v) => v + 1);
   const generation = useRef(0);
   const runs = commands.filter(
     (c) => c.sessionId === session.id && c.operation === 'workspace/run',
@@ -179,9 +181,9 @@ export function Workspace({
           ready={ready}
           busy={busy}
           commands={commands}
-          version={version}
+          version={deliveryVersion}
           mutate={mutate}
-          changed={changed}
+          changed={() => setStagingVersion((v) => v + 1)}
           runTests={(command) =>
             void mutate('workspace/run', { sessionId: session.id, command, ...scope })
           }
@@ -206,9 +208,9 @@ export function Workspace({
           ready={ready}
           busy={busy}
           mutate={mutate}
-          version={version}
+          version={stagingVersion}
           commitRequest={commitRequest}
-          onChanged={changed}
+          onChanged={() => setDeliveryVersion((v) => v + 1)}
         />
       )}
       {removed && (
