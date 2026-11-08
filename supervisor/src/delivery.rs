@@ -29,6 +29,7 @@ use tokio::{
     time::{Duration, timeout},
 };
 
+const NOT_SIGNED_IN: &str = "The GitHub CLI is not signed in. Run gh auth login, then try again";
 /// Local Git reads.
 const LOCAL: Duration = Duration::from_secs(10);
 /// A remote query (`ls-remote`, `gh pr list`).
@@ -136,7 +137,7 @@ async fn network(root: &Path, args: &[&str], deadline: Duration) -> Result<Strin
     git::run(root, &full, deadline, false)
         .await
         .map(|out| String::from_utf8_lossy(&out).into_owned())
-        .map_err(|e| anyhow::anyhow!(redact(&format!("{e:#}"))))
+        .map_err(|e| anyhow::anyhow!(redact(&format!("{e:#}")).trim_end_matches('.').to_owned()))
 }
 
 struct Remote {
@@ -430,13 +431,20 @@ async fn gh(
         c?;
         let status = child.wait().await?;
         ensure!(out.len() <= 256 * 1024, "GitHub CLI output exceeds budget");
+        let message = redact(String::from_utf8_lossy(&err).trim());
+        // A signed-out CLI explains itself at length; name it plainly instead.
         ensure!(
             status.success(),
             "{}",
-            redact(String::from_utf8_lossy(&err).trim())
-                .chars()
-                .take(2000)
-                .collect::<String>()
+            if message.contains("gh auth login") || message.contains("not logged in") {
+                NOT_SIGNED_IN.to_owned()
+            } else {
+                message
+                    .trim_end_matches('.')
+                    .chars()
+                    .take(2000)
+                    .collect::<String>()
+            }
         );
         Ok(String::from_utf8_lossy(&out).into_owned())
     };
@@ -611,6 +619,9 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
         ) {
             pull_request = match open_pull_requests(root, repository, &local.branch).await {
                 Ok(list) => json!({"checked": true, "open": list}),
+                Err(e) if e.to_string().starts_with(NOT_SIGNED_IN) => {
+                    json!({"checked": false, "signedIn": false, "error": NOT_SIGNED_IN})
+                }
                 Err(e) => json!({"checked": false, "error": redact(&format!("{e:#}"))}),
             };
         }
@@ -813,7 +824,8 @@ pub async fn pull_request(row: &Value, params: &Value) -> Result<Value> {
         .await
         .map_err(|e| {
             reject(format!(
-                "Could not check GitHub for an existing pull request: {e:#}. Nothing was changed"
+                "Could not check GitHub for an existing pull request: {}. Nothing was changed",
+                format!("{e:#}").trim_end_matches('.')
             ))
         })?;
     if let Some(pr) = existing.into_iter().next() {
@@ -1242,6 +1254,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(view["pullRequest"]["open"][0]["number"], 7);
+        // Signed out: status says so plainly and nothing is attempted.
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(&gh, "#!/bin/sh\necho 'To get started with GitHub CLI, please run:  gh auth login' >&2\nexit 4\n").unwrap();
+            std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let view = status(&db, &row, &json!({"checkRemote": true}))
+            .await
+            .unwrap();
+        assert_eq!(view["pullRequest"]["signedIn"], false, "{view}");
+        let refused = pull_request(&row, &params).await.unwrap_err().to_string();
+        assert!(
+            refused.contains("not signed in. Run gh auth login") && !refused.contains(".."),
+            "{refused}"
+        );
         unsafe { std::env::remove_var("SCH_GH_BIN") };
     }
 }

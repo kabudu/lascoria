@@ -165,6 +165,12 @@ export function deliveryStep(d: Json): Step {
       headline: `Pushed to ${d.remote.name}`,
       detail: `Open a pull request on ${d.hosting?.host || 'your Git host'}.`,
     };
+  if (d.pullRequest?.signedIn === false)
+    return {
+      kind: 'noCli',
+      headline: `Pushed to ${d.remote.name}`,
+      detail: 'To open pull requests here, sign in to the GitHub CLI with gh auth login.',
+    };
   if (!d.hosting.cli)
     return {
       kind: 'noCli',
