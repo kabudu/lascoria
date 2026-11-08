@@ -1,6 +1,6 @@
 # Review to delivery and constellation hierarchy
 
-In development on `codex/review-to-delivery` (8 November 2026); not released. This milestone builds on [selective staging](staging.md). Its aim: a developer can see what their agents are doing, intervene easily and ship the work with confidence. It does not claim Lascoria is better than other harnesses; that would need the comparative trials described under [Measuring success](#measuring-success).
+Introduced in v0.3.0. This milestone builds on [selective staging](staging.md). Its aim: a developer can see what their agents are doing, intervene easily and ship the work with confidence. It does not claim Lascoria is better than other harnesses; that would need the comparative trials described under [Measuring success](#measuring-success).
 
 ## What the developer does
 
@@ -33,7 +33,7 @@ When some changes stay unstaged, the step says that the test ran on every file, 
 
 ## Push and pull request
 
-Both are explicit, journaled supervisor commands with a stable request ID, run in the background so they never hold the command lane. Each names the delivery `revision` the user reviewed: SHA-256 over the worktree, task branch, `HEAD`, remote name, push URL and fetch URL. A new commit, a branch switch or a changed remote after review refuses the action with nothing sent. A rejected or failed command is recorded as such; status reports its message.
+Both are explicit, journaled supervisor commands with a stable request ID, run in the background so they never hold the command lane. Each names the delivery `revision` the user reviewed: SHA-256 over the worktree, task branch, `HEAD`, remote name, push URL, fetch URL and configured receive-pack command. A new commit, a branch switch or a changed remote after review refuses the action with nothing sent. A rejected or failed command is recorded as such; status reports its message.
 
 **Push** (`workspace/push`): rechecks the destination with `git ls-remote` first. The push uses that captured destination URL directly, so a remote-name configuration change cannot redirect it. If the remote branch already has the reviewed commit, it records success without pushing (a retry after a lost acknowledgement). If the remote branch has commits the task branch lacks, it refuses. Otherwise it pushes exactly the reviewed commit (`<sha>:refs/heads/<task branch>`), never forced, then asks the remote again; the remote's answer decides the recorded outcome. Pushes with no commits are refused.
 

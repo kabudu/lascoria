@@ -1,6 +1,6 @@
 # Lascoria release-readiness backlog
 
-Updated 6 November 2026, after v0.2.0. This is the consolidated product/release backlog; evidence lives in the [running checklist](implementation-progress.md) and the stage documents. The repository has been public since 21 October, hosted three-OS CI runs on every pull request and master push, and versioned binaries have been public since v0.1.2. Publishing a release does not close a gate: an unchecked item stays open until its own acceptance evidence exists, and a checked subtask does not close its parent.
+Updated 8 November 2026, during v0.3.0 release preparation. This is the consolidated product/release backlog; evidence lives in the [running checklist](implementation-progress.md) and the stage documents. The repository has been public since 21 October, hosted three-OS CI runs on every pull request and master push, and versioned binaries have been public since v0.1.2. Publishing a release does not close a gate: an unchecked item stays open until its own acceptance evidence exists, and a checked subtask does not close its parent.
 
 ## Status summary (6 November)
 
@@ -43,11 +43,11 @@ Everything here is in the public builds. Unless a row says otherwise, macOS has 
 | T1 to T5 token efficiency | Native checks for each policy; a broader T5 benchmark showing savings with preserved correctness. |
 | D6 Selective file and hunk staging | Shipped in v0.2.0. Packaged macOS and Windows staging, refusal, commit and folder checks passed on 5 November; Linux passed in a container with the rendered workflows. Remaining: a packaged Linux (WebKitGTK) window and native dark-theme interaction in a packaged app; dark and light are covered by the rendered workflow. |
 
-### In development (unreleased)
+### v0.3.0 delivery milestone
 
 | Item | State |
 | --- | --- |
-| D7 Review to delivery, D8 constellation hierarchy | Implemented on `codex/review-to-delivery`. Requirement-by-requirement evidence and remaining scope: [milestone checklist](review-to-delivery.md#milestone-checklist). |
+| D7 Review to delivery, D8 constellation hierarchy | Included in v0.3.0; publication and artifact verification remain tracked in the running checklist until complete. Requirement-by-requirement evidence and remaining scope: [milestone checklist](review-to-delivery.md#milestone-checklist). |
 
 ### Planned
 

@@ -969,4 +969,17 @@ Owner-authorised on 5 November after the agreed staging gates. Version 0.2.0 is 
 - [x] Preserve the primary-action accent and contrast while hovering, correcting the generic button hover that previously replaced its fill with the panel colour.
 - [x] Preserve the configured remote receive-pack command when sending to a captured URL. The full UI recovery test caught its accidental omission in the first correction. Capture that command in the review fingerprint and pass it explicitly to Git.
 - [x] Use the existing accessible toggle styling for the new Open as a draft preference.
-- [ ] Validate final reviewed head, publish review corrections to PR #31 and record exact CI results.
+- [x] Final reviewed head `22a8a4c` passed `MUSE_BIN=.dev/muse-test/muse ./scripts/ci-local.sh`: 114 Rust tests, 108 Node tests with one Linux-only skip and 58 UI workflows. Review corrections and exact results are recorded in PR #31.
+
+
+## v0.3.0 release checklist (8 November)
+
+- [x] Prepare consistent 0.3.0 package and lockfile versions with curated release notes for review-to-delivery and constellation hierarchy.
+- [x] Audit the reviewed dependency set online. Zero npm vulnerabilities, 843 Rust crates checked and the existing reviewed warnings only.
+- [x] Review corrections at `22a8a4c` passed full local CI (114 Rust, 108 Node with one Linux-only skip, 58 UI workflows) and all three hosted checks in run 42480755858. PR #31 merged as `602d40d`, with an identical implementation tree.
+- [x] Preview the curated notes rendered by GitHub in light/dark at 900 and 360 pixels: no overflow, expected headings and repository links only.
+- [ ] Validate the final release metadata head through local and three-platform hosted CI.
+- [ ] Merge the reviewed implementation and release metadata, verify source identity and publish the annotated version tag.
+- [ ] Verify all public downloads and original build artifacts, checksums, signatures, package metadata and updater channels.
+
+Comparative developer trials and voluntary repeat-use evidence remain open. Platform interaction evidence remains scoped to the documented native acceptance runs.
