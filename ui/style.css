@@ -3877,3 +3877,103 @@ button.link {
     color: CanvasText;
   }
 }
+
+/* Review to delivery: one next step, facts beneath it. */
+.delivery {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.delivery > *,
+.delivery form,
+.delivery dd {
+  min-width: 0;
+}
+.delivery p,
+.delivery dd,
+.delivery li {
+  overflow-wrap: anywhere;
+}
+.delivery-step {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.delivery-step p {
+  margin: 0;
+  color: var(--muted);
+}
+.delivery-step.step-failed,
+.delivery-step.step-conflicts,
+.delivery-step.step-diverged,
+.delivery-step.step-unknown {
+  border-left-color: var(--attention);
+}
+.delivery-step.step-delivered {
+  border-left-color: var(--success);
+}
+.delivery-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+.delivery-facts dt {
+  color: var(--muted);
+}
+.delivery-facts dd {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.delivery-commits {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  max-height: 180px;
+  overflow: auto;
+}
+.delivery .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.staging-choose > summary {
+  padding: 4px 0;
+}
+
+/* Constellation hierarchy: who owns a task, and subtasks folded into their task's card. */
+.task-node .node-owner {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-node small .group-chip {
+  display: inline;
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.66rem;
+}
+.attention-jump .count {
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--accent-surface);
+  color: var(--ink);
+}
+.workspace-title > .attention-jump {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}

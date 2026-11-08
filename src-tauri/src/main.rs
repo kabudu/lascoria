@@ -46,6 +46,9 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "workspace/reusable",
         "workspace/commit",
         "workspace/discard",
+        "workspace/delivery",
+        "workspace/push",
+        "workspace/pullRequest",
         "session/archive",
         "session/rename",
         "project/list",
@@ -127,6 +130,9 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         Duration::from_millis(500)
     } else if ["decision/evaluate", "decision/test"].contains(&operation) {
         // Vault (10s), two capture checks (10s each) and HTTP (20s), plus IPC overhead.
+        Duration::from_secs(65)
+    } else if operation == "workspace/delivery" {
+        // A remote and a GitHub check (20s each); the supervisor bounds it at 55 seconds.
         Duration::from_secs(65)
     } else if operation.starts_with("data/") && operation != "data/summary" {
         // Backups copy the whole journal; the supervisor bounds this at 280 seconds.
@@ -285,6 +291,38 @@ async fn open_provider_policy(url: String) -> Result<(), String> {
         return Err("Unsupported provider policy address".into());
     }
     open_browser(url).await
+}
+
+/// A pull request the supervisor reported, opened in the user's browser. Only
+/// `https://github.com/<owner>/<repo>/pull/<number>` is accepted.
+#[tauri::command]
+async fn open_pull_request(url: String) -> Result<(), String> {
+    if !pull_request_url(&url) {
+        return Err("Unsupported pull request address".into());
+    }
+    open_browser(url).await
+}
+
+fn pull_request_url(url: &str) -> bool {
+    let Some(path) = url.strip_prefix("https://github.com/") else {
+        return false;
+    };
+    let parts: Vec<&str> = path.split('/').collect();
+    let name = |s: &str| {
+        !s.is_empty()
+            && s.len() <= 100
+            && s != "."
+            && s != ".."
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+    };
+    parts.len() == 4
+        && name(parts[0])
+        && name(parts[1])
+        && parts[2] == "pull"
+        && !parts[3].is_empty()
+        && parts[3].len() <= 12
+        && parts[3].bytes().all(|b| b.is_ascii_digit())
 }
 
 async fn open_browser(url: String) -> Result<(), String> {
@@ -488,6 +526,7 @@ fn main() {
             updates::update_install,
             open_account_browser,
             open_provider_policy,
+            open_pull_request,
             notifications::notify_attention,
             notifications::notify_test,
             finish_quit,
@@ -507,4 +546,23 @@ fn main() {
                 let _ = app.emit("lascoria-before-quit", ());
             }
         });
+}
+
+#[cfg(test)]
+mod pull_request_tests {
+    #[test]
+    fn only_github_pull_request_addresses_open() {
+        assert!(super::pull_request_url("https://github.com/o/r/pull/7"));
+        for bad in [
+            "http://github.com/o/r/pull/7",
+            "https://github.com/o/r/pull/7/files",
+            "https://github.com.evil/o/r/pull/7",
+            "https://github.com/o/../pull/7",
+            "https://github.com/o/r/pull/7?x=1",
+            "https://github.com/o/r/issues/7",
+            "file:///etc/passwd",
+        ] {
+            assert!(!super::pull_request_url(bad), "{bad}");
+        }
+    }
 }

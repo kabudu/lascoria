@@ -65,6 +65,11 @@ import {
   skillRequest,
   taskFailure,
   nodeKind,
+  taskOwner,
+  descendants,
+  groupHidden,
+  nextAttention,
+  attentionOrder,
 } from './model';
 import type {
   Status,
@@ -974,6 +979,10 @@ export function App() {
         e.preventDefault();
         setModal('palette');
       }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        jump.current();
+      }
       if (e.key === 'Escape') setModal(null);
     };
     window.addEventListener('keydown', listener);
@@ -1213,13 +1222,21 @@ export function App() {
     workflow: 'Workflow',
     plan: 'Plan',
   };
+  // Attention in this session is never hidden by collapsing: not by a folded group and not
+  // by Collapse completed.
+  const needed = new Set(
+    queue.filter((entry) => entry.sessionId === session?.id).map((entry) => entry.target!),
+  );
+  if (task) needed.add(task.id);
+  const folded = groupHidden(nodes, prefs.collapsedGroups, needed);
   const visible = nodes.filter(
     (n) =>
       (n.item?.kind !== 'reminderChild' ||
         prefs.showRuntimeReminders ||
         n.id === task?.id ||
         ['failed', 'rejected'].includes(n.status)) &&
-      (!prefs.collapsed?.includes(n.id) || n.id === task?.id) &&
+      (!prefs.collapsed?.includes(n.id) || needed.has(n.id)) &&
+      !folded.has(n.id) &&
       n.label.toLowerCase().includes((prefs.search ?? '').toLowerCase()),
   );
   // Scene coordinates belong to the constellation, not floating panels or the viewport.
@@ -1267,6 +1284,42 @@ export function App() {
     });
     setTab('transcript');
     setRevealTarget(node.id);
+  }
+  // "Take me to what needs attention": blocking decisions first, then failures and finished
+  // work, across every open session. Each press moves to the next item.
+  const lastJump = useRef<string | undefined>(undefined);
+  function goToAttention() {
+    const items = latestQueue.current;
+    const current = items.find(
+      (entry) => entry.id === lastJump.current && entry.target === latestPrefs.current.selection,
+    );
+    const entry = nextAttention(items, current?.id);
+    if (!entry) {
+      setNotice('Nothing needs attention.');
+      return;
+    }
+    lastJump.current = entry.id;
+    updatePrefs({
+      sessionId: entry.sessionId,
+      selection: entry.target,
+      search: '',
+      view: 'map',
+      collapsed: (latestPrefs.current.collapsed ?? []).filter((id) => id !== entry.target),
+    });
+    setTab(entry.kind === 'review' ? 'diff' : 'transcript');
+    openInspector();
+    if (entry.target) setRevealTarget(entry.target);
+  }
+  const jump = useRef(goToAttention);
+  jump.current = goToAttention;
+  const waiting = attentionOrder(queue);
+  function toggleGroup(node: Task) {
+    const groups = latestPrefs.current.collapsedGroups ?? [];
+    updatePrefs({
+      collapsedGroups: groups.includes(node.id)
+        ? groups.filter((id) => id !== node.id)
+        : [...groups, node.id].slice(-500),
+    });
   }
   const position = (node: Task, _index: number) =>
     nodePreview?.id === node.id
@@ -1868,6 +1921,16 @@ export function App() {
                 </div>
                 <p className="muted">Tasks, decisions and the evidence behind a change.</p>
               </div>
+              {waiting.length > 0 && (
+                <button
+                  className="attention-jump"
+                  onClick={goToAttention}
+                  aria-keyshortcuts="Meta+J Control+J"
+                  title="Go to the next thing that needs you (⌘J or Ctrl+J)"
+                >
+                  Next to review <span className="count">{waiting.length}</span>
+                </button>
+              )}
               <button className="primary" onClick={() => setModal('start')}>
                 New session
               </button>
@@ -2423,7 +2486,7 @@ export function App() {
                               aria-busy={activity.busy}
                               data-activity={activity.kind}
                               style={{ left: p.x, top: p.y }}
-                              title="Drag to arrange; Shift+arrow keys move; arrow keys navigate"
+                              title="Drag to arrange; Shift+arrow keys move; arrow keys navigate; F folds subtasks"
                               onPointerDown={(event) => {
                                 if (event.button !== 0) return;
                                 event.stopPropagation();
@@ -2469,6 +2532,17 @@ export function App() {
                               }}
                               onKeyDown={(e) => {
                                 if (
+                                  e.key.toLowerCase() === 'f' &&
+                                  !e.metaKey &&
+                                  !e.ctrlKey &&
+                                  !e.altKey &&
+                                  descendants(nodes, node.id).length
+                                ) {
+                                  e.preventDefault();
+                                  toggleGroup(node);
+                                  return;
+                                }
+                                if (
                                   ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(
                                     e.key,
                                   )
@@ -2505,7 +2579,7 @@ export function App() {
                                 }
                               }}
                               id={`node-${node.id}`}
-                              aria-label={`${node.label}, ${node.status}, ${nodeKind(node)}, ${activity.label}`}
+                              aria-label={`${node.label}, ${node.status}, ${taskOwner(node, nodes)}, ${activity.label}${prefs.collapsedGroups?.includes(node.id) ? ', subtasks folded' : ''}`}
                             >
                               <small>
                                 <span className="node-symbol" aria-hidden="true">
@@ -2516,8 +2590,18 @@ export function App() {
                                       : '◉'}
                                 </span>
                                 {nodeKind(node)}
+                                {prefs.collapsedGroups?.includes(node.id) &&
+                                  (() => {
+                                    const inside = descendants(nodes, node.id).filter((n) =>
+                                      folded.has(n.id),
+                                    ).length;
+                                    return inside ? (
+                                      <span className="group-chip">+{inside} folded</span>
+                                    ) : null;
+                                  })()}
                               </small>
                               <strong>{node.label}</strong>
+                              <span className="node-owner">{taskOwner(node, nodes)}</span>
                               <span>
                                 <i className={`status-dot ${activity.kind}`} aria-hidden="true" />
                                 <span className="node-activity-label" title={activity.label}>
@@ -2564,9 +2648,22 @@ export function App() {
                     <p className="eyebrow">SELECTED TASK</p>
                     <h2 title={task?.label}>{task?.label ?? 'No tasks yet'}</h2>
                     <p className="muted">
-                      {task?.provenance === 'native' ? 'Started by Muse' : 'A task you gave Muse'} ·{' '}
-                      {task?.status ?? 'idle'}
+                      {task
+                        ? task.provenance === 'native'
+                          ? taskOwner(task, nodes)
+                          : 'A task you gave Muse'
+                        : 'Started by Muse'}{' '}
+                      · {task?.status ?? 'idle'}
                     </p>
+                    {task && descendants(nodes, task.id).length > 0 && (
+                      <div>
+                        <button onClick={() => toggleGroup(task)}>
+                          {prefs.collapsedGroups?.includes(task.id)
+                            ? `Show ${descendants(nodes, task.id).length} subtasks on the map`
+                            : `Fold ${descendants(nodes, task.id).length} subtasks into this card`}
+                        </button>
+                      </div>
+                    )}
                     {task &&
                       queue.some(
                         (entry) =>

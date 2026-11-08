@@ -5,6 +5,7 @@ mod data;
 mod db;
 mod decisions;
 mod dedicated;
+mod delivery;
 mod git;
 mod metrics;
 mod peer;
@@ -464,6 +465,8 @@ impl Actor {
                     "workspace/stage",
                     "workspace/commit",
                     "workspace/discard",
+                    "workspace/push",
+                    "workspace/pullRequest",
                     "session/archive"
                 ]
                 .contains(&operation),
@@ -497,6 +500,13 @@ impl Actor {
             } else if !(operation == "workspace/discard" && row["lifecycle"] == "archived") {
                 workspace::idle(&self.db, &row)?;
             }
+            if ["workspace/push", "workspace/pullRequest"].contains(&operation) {
+                ensure!(row["lifecycle"] != "archived", "This session is archived");
+                ensure!(
+                    !delivery::running(&self.db, session)?,
+                    "Wait for the current push or pull request to finish"
+                );
+            }
             if let Some(previous) = workspace::begin(&self.db, id, operation, &params, session)? {
                 return Ok(previous);
             }
@@ -505,6 +515,16 @@ impl Actor {
                     Ok(result) => Ok(result),
                     Err(error) => workspace::finish(&self.db, id, Err(error)),
                 };
+            }
+            if ["workspace/push", "workspace/pullRequest"].contains(&operation) {
+                // Network work runs in the background; status reports its outcome.
+                return delivery::spawn(
+                    self.db.clone(),
+                    row,
+                    id.to_owned(),
+                    operation.to_owned(),
+                    params,
+                );
             }
             if operation == "workspace/stage" {
                 return workspace::finish(&self.db, id, staging::stage(&row, &params).await);
@@ -1223,6 +1243,22 @@ async fn connection(
         if request["operation"] == "session/rename" {
             return session_names::rename(&db.lock().unwrap(), &request["params"], request["id"].as_str().context("Request ID required")?);
         }
+        // Delivery status may ask a remote and GitHub (bounded); it must not hold the command lane.
+        if request["operation"] == "workspace/delivery" {
+            let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+            let session = params["sessionId"].as_str().context("Session required")?;
+            let full = db.lock().unwrap().get("sessions", session)?.context("Unknown session")?;
+            let row = workspace::scoped(&full, params["folderId"].as_str())?;
+            if let Some(path) = row["workspace"].as_str() {
+                ensure!(
+                    std::path::Path::new(path).is_dir(),
+                    "This session's folder is no longer there: {path}. Put it back, or start a new session for its new location"
+                );
+            }
+            return timeout(Duration::from_secs(55), delivery::status(&db, &row, &params))
+                .await
+                .context("Checking delivery status timed out; try again")?;
+        }
         // Review metadata is a bounded journal snapshot, not a session command.
         // A session row can be visible before its command lane is admitted.
         if request["operation"] == "review/list" {
@@ -1321,11 +1357,14 @@ async fn supervisor_main() -> Result<()> {
     {
         let db = db.lock().unwrap();
         for mut command in db.commands_matching(
-            "json_extract(value,'$.operation')='workspace/run' AND json_extract(value,'$.status')='running'",
+            "json_extract(value,'$.operation') IN ('workspace/run','workspace/push','workspace/pullRequest') AND json_extract(value,'$.status')='running'",
             &[],
         )? {
             command["status"] = json!("outcomeUnknown");
             command["result"]["outcome"] = json!("interrupted");
+            if command["operation"] != "workspace/run" {
+                command["error"] = json!({"message":"Lascoria stopped before this finished. Check the remote before trying again"});
+            }
             db.put("commands", command["id"].as_str().unwrap(), &command)?;
         }
         for mut row in db.all("sessions")? {

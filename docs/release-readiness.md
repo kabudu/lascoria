@@ -43,9 +43,15 @@ Everything here is in the public builds. Unless a row says otherwise, macOS has 
 | T1 to T5 token efficiency | Native checks for each policy; a broader T5 benchmark showing savings with preserved correctness. |
 | D6 Selective file and hunk staging | Shipped in v0.2.0. Packaged macOS and Windows staging, refusal, commit and folder checks passed on 5 November; Linux passed in a container with the rendered workflows. Remaining: a packaged Linux (WebKitGTK) window and native dark-theme interaction in a packaged app; dark and light are covered by the rendered workflow. |
 
+### In development (unreleased)
+
+| Item | State |
+| --- | --- |
+| D7 Review to delivery, D8 constellation hierarchy | Implemented on `codex/review-to-delivery`. Requirement-by-requirement evidence and remaining scope: [milestone checklist](review-to-delivery.md#milestone-checklist). |
+
 ### Planned
 
-Branches, push and pull requests, merge/conflict help and hooks/signing (after D1); an embedded editor and interactive terminal (after D2); Muse skill, plugin, MCP and settings management (D5); Windows publisher signing; and the research candidates. See the [roadmap](../ROADMAP.md). None is authorised for implementation by this document.
+Branches, merge/conflict help and hooks/signing (after D1); an embedded editor and interactive terminal (after D2); Muse skill, plugin, MCP and settings management (D5); Windows publisher signing; and the research candidates. See the [roadmap](../ROADMAP.md). None is authorised for implementation by this document.
 
 The sections below keep the detailed acceptance contract and dated evidence. Dated notes describe the state on their date.
 

@@ -58,7 +58,7 @@ test('node activity is visible while working, quiet when waiting or stale, and r
     };
   });
   await page.goto('/');
-  const node = page.locator('.task-node').filter({ hasText: 'Visible activity' });
+  const node = page.locator('#node-s\\:turn');
   const rail = node.locator('.node-activity-rail');
   await expect(node).toHaveAttribute('aria-busy', 'true');
   await expect(rail).toBeVisible();

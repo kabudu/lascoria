@@ -59,6 +59,9 @@ export function Staging({
   ready,
   busy,
   mutate,
+  version = 0,
+  commitRequest = 0,
+  onChanged,
 }: {
   sessionId: string;
   folderId?: string;
@@ -66,6 +69,11 @@ export function Staging({
   ready: boolean;
   busy: boolean;
   mutate: (operation: string, params: Json) => Promise<Json>;
+  /** Bumped when another control changed the index; the view reloads. */
+  version?: number;
+  /** Bumped to open the commit form, from the delivery step. */
+  commitRequest?: number;
+  onChanged?: () => void;
 }) {
   const [changes, setChanges] = useState<Json>(null);
   const [loading, setLoading] = useState(false);
@@ -76,6 +84,8 @@ export function Staging({
   });
   const [committing, setCommitting] = useState(false);
   const [message, setMessage] = useState('');
+  const [open, setOpen] = useState(false);
+  const messageRef = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
   const scope = folderId ? { folderId } : {};
 
@@ -118,6 +128,18 @@ export function Staging({
     if (isolated) void load();
     else generation.current++;
   }, [sessionId, folderId, isolated]);
+  useEffect(() => {
+    if (version && isolated) void load(true);
+  }, [version]);
+  useEffect(() => {
+    if (!commitRequest) return;
+    setOpen(true);
+    setCommitting(true);
+    setMessage('');
+  }, [commitRequest]);
+  useEffect(() => {
+    if (committing) messageRef.current?.focus();
+  }, [committing]);
 
   if (!isolated)
     return (
@@ -156,6 +178,7 @@ export function Staging({
     });
     // Whatever happened, show the index as it is now.
     await load(result?.status !== 'applied');
+    onChanged?.();
     if (result?.status === 'rejected') setError(result.error?.message ?? 'Nothing was changed.');
     else if (result && result.status !== 'applied')
       setError('The outcome is unknown. The view below shows the index as it is now.');
@@ -281,11 +304,19 @@ export function Staging({
       )}
       {changes && conflicts.length === 0 && (
         <>
-          {list('unstaged', unstaged)}
-          {list('staged', staged)}
+          <details
+            className="staging-choose"
+            open={open}
+            onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary>
+              Choose files and hunks ({unstaged.length} not staged, {staged.length} staged)
+            </summary>
+            {list('unstaged', unstaged)}
+            {list('staged', staged)}
+          </details>
           <div className="row">
             <button
-              className="primary"
               disabled={disabled || staged.length === 0}
               onClick={() => {
                 setCommitting(true);
@@ -309,6 +340,7 @@ export function Staging({
                 });
                 if (result?.status === 'applied') setCommitting(false);
                 await load();
+                onChanged?.();
                 if (result?.status === 'rejected')
                   setError(result.error?.message ?? 'Nothing was committed.');
                 else if (result && result.status !== 'applied')
@@ -338,6 +370,7 @@ export function Staging({
               <label>
                 Commit message
                 <input
+                  ref={messageRef}
                   name="message"
                   required
                   maxLength={4000}

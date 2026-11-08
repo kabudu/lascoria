@@ -120,6 +120,8 @@ export interface Prefs {
   efficiency?: import('./model').EfficiencyPrefs;
   updates?: { automatic?: boolean; channel?: 'stable' | 'beta'; lastCheckedAtMs?: number };
   collapsed?: string[];
+  /** Tasks whose native subtasks are folded into the task's card. */
+  collapsedGroups?: string[];
   acknowledgedInterruptions?: string[];
   acknowledgedTaskFacts?: string[];
   labels?: Record<string, string>;

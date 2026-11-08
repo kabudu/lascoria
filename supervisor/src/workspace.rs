@@ -234,8 +234,23 @@ pub async fn confirm_discard(row: &Value, params: &Value) -> Result<()> {
 
 // Content identity is independent of whether a file is staged, untracked or deleted from the index.
 pub(crate) async fn content_fingerprint(root: &Path) -> Result<String> {
+    fingerprint(root, true).await
+}
+
+/// The files a test command sees, independent of commits: the same bytes and modes give the
+/// same fingerprint before and after they are committed. Missing paths are skipped, so a
+/// committed deletion matches the deleted working-tree file it records.
+pub(crate) async fn files_fingerprint(root: &Path) -> Result<String> {
+    fingerprint(root, false).await
+}
+
+async fn fingerprint(root: &Path, with_head: bool) -> Result<String> {
     let root = std::fs::canonicalize(root)?;
-    let head = git(&root, &["rev-parse", "HEAD"]).await?;
+    let head = if with_head {
+        git(&root, &["rev-parse", "HEAD"]).await?
+    } else {
+        String::new()
+    };
     let mut names = git(&root, &["ls-tree", "-r", "--name-only", "-z", "HEAD"]).await?;
     names.push_str(
         &git(
@@ -256,7 +271,11 @@ pub(crate) async fn content_fingerprint(root: &Path) -> Result<String> {
     ensure!(paths.len() <= 2200, "Workspace file count exceeds budget");
     let mut digest = Sha256::new();
     // Stable domain separator: changing branding must not invalidate existing previews/evidence.
-    digest.update(b"weftara-workspace-v1");
+    digest.update(if with_head {
+        &b"weftara-workspace-v1"[..]
+    } else {
+        &b"lascoria-files-v1"[..]
+    });
     digest.update(head.as_bytes());
     let mut total = 0;
     for name in paths {
@@ -266,7 +285,9 @@ pub(crate) async fn content_fingerprint(root: &Path) -> Result<String> {
         let meta = match tokio::fs::symlink_metadata(&path).await {
             Ok(meta) => meta,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                digest.update(b"missing");
+                if with_head {
+                    digest.update(b"missing");
+                }
                 continue;
             }
             Err(e) => return Err(e.into()),
@@ -476,6 +497,7 @@ pub async fn run(db: SharedDb, row: Value, id: String, params: Value) -> Result<
         "Deadline must be 1..120 seconds"
     );
     let before = content_fingerprint(Path::new(row["workspace"].as_str().unwrap())).await?;
+    let files_before = files_fingerprint(Path::new(row["workspace"].as_str().unwrap())).await?;
     #[cfg(unix)]
     let mut child = {
         let mut c = lascoria_runtime::command("/bin/sh");
@@ -510,7 +532,7 @@ pub async fn run(db: SharedDb, row: Value, id: String, params: Value) -> Result<
         let db = db.lock().unwrap();
         let mut record = db.get("commands", &id)?.context("Command missing")?;
         record["status"] = json!("running");
-        record["result"] = json!({"command":command,"startedAtMillis":now_ms(),"fingerprint":before,"stdout":"","stderr":"","provenance":"developerExecuted"});
+        record["result"] = json!({"command":command,"startedAtMillis":now_ms(),"fingerprint":before,"filesFingerprint":files_before,"stdout":"","stderr":"","provenance":"developerExecuted"});
         db.put("commands", &id, &record)?;
     }
     let result = db.lock().unwrap().get("commands", &id)?.unwrap();
@@ -527,6 +549,7 @@ pub async fn run(db: SharedDb, row: Value, id: String, params: Value) -> Result<
         drop(group);
         let _ = child.wait().await;
         let after = content_fingerprint(Path::new(row["workspace"].as_str().unwrap())).await;
+        let files_after = files_fingerprint(Path::new(row["workspace"].as_str().unwrap())).await;
         let db = db.lock().unwrap();
         if let Ok(Some(mut record)) = db.get("commands", &id) {
             record["status"] = json!("applied");
@@ -548,6 +571,11 @@ pub async fn run(db: SharedDb, row: Value, id: String, params: Value) -> Result<
             record["result"]["contentUnchanged"] =
                 json!(after.as_ref().is_ok_and(|a| *a == before));
             record["result"]["endFingerprint"] = after.map(Value::String).unwrap_or(Value::Null);
+            // Delivery: the tested files, valid until they change (committing them does not).
+            record["result"]["endFilesFingerprint"] = match files_after {
+                Ok(end) if end == files_before => json!(end),
+                _ => Value::Null,
+            };
             let _ = db.put("commands", &id, &record);
         }
     });

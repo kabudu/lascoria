@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import { Staging } from './Staging';
+import { Delivery } from './Delivery';
 import type { Json, SessionRow } from './types';
 
 /**
@@ -61,6 +62,9 @@ export function Workspace({
   const selectedRoot =
     managed?.path ?? folders?.find((f) => f.id === folderId)?.path ?? session.workspace;
   const [discarding, setDiscarding] = useState<Json[] | null>(null);
+  const [version, setVersion] = useState(0);
+  const [commitRequest, setCommitRequest] = useState(0);
+  const changed = () => setVersion((v) => v + 1);
   const generation = useRef(0);
   const runs = commands.filter(
     (c) => c.sessionId === session.id && c.operation === 'workspace/run',
@@ -168,6 +172,32 @@ export function Workspace({
           </>
         )}
       </section>
+      {!removed && !archived && managed && (
+        <Delivery
+          sessionId={session.id}
+          folderId={folderId}
+          ready={ready}
+          busy={busy}
+          commands={commands}
+          version={version}
+          mutate={mutate}
+          changed={changed}
+          runTests={(command) =>
+            void mutate('workspace/run', { sessionId: session.id, command, ...scope })
+          }
+          chooseTest={() => {
+            const input = document.getElementById('test-command');
+            input?.scrollIntoView({ block: 'center' });
+            input?.focus();
+          }}
+          askFix={(run) =>
+            attach(
+              `\nPlease fix the failing check below, then say what you changed.${resultText(run, false)}`,
+            )
+          }
+          openCommit={() => setCommitRequest((n) => n + 1)}
+        />
+      )}
       {!removed && !archived && (
         <Staging
           sessionId={session.id}
@@ -176,6 +206,9 @@ export function Workspace({
           ready={ready}
           busy={busy}
           mutate={mutate}
+          version={version}
+          commitRequest={commitRequest}
+          onChanged={changed}
         />
       )}
       {removed && (
@@ -271,9 +304,16 @@ export function Workspace({
         >
           <label>
             Test command
-            <input name="command" required maxLength={4000} placeholder="npm test" />
+            <input
+              id="test-command"
+              name="command"
+              required
+              maxLength={4000}
+              placeholder="npm test"
+            />
           </label>
-          <button className="primary" disabled={!ready}>
+          {/* In an isolated worktree the delivery step holds the one primary action. */}
+          <button className={managed ? undefined : 'primary'} disabled={!ready}>
             Run command
           </button>
         </form>
