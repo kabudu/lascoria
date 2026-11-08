@@ -1402,7 +1402,8 @@ export function App() {
       collapsed: false,
     });
   useEffect(() => {
-    if (!/ · (accepted|applied|saved)$/.test(notice)) return;
+    // Plain success notices clear themselves; refusals and unknown outcomes stay.
+    if (!/ (done|sent to Muse|saved|started)\.$/.test(notice)) return;
     const timer = setTimeout(() => setNotice(''), 5000);
     return () => clearTimeout(timer);
   }, [notice]);
@@ -2810,9 +2811,7 @@ export function App() {
                             [session.id]: (previous[session.id] ?? '') + value,
                           }));
                           setTab('transcript');
-                          setNotice(
-                            'File content added to the task draft. Review it before sending.',
-                          );
+                          setNotice('Added to the task draft. Review it before sending.');
                         }}
                       />
                     )}

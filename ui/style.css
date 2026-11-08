@@ -3977,3 +3977,18 @@ button.link {
   flex-shrink: 0;
   font-size: 0.75rem;
 }
+.delivery-facts dd {
+  display: block;
+}
+.delivery-facts dd > small {
+  display: block;
+  margin-top: 4px;
+}
+.delivery-label {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.delivery h4[tabindex='-1']:focus {
+  outline: none;
+}

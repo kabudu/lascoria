@@ -232,6 +232,7 @@ esac
     await primary.click();
     const confirmPush = delivery.locator('form.decision');
     await expect(confirmPush.getByRole('heading')).toHaveText('Push 1 commit to origin?');
+    await expect(confirmPush.getByRole('heading')).toBeFocused();
     await expect(confirmPush).toContainText(remotes.app);
     await expect(confirmPush).toContainText(`${branch} (new branch)`);
     await expect(confirmPush).toContainText('Fix a');

@@ -251,8 +251,7 @@ test('Lascoria isolated task, context, direct tests, commit and archive through 
     await staging.getByRole('button', { name: 'Commit staged changes…', exact: true }).click();
     await page.getByLabel('Commit message').fill('Record task result');
     await staging.getByRole('button', { name: 'Commit staged changes', exact: true }).click();
-    await expect(staging.getByText('No unstaged changes.', { exact: true })).toBeVisible();
-    await expect(staging.getByText('Nothing staged yet.', { exact: true })).toBeVisible();
+    await expect(staging.getByText('No uncommitted changes.', { exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'transcript', exact: true }).click();
     const archive = page
       .getByRole('region', { name: 'Sessions panel' })

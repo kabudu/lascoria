@@ -183,7 +183,7 @@ export function deliveryStep(d: Json): Step {
 
 function Commits({ list }: { list: Json }) {
   return (
-    <ol className="delivery-commits">
+    <ol className="delivery-commits" aria-label="Commits">
       {list.commits.map((c: Json) => (
         <li key={c.sha}>
           <code>{c.sha.slice(0, 7)}</code> {c.subject}
@@ -233,6 +233,8 @@ export function Delivery({
   const [remoteName, setRemoteName] = useState<string>();
   const [pr, setPr] = useState({ title: '', body: '', base: '', draft: true });
   const generation = useRef(0);
+  const section = useRef<HTMLElement>(null);
+  const formHeading = useRef<HTMLHeadingElement>(null);
   const scope = folderId ? { folderId } : {};
   const params = { sessionId, ...scope, ...(remoteName ? { remote: remoteName } : {}) };
 
@@ -277,6 +279,14 @@ export function Delivery({
   useEffect(() => {
     if (deliveryWatch && !first.current) void load(true);
   }, [deliveryWatch]);
+  // After a commit or staging change below, bring the next step back into view.
+  useEffect(() => {
+    if (version) section.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [version]);
+  // A review form takes focus so keyboard users start reading it at its heading.
+  useEffect(() => {
+    if (confirm) formHeading.current?.focus();
+  }, [confirm]);
 
   if (!d)
     return (
@@ -354,7 +364,12 @@ export function Delivery({
   }
 
   return (
-    <section className="delivery" aria-labelledby="delivery-heading" aria-busy={loading}>
+    <section
+      ref={section}
+      className="delivery"
+      aria-labelledby="delivery-heading"
+      aria-busy={loading}
+    >
       <div className="staging-toolbar">
         <h3 id="delivery-heading">Deliver this work</h3>
         <button onClick={() => void load(true)} disabled={loading}>
@@ -386,7 +401,7 @@ export function Delivery({
             void send('workspace/push');
           }}
         >
-          <h4 id="push-heading">
+          <h4 id="push-heading" ref={formHeading} tabIndex={-1}>
             Push {plural(d.outgoing.total, 'commit')} to {d.remote.name}?
           </h4>
           <dl className="delivery-facts">
@@ -408,6 +423,7 @@ export function Delivery({
               <code>{d.head.slice(0, 12)}</code>
             </dd>
           </dl>
+          <p className="delivery-label">Commits</p>
           <Commits list={d.outgoing} />
           <p className="muted">
             Uses your own Git sign-in. Never force-pushes; repository hooks are not run. Uncommitted
@@ -432,7 +448,9 @@ export function Delivery({
             void send('workspace/pullRequest', pr);
           }}
         >
-          <h4 id="pr-heading">Open a pull request on {d.hosting.repository}?</h4>
+          <h4 id="pr-heading" ref={formHeading} tabIndex={-1}>
+            Open a pull request on {d.hosting.repository}?
+          </h4>
           <dl className="delivery-facts">
             <dt>From</dt>
             <dd>
@@ -474,6 +492,7 @@ export function Delivery({
             />
             Open as a draft
           </label>
+          <p className="delivery-label">Commits</p>
           <Commits list={d.branchCommits} />
           <p className="muted">
             Uses your GitHub CLI sign-in. If a pull request from this branch is already open,

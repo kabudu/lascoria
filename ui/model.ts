@@ -638,7 +638,7 @@ export function outcomeNotice(operation: string, status?: string) {
     case 'accepted':
       return `${what} sent to Muse.`;
     case 'running':
-      return `${what} running.`;
+      return `${what} started.`;
     case 'rejected':
       return `${what} refused; nothing changed.`;
     case 'outcomeUnknown':
@@ -814,7 +814,10 @@ export function taskOwner(task: Task, nodes: Task[]) {
       : task.item?.kind === 'workflow'
         ? 'Workflow'
         : 'Started by Muse';
-  return parent ? `${kind} of ${parent.label}` : kind;
+  if (!parent) return kind;
+  return kind === 'Started by Muse'
+    ? `Started by Muse during ${parent.label}`
+    : `${kind} of ${parent.label}`;
 }
 
 /** Every native descendant of a task (subagents, workflows and their steps). */
@@ -871,14 +874,20 @@ const attentionRank: Record<string, number> = {
  * failures, interruptions and completed work to inspect. Runtime history is not included.
  */
 export function attentionOrder(queue: AttentionItem[]) {
-  return queue
-    .map((item, index) => ({ item, index }))
-    .filter(({ item }) => !('historical' in item && item.historical))
-    .sort(
-      (a, b) =>
-        (attentionRank[a.item.kind] ?? 9) - (attentionRank[b.item.kind] ?? 9) || a.index - b.index,
-    )
-    .map(({ item }) => item);
+  return (
+    queue
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => !('historical' in item && item.historical))
+      // Muse's own runtime reminders come after everything that is the user's work.
+      .sort(
+        (a, b) =>
+          Number('background' in a.item && !!a.item.background) -
+            Number('background' in b.item && !!b.item.background) ||
+          (attentionRank[a.item.kind] ?? 9) - (attentionRank[b.item.kind] ?? 9) ||
+          a.index - b.index,
+      )
+      .map(({ item }) => item)
+  );
 }
 
 /** The attention item after the one the user is on, wrapping around; first when on none. */

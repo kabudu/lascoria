@@ -302,7 +302,11 @@ export function Staging({
           {conflicts.join(', ')}). Resolve them with your Git client; staging here is paused.
         </p>
       )}
-      {changes && conflicts.length === 0 && (
+      {changes &&
+        conflicts.length === 0 &&
+        staged.length + unstaged.length === 0 &&
+        !committing && <p className="muted">No uncommitted changes.</p>}
+      {changes && conflicts.length === 0 && staged.length + unstaged.length > 0 && (
         <>
           <details
             className="staging-choose"

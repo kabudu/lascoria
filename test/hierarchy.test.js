@@ -60,6 +60,10 @@ test('ownership comes from native provenance and folding never hides attention',
   assert.equal(taskOwner(nodes[1], nodes), 'Subagent of Fix login');
   assert.equal(taskOwner(nodes[3], nodes), 'Workflow step of flow');
   assert.equal(taskOwner(nodes[4], nodes), 'Subagent');
+  assert.equal(
+    taskOwner(node('r', { parentId: 'turn', item: { kind: 'reminderChild' } }), nodes),
+    'Started by Muse during Fix login',
+  );
   assert.deepEqual(
     descendants(nodes, 'turn')
       .map((n) => n.id)
@@ -95,4 +99,13 @@ test('the attention jump handles blocking work first and cycles through everythi
   assert.deepEqual(seen, ['p', 'q', 'f', 'o', 'r', 'p']);
   assert.equal(nextAttention([], undefined), undefined);
   assert.equal(nextAttention(queue, 'unknown').id, 'p');
+  // Muse's own runtime reminders come after the user's work, whatever their kind.
+  const withReminder = [
+    { id: 'bg', kind: 'failure', sessionId: 'a', target: 'a:9', background: true },
+    ...queue,
+  ];
+  assert.deepEqual(
+    attentionOrder(withReminder).map((i) => i.id),
+    ['p', 'q', 'f', 'o', 'r', 'bg'],
+  );
 });
