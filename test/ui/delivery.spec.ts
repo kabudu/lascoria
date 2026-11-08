@@ -234,7 +234,7 @@ esac
     await expect(confirmPush.getByRole('heading')).toHaveText('Push 1 commit to origin?');
     await expect(confirmPush.getByRole('heading')).toBeFocused();
     await expect(confirmPush).toContainText(remotes.app);
-    await expect(confirmPush).toContainText(`${branch} (new branch)`);
+    await expect(confirmPush).toContainText(`${branch}New branch`);
     await expect(confirmPush).toContainText('Fix a');
     // A commit made elsewhere after review: the reviewed push is refused, nothing leaves.
     await writeFile(join(appTree, 'b.txt'), 'late\n');
@@ -250,6 +250,7 @@ esac
     await primary.click();
     await expect(confirmPush.getByRole('heading')).toHaveText('Push 2 commits to origin?');
     await expect(confirmPush).toContainText('Late commit');
+    await confirmPush.screenshot({ path: 'test-results/delivery-push-review.png' });
     await confirmPush.getByRole('button', { name: 'Push to origin' }).click();
     const head = (await git(appTree, 'rev-parse', 'HEAD')).trim();
     await expect
@@ -269,6 +270,7 @@ esac
       await expect(form.getByLabel('Title')).toHaveValue('Late commit');
       await expect(form.getByLabel('Into branch')).toHaveValue('main');
       await expect(form.getByLabel('Open as a draft')).toBeChecked();
+      await form.screenshot({ path: 'test-results/delivery-pr-review.png' });
       await form.getByLabel('Title').fill('Fix a');
       await form.getByRole('button', { name: 'Open pull request' }).click();
       await expect(step).toContainText('Pull request #12 is open', { timeout: 20000 });

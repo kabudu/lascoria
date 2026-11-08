@@ -3932,11 +3932,23 @@ button.link {
   gap: 4px;
 }
 .delivery-commits {
+  list-style: none;
   margin: 0;
-  padding-left: 20px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
   font-size: 12px;
   max-height: 180px;
   overflow: auto;
+}
+.delivery-commits li {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.delivery-commits code {
+  flex: none;
+  color: var(--muted);
 }
 .delivery .checkbox {
   display: flex;
@@ -3984,11 +3996,31 @@ button.link {
   display: block;
   margin-top: 4px;
 }
-.delivery-label {
+/* Push and pull-request reviews: facts, fields, a note and actions, evenly spaced. */
+.delivery-review {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 0;
+}
+.delivery-review h4,
+.delivery-review p,
+.delivery-review label {
   margin: 0;
-  font-size: 12px;
-  color: var(--muted);
+}
+.delivery-review > .row {
+  margin-top: 2px;
+}
+.delivery-facts code {
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.delivery-facts dt {
+  line-height: 1.6;
 }
 .delivery h4[tabindex='-1']:focus {
   outline: none;
+}
+.delivery-facts dd > small:not([role='alert']) {
+  margin-top: 2px;
+  color: var(--muted);
 }

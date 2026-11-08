@@ -186,7 +186,8 @@ function Commits({ list }: { list: Json }) {
     <ol className="delivery-commits" aria-label="Commits">
       {list.commits.map((c: Json) => (
         <li key={c.sha}>
-          <code>{c.sha.slice(0, 7)}</code> {c.subject}
+          <code>{c.sha.slice(0, 7)}</code>
+          <span>{c.subject}</span>
         </li>
       ))}
       {list.total > list.commits.length && <li>and {list.total - list.commits.length} more</li>}
@@ -394,7 +395,7 @@ export function Delivery({
       )}
       {confirm === 'push' && (
         <form
-          className="decision"
+          className="decision delivery-review"
           aria-labelledby="push-heading"
           onSubmit={(e) => {
             e.preventDefault();
@@ -412,19 +413,19 @@ export function Delivery({
             <dt>Branch</dt>
             <dd>
               <code>{d.branch}</code>
-              {d.remoteBranch?.checked
-                ? d.remoteBranch.head
-                  ? ' (updates the existing branch)'
-                  : ' (new branch)'
-                : ' (not checked yet; checked again before pushing)'}
+              <small>
+                {d.remoteBranch?.checked
+                  ? d.remoteBranch.head
+                    ? 'Updates the existing branch'
+                    : 'New branch'
+                  : 'Not checked yet; checked again before pushing'}
+              </small>
             </dd>
-            <dt>Commit</dt>
+            <dt>Commits</dt>
             <dd>
-              <code>{d.head.slice(0, 12)}</code>
+              <Commits list={d.outgoing} />
             </dd>
           </dl>
-          <p className="delivery-label">Commits</p>
-          <Commits list={d.outgoing} />
           <p className="muted">
             Uses your own Git sign-in. Never force-pushes; repository hooks are not run. Uncommitted
             changes stay in this worktree.
@@ -441,7 +442,7 @@ export function Delivery({
       )}
       {confirm === 'pullRequest' && (
         <form
-          className="decision"
+          className="decision delivery-review"
           aria-labelledby="pr-heading"
           onSubmit={(e) => {
             e.preventDefault();
@@ -454,7 +455,11 @@ export function Delivery({
           <dl className="delivery-facts">
             <dt>From</dt>
             <dd>
-              <code>{d.branch}</code> at <code>{d.head.slice(0, 12)}</code>
+              <code>{d.branch}</code>
+            </dd>
+            <dt>Commits</dt>
+            <dd>
+              <Commits list={d.branchCommits} />
             </dd>
           </dl>
           <label>
@@ -492,8 +497,6 @@ export function Delivery({
             />
             Open as a draft
           </label>
-          <p className="delivery-label">Commits</p>
-          <Commits list={d.branchCommits} />
           <p className="muted">
             Uses your GitHub CLI sign-in. If a pull request from this branch is already open,
             Lascoria shows it instead of opening another.
