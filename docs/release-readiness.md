@@ -47,7 +47,7 @@ Everything here is in the public builds. Unless a row says otherwise, macOS has 
 
 | Item | State |
 | --- | --- |
-| D7 Review to delivery, D8 constellation hierarchy | Shipped in v0.3.0; publication and independent artifact verification passed. See the [release checklist](implementation-progress.md#v030-release-checklist-8-november). Requirement-by-requirement evidence and remaining scope: [milestone checklist](review-to-delivery.md#milestone-checklist). |
+| D7 Review to delivery, D8 constellation hierarchy | Available in v0.3.0, incompletely validated: comparison trials and voluntary repeat use remain open, and native platform evidence retains its listed limits. Publication and independent artifact verification passed. See the [release checklist](implementation-progress.md#v030-release-checklist-8-november). Requirement-by-requirement evidence and remaining scope: [milestone checklist](review-to-delivery.md#milestone-checklist). |
 
 ### Planned
 
@@ -299,7 +299,7 @@ Requested 15 October from the supplied menu screenshots. Keep the menu compact a
 
 Scope decided by the user on 18 October; later work is in the [roadmap](../ROADMAP.md).
 
-- [ ] **D1 - Git delivery: guarded commit only.** The first releases shipped a guarded commit of all Git-visible changes in the session's folder. Since v0.2.0 the app commits through selective staging (D6 below); the all-changes commit remains only as a protocol-compatible request without a revision. Commits never push, and the UI and Help say so. Branches, push, pull requests, merge/conflict help and hooks/signing are on the roadmap.
+- [ ] **D1 - Git delivery: guarded commit only.** The first releases shipped a guarded commit of all Git-visible changes in the session's folder. Since v0.2.0 the app commits through selective staging (D6 below); the all-changes commit remains only as a protocol-compatible request without a revision. Commits never push automatically. Since v0.3.0, D7 adds a separate reviewed push and GitHub pull request flow. Branch switching, merge/conflict help and hooks/signing remain on the roadmap.
 - [ ] **D2 - Editing: hand off to the user's editor.** Open a session's folder or a changed file in the user's own editor from the inspector, with validated paths and no shell. An embedded editor and an interactive terminal are on the roadmap; the present runner stays bounded and non-interactive.
 - [ ] **D3 - Find and retain work:** global/session transcript search, export, archive browsing and a continuation path for archived work without accidental duplication or deletion.
 21 October D3 increment: Search in now selects all sessions or one live/archived session; clear/scope changes invalidate late replies, temporary failures offer Retry search, and retained results select the matching task/message. Invalid or missing task targets are explained rather than misattributed. These workflow checks do not complete the native export/platform gate.
