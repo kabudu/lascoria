@@ -1006,8 +1006,10 @@ main {
   box-shadow: 0 8px 28px #00000018;
   overflow: hidden;
 }
+/* The panel you are working in is never covered by canvas tools or notices (z-index 21);
+   an idle panel still lets them sit on top. */
 .floating-panel:focus-within {
-  z-index: 20;
+  z-index: 22;
 }
 .inspector-window {
   width: 420px;

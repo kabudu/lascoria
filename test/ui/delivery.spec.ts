@@ -204,6 +204,17 @@ esac
       for (const width of [1440, 820]) {
         await page.setViewportSize({ width, height: 1000 });
         await delivery.getByText('Details', { exact: true }).click();
+        // Working in the inspector, nothing from the canvas covers its heading.
+        expect(
+          await page.evaluate(() => {
+            const panel = document.querySelector('section.delivery')!.closest('.floating-panel')!;
+            const head = panel.getBoundingClientRect();
+            const points = [];
+            for (let x = head.x + 4; x < head.right - 4; x += 12)
+              for (const y of [head.y + 8, head.y + 24, head.y + 40]) points.push([x, y]);
+            return points.every(([x, y]) => panel.contains(document.elementFromPoint(x, y)));
+          }),
+        ).toBe(true);
         expect(
           (
             await new AxeBuilder({ page })

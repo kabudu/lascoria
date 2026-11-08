@@ -163,7 +163,7 @@ export function deliveryStep(d: Json): Step {
     return {
       kind: 'pushedElsewhere',
       headline: `Pushed to ${d.remote.name}`,
-      detail: `Open a pull request on ${d.hosting?.host ?? 'your Git host'}.`,
+      detail: `Open a pull request on ${d.hosting?.host || 'your Git host'}.`,
     };
   if (!d.hosting.cli)
     return {
