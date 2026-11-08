@@ -186,12 +186,26 @@ esac
     await expect(primary).toBeEnabled();
     await primary.click();
     await expect(primary).toHaveText('Commit staged changes…');
+    // A short window, as on the Windows QA desktop, so the commit form sits below the step.
+    await page.setViewportSize({ width: 1440, height: 620 });
     await expect(primary).toBeEnabled();
     await primary.click();
     await expect(page.getByLabel('Commit message')).toBeFocused();
     await page.keyboard.type('Fix a');
     await page.keyboard.press('Enter');
     await expect(step).toContainText('Ready to push', { timeout: 15000 });
+    // The next step is brought back into view after committing below it.
+    await expect
+      .poll(() =>
+        delivery.evaluate((section) => {
+          const body = section.closest('.inspector-body') ?? section.parentElement!;
+          const a = section.getBoundingClientRect();
+          const b = body.getBoundingClientRect();
+          return a.top >= b.top - 1 && a.top < b.bottom - 40;
+        }),
+      )
+      .toBe(true);
+    await page.setViewportSize({ width: 1440, height: 1000 });
     // Committing the tested files keeps the result current.
     await expect(step).toContainText('passed on these exact files');
     phase('stage and commit');

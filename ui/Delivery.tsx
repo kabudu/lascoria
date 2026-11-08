@@ -280,10 +280,17 @@ export function Delivery({
   useEffect(() => {
     if (deliveryWatch && !first.current) void load(true);
   }, [deliveryWatch]);
-  // After a commit or staging change below, bring the next step back into view.
+  // After a commit or staging change below, bring the next step back into view once it has
+  // reloaded and rendered, so the position does not depend on layout settling first.
+  const reveal = useRef(false);
   useEffect(() => {
-    if (version) section.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (version) reveal.current = true;
   }, [version]);
+  useEffect(() => {
+    if (!reveal.current || loading || !d) return;
+    reveal.current = false;
+    requestAnimationFrame(() => section.current?.scrollIntoView({ block: 'nearest' }));
+  }, [loading, d]);
   // A review form takes focus so keyboard users start reading it at its heading.
   useEffect(() => {
     if (confirm) formHeading.current?.focus();
