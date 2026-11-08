@@ -125,6 +125,8 @@ test('A large map folds subtasks, keeps attention visible and jumps to what need
   await expect(jump).toContainText('2');
   await page.keyboard.press('ControlOrMeta+j');
   await expect(page.locator('.task-node.selected')).toHaveAttribute('id', 'node-a:sub-77');
+  // On a narrow window the inspector a jump opens is never covered by canvas tools.
+  await page.setViewportSize({ width: 820, height: 900 });
   await page.keyboard.press('ControlOrMeta+j');
   await expect(page.locator('.task-node.selected')).toHaveAttribute('id', 'node-b:t2');
   await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toHaveAttribute(
@@ -132,9 +134,6 @@ test('A large map folds subtasks, keeps attention visible and jumps to what need
     'true',
   );
   await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toBeFocused();
-  // On a narrow window the inspector is never covered by canvas tools.
-  await page.setViewportSize({ width: 820, height: 900 });
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   expect(
     await page.evaluate(() => {
       const panel = document.querySelector('.inspector')!.closest('.floating-panel')!;

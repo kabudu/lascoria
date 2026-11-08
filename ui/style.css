@@ -4026,11 +4026,3 @@ button.link {
   margin-top: 2px;
   color: var(--muted);
 }
-
-/* On narrow windows open panels leave little canvas: they sit above the canvas tools and the
-   out-of-view chip (notices, z-index 25, stay on top). Collapse a panel to reach the tools. */
-@media (max-width: 1100px) {
-  .floating-panel {
-    z-index: 22;
-  }
-}
