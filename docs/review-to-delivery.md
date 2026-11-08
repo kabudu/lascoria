@@ -111,6 +111,6 @@ Status: **implemented**, **validated** (evidence listed), **partly validated** (
 | H5 | Reliable “take me to what needs attention” | Validated | Unit order and wrap-around; rendered **⌘J/Ctrl+J** and button across two sessions |
 | V1 | Narrow, light and dark layouts; accessibility | Validated (rendered) | Axe with no violations and no horizontal overflow at 1440 and 820 px in both themes; canvas axe at 150 cards |
 | V2 | Concurrent sessions | Partly validated | Attention jump across sessions; one delivery action per session enforced. No rendered test of two sessions delivering at once |
-| V3 | Packaged native app interaction | Not done yet | See the PR for the current state |
+| V3 | Packaged native app interaction | Partly validated | macOS packaged journey passed, with nine findings fixed and rechecked ([native acceptance](native-acceptance.md#review-to-delivery-and-map-hierarchy-d7d8-8-november)). Windows and Linux packaged runs not done |
 | V4 | Scripted measurements | Validated | Table above |
 | V5 | Comparison trials and voluntary repeat use | Not done | Need real developers and time; protocol above |

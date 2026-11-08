@@ -250,3 +250,21 @@ Windows x64 (Windows 10 22H2, build 19045.6466, laptop through Windows App): uns
 - Git for Windows printed its usual LF-to-CRLF notices for this machine's `core.autocrlf`; staging and commits were unaffected. Owned QA processes were stopped; other projects' windows on that desktop were not touched.
 
 Linux arm64: a disposable Debian bookworm container (Docker on this Mac, kernel 7.0.14, Git 2.39.5) built the working tree with the hosted workflow's WebKitGTK packages, Node 24.17.0 checked against its published checksum and Muse 1.4.14-R7309.1 from `scripts/bootstrap-muse-test.js`. All 9 Rust staging tests passed, including the timestamp and mid-action regressions. The rendered staging and workspace workflows passed (2/2) with the Linux-built supervisor and desktop bridge in headless Chromium. A packaged WebKitGTK window was not driven, because there is no Linux desktop session here. The first two attempts failed before any test: one fixture archive from macOS `tar` carried AppleDouble `._` files that the Tauri build rejected, and that was fixed with `COPYFILE_DISABLE=1`.
+
+## Review to delivery and map hierarchy (D7/D8, 8 November)
+
+macOS arm64 (macOS 27.0.1): isolated ad hoc `Lascoria Acceptance.app` built with `CARGO_PROFILE_RELEASE_STRIP=none node scripts/package-macos-qa.js` from `0ed37df`, then rebuilt from `04ed4e2` after the fixes below. It ran in `echo` mode with Muse 1.4.14-R7309.1 from a short private state path. The fixture was a disposable two-folder Project (App and API), each with a local bare repository as its push URL and a `github.com/fixture/...` fetch URL, a controlled GitHub CLI via `SCH_GH_BIN`, and a second plain session. Pointer and keyboard input went to the packaged window; one passing check in the second run was started through the supervisor client to avoid unreliable background typing.
+
+| Check | Result |
+| --- | --- |
+| Task name from `## Update a.txt`; ownership on cards and in the inspector | Passed |
+| Next to review with ⌘J: selects the item across sessions and opens the matching tab | Passed; after the fix, the completed task comes before Muse's own reminders |
+| Delivery steps: choose a test command (focus moves to the field), failing check, Ask Muse to fix (output added to the draft), external fix shows the result as changed since, rerun passes on these exact files, Stage all, Commit (message focused, Enter commits) | Passed |
+| Push review shows the bare repository path, the task branch as new, the commit and its subject; push lands exactly that commit | Passed; second run pushed with Tab and Enter from the focused review heading |
+| Pull request review defaults (title from the last commit, base `main`, draft on); one `gh pr create`, then the open pull request is shown | Passed |
+| API folder and remote untouched | Passed |
+| Dark theme in the packaged window | Passed |
+
+Findings fixed in `04ed4e2` and rechecked in the packaged app: Muse-started tasks read "Started by Muse of …" (now "during"); Muse's runtime reminders came first in Next to review; adding a test result showed "File content added"; empty staging lists and a disabled commit button showed when nothing was uncommitted; the next step stayed scrolled out of view after a commit; the review forms did not take focus; their commit lists had no label; Details split one fact over several lines; "Push running." stayed after the push finished (success notices now clear themselves, which also fixes "Commit done." and other notices that never cleared).
+
+Not covered: Windows and Linux packaged runs, a real GitHub account, and native interaction at narrow widths (the rendered suite covers 820 px). A layout issue that predates this work remains: at narrow widths the canvas tools and the "tasks out of view" chip can sit over the inspector.
