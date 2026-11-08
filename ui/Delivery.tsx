@@ -502,13 +502,14 @@ export function Delivery({
               onChange={(e) => setPr({ ...pr, body: e.target.value })}
             />
           </label>
-          <label className="checkbox">
+          <label className="toggle-switch">
             <input
               type="checkbox"
+              role="switch"
               checked={pr.draft}
               onChange={(e) => setPr({ ...pr, draft: e.target.checked })}
             />
-            Open as a draft
+            <span>Open as a draft</span>
           </label>
           <p className="muted">
             Uses your GitHub CLI sign-in. If a pull request from this branch is already open,

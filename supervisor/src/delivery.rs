@@ -146,6 +146,7 @@ struct Remote {
     url: String,
     /// The fetch URL, which names the hosted repository.
     fetch: String,
+    receive_pack: String,
 }
 
 async fn remotes(root: &Path) -> Result<Vec<Remote>> {
@@ -167,10 +168,17 @@ async fn remotes(root: &Path) -> Result<Vec<Remote>> {
             .await?
             .trim()
             .to_owned();
+        let receive_pack = optional(
+            root,
+            &["config", "--get", &format!("remote.{name}.receivepack")],
+        )
+        .await
+        .unwrap_or_else(|| "git-receive-pack".to_owned());
         all.push(Remote {
             name: name.to_owned(),
             url,
             fetch,
+            receive_pack,
         });
     }
     Ok(all)
@@ -197,7 +205,15 @@ fn root_of(row: &Value) -> Result<PathBuf> {
 
 /// The local state one delivery action is bound to: the worktree, task branch, commit and
 /// destination. Remote state is rechecked by the action itself.
-fn revision(root: &Path, branch: &str, head: &str, remote: &str, url: &str, fetch: &str) -> String {
+fn revision(
+    root: &Path,
+    branch: &str,
+    head: &str,
+    remote: &str,
+    url: &str,
+    fetch: &str,
+    receive_pack: &str,
+) -> String {
     let mut digest = Sha256::new();
     digest.update(b"lascoria-delivery-v1");
     for part in [
@@ -207,6 +223,7 @@ fn revision(root: &Path, branch: &str, head: &str, remote: &str, url: &str, fetc
         remote.as_bytes(),
         url.as_bytes(),
         fetch.as_bytes(),
+        receive_pack.as_bytes(),
     ] {
         digest.update((part.len() as u64).to_be_bytes());
         digest.update(part);
@@ -654,7 +671,7 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
     };
     let last_subject = optional(root, &["log", "-1", "--format=%s", "HEAD"]).await;
     Ok(json!({
-        "revision": remote.map(|r| revision(root, &local.branch, &local.head, &r.name, &r.url, &r.fetch)),
+        "revision": remote.map(|r| revision(root, &local.branch, &local.head, &r.name, &r.url, &r.fetch, &r.receive_pack)),
         "branch": local.branch,
         "head": local.head,
         "base": local.base,
@@ -695,6 +712,7 @@ async fn bound(row: &Value, params: &Value) -> Result<(Local, usize)> {
             &r.name,
             &r.url,
             &r.fetch,
+            &r.receive_pack,
         ))
         || params["head"].as_str() != Some(&local.head)
     {
@@ -738,7 +756,20 @@ pub async fn push(row: &Value, params: &Value) -> Result<Value> {
         ));
     }
     let refspec = format!("{}:{target}", local.head);
-    let pushed = network(root, &["push", "--porcelain", "--", &r.url, &refspec], SEND).await;
+    let pushed = network(
+        root,
+        &[
+            "push",
+            "--porcelain",
+            "--receive-pack",
+            &r.receive_pack,
+            "--",
+            &r.url,
+            &refspec,
+        ],
+        SEND,
+    )
+    .await;
     // Whatever push reported, the remote decides what happened.
     match (remote_head(root, r, &local.branch).await, pushed) {
         (Ok(Some(sha)), _) if sha == local.head => Ok(receipt(false)),
@@ -1122,6 +1153,21 @@ mod tests {
         .await;
         let view = status(&db, &row, &json!({})).await.unwrap();
         assert_eq!(view["hosting"]["repository"], "fork/project");
+        let reviewed =
+            json!({"revision": view["revision"], "head": view["head"], "remote": "origin"});
+        git(
+            &tree,
+            &[
+                "config",
+                "remote.origin.receivepack",
+                "another-receive-pack",
+            ],
+        )
+        .await;
+        assert!(
+            bound(&row, &reviewed).await.is_err(),
+            "A changed transport command must invalidate the review"
+        );
     }
 
     #[tokio::test]

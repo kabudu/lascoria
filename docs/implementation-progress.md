@@ -967,4 +967,6 @@ Owner-authorised on 5 November after the agreed staging gates. Version 0.2.0 is 
 - [x] Review PR #31 at `ffb2411`, its native acceptance evidence, milestone checklist and hosted three-OS checks. The implementation is complete with comparison/voluntary-use trials still outstanding.
 - [x] Reproduce stale review admission after only the remote fetch repository changes. Bind both fetch and push URLs into the reviewed revision, send to the captured push URL directly, and prefer the push repository when choosing the GitHub PR destination. A disposable-repository regression failed before the fix and passes afterwards.
 - [x] Preserve the primary-action accent and contrast while hovering, correcting the generic button hover that previously replaced its fill with the panel colour.
+- [x] Preserve the configured remote receive-pack command when sending to a captured URL. The full UI recovery test caught its accidental omission in the first correction. Capture that command in the review fingerprint and pass it explicitly to Git.
+- [x] Use the existing accessible toggle styling for the new Open as a draft preference.
 - [ ] Validate final reviewed head, publish review corrections to PR #31 and record exact CI results.
