@@ -960,3 +960,11 @@ Owner-authorised on 5 November after the agreed staging gates. Version 0.2.0 is 
 - [x] [Production run 42133660750](https://github.com/kabudu/lascoria/actions/runs/42133660750) passed planning, four platform builds, three native validations and publication of [v0.2.0](https://github.com/kabudu/lascoria/releases/tag/v0.2.0), now the latest release.
 - [x] Independent public verification: all 13 assets match published sizes and SHA-256 checksums; all 11 binary/signature files are byte-identical to the original build artifacts; four updater signatures verify against the unchanged production key; five manifest platform entries; stable, version-specific and beta manifests byte-identical at 0.2.0; universal Mac slices, strict signing, stapled tickets, Gatekeeper and an isolated packaged-runtime echo lifecycle; Windows installer version 0.2.0.0; Linux x64/ARM64 AppImage, Debian and packaged executables; website latest-release routing and apex redirect.
 - These are package and distribution checks. They do not add installed-update acceptance on any platform.
+
+
+## Review-to-delivery takeover review (8 November)
+
+- [x] Review PR #31 at `ffb2411`, its native acceptance evidence, milestone checklist and hosted three-OS checks. The implementation is complete with comparison/voluntary-use trials still outstanding.
+- [x] Reproduce stale review admission after only the remote fetch repository changes. Bind both fetch and push URLs into the reviewed revision, send to the captured push URL directly, and prefer the push repository when choosing the GitHub PR destination. A disposable-repository regression failed before the fix and passes afterwards.
+- [x] Preserve the primary-action accent and contrast while hovering, correcting the generic button hover that previously replaced its fill with the panel colour.
+- [ ] Validate final reviewed head, publish review corrections to PR #31 and record exact CI results.

@@ -174,7 +174,9 @@ summary {
   font-weight: 600;
 }
 .primary:hover:not(:disabled) {
-  color: var(--ink);
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: inset 0 0 0 1px var(--accent-ink);
 }
 .danger {
   background: #722f24;

@@ -197,7 +197,7 @@ fn root_of(row: &Value) -> Result<PathBuf> {
 
 /// The local state one delivery action is bound to: the worktree, task branch, commit and
 /// destination. Remote state is rechecked by the action itself.
-fn revision(root: &Path, branch: &str, head: &str, remote: &str, url: &str) -> String {
+fn revision(root: &Path, branch: &str, head: &str, remote: &str, url: &str, fetch: &str) -> String {
     let mut digest = Sha256::new();
     digest.update(b"lascoria-delivery-v1");
     for part in [
@@ -206,6 +206,7 @@ fn revision(root: &Path, branch: &str, head: &str, remote: &str, url: &str) -> S
         head.as_bytes(),
         remote.as_bytes(),
         url.as_bytes(),
+        fetch.as_bytes(),
     ] {
         digest.update((part.len() as u64).to_be_bytes());
         digest.update(part);
@@ -596,7 +597,7 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
     let mut exclude = tracking.clone().unwrap_or_else(|| local.base.clone());
     let mut pull_request = Value::Null;
     let repository =
-        remote.and_then(|r| github_repository(&r.fetch).or_else(|| github_repository(&r.url)));
+        remote.and_then(|r| github_repository(&r.url).or_else(|| github_repository(&r.fetch)));
     if let (Some(r), true) = (remote, params["checkRemote"] == true) {
         let _permit = REMOTE_QUERIES.acquire().await?;
         checked = match remote_head(root, r, &local.branch).await {
@@ -653,7 +654,7 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
     };
     let last_subject = optional(root, &["log", "-1", "--format=%s", "HEAD"]).await;
     Ok(json!({
-        "revision": remote.map(|r| revision(root, &local.branch, &local.head, &r.name, &r.url)),
+        "revision": remote.map(|r| revision(root, &local.branch, &local.head, &r.name, &r.url, &r.fetch)),
         "branch": local.branch,
         "head": local.head,
         "base": local.base,
@@ -693,6 +694,7 @@ async fn bound(row: &Value, params: &Value) -> Result<(Local, usize)> {
             &local.head,
             &r.name,
             &r.url,
+            &r.fetch,
         ))
         || params["head"].as_str() != Some(&local.head)
     {
@@ -736,12 +738,7 @@ pub async fn push(row: &Value, params: &Value) -> Result<Value> {
         ));
     }
     let refspec = format!("{}:{target}", local.head);
-    let pushed = network(
-        root,
-        &["push", "--porcelain", "--", &r.name, &refspec],
-        SEND,
-    )
-    .await;
+    let pushed = network(root, &["push", "--porcelain", "--", &r.url, &refspec], SEND).await;
     // Whatever push reported, the remote decides what happened.
     match (remote_head(root, r, &local.branch).await, pushed) {
         (Ok(Some(sha)), _) if sha == local.head => Ok(receipt(false)),
@@ -771,8 +768,8 @@ pub async fn pull_request(row: &Value, params: &Value) -> Result<Value> {
     let (local, index) = bound(row, params).await?;
     let r = &local.remotes[index];
     let root = &local.root;
-    let repository = github_repository(&r.fetch)
-        .or_else(|| github_repository(&r.url))
+    let repository = github_repository(&r.url)
+        .or_else(|| github_repository(&r.fetch))
         .ok_or_else(|| {
             reject(format!(
                 "{} is not a GitHub repository. Open the pull request on {}",
@@ -1086,6 +1083,45 @@ mod tests {
             git(&bare, &["rev-parse", "lascoria/s1"]).await.trim(),
             view["head"].as_str().unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn changed_fetch_repository_invalidates_the_review() {
+        let (fixture, row, _) = setup().await;
+        let db = db(&fixture);
+        let tree = PathBuf::from(row["workspace"].as_str().unwrap());
+        commit(&tree, "b.txt", "b\n", "Add b").await;
+        let view = status(&db, &row, &json!({})).await.unwrap();
+        let push_url = view["remote"]["url"].as_str().unwrap();
+        git(&tree, &["config", "remote.origin.pushurl", push_url]).await;
+        git(
+            &tree,
+            &[
+                "config",
+                "remote.origin.url",
+                "https://github.com/other/destination.git",
+            ],
+        )
+        .await;
+        let params =
+            json!({"revision": view["revision"], "head": view["head"], "remote": "origin"});
+        assert!(
+            bound(&row, &params).await.is_err(),
+            "A changed PR destination must invalidate the review"
+        );
+        // A configured GitHub push repository owns the delivered branch, even if fetch
+        // points at a different upstream repository.
+        git(
+            &tree,
+            &[
+                "config",
+                "remote.origin.pushurl",
+                "https://github.com/fork/project.git",
+            ],
+        )
+        .await;
+        let view = status(&db, &row, &json!({})).await.unwrap();
+        assert_eq!(view["hosting"]["repository"], "fork/project");
     }
 
     #[tokio::test]
