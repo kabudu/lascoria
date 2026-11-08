@@ -978,8 +978,10 @@ Owner-authorised on 5 November after the agreed staging gates. Version 0.2.0 is 
 - [x] Audit the reviewed dependency set online. Zero npm vulnerabilities, 843 Rust crates checked and the existing reviewed warnings only.
 - [x] Review corrections at `22a8a4c` passed full local CI (114 Rust, 108 Node with one Linux-only skip, 58 UI workflows) and all three hosted checks in run 42480755858. PR #31 merged as `602d40d`, with an identical implementation tree.
 - [x] Preview the curated notes rendered by GitHub in light/dark at 900 and 360 pixels: no overflow, expected headings and repository links only.
-- [ ] Validate the final release metadata head through local and three-platform hosted CI.
-- [ ] Merge the reviewed implementation and release metadata, verify source identity and publish the annotated version tag.
-- [ ] Verify all public downloads and original build artifacts, checksums, signatures, package metadata and updater channels.
+- [x] Final release head `b63874a` passed `MUSE_BIN=<pinned Muse 1.4.14> ./scripts/ci-local.sh`: 114 Rust tests, 108 Node tests with one Linux-only skip and all 58 UI workflows (macOS 27.0.1 arm64, Node 24.17.0, Rust 1.97.0). All three hosted checks passed in run 42482541437.
+- [x] Merge release PR #32 as `1680731a826e21cf135df9befd5cfc7cfded017a`, verify its tree is identical to `b63874a` and push annotated tag `v0.3.0`.
+- [x] [Production run 42484377640](https://github.com/kabudu/lascoria/actions/runs/42484377640) passed all four builds, Mac signing/notarization, three native validations and publication of [v0.3.0](https://github.com/kabudu/lascoria/releases/tag/v0.3.0).
+- [x] Independently download and hash all 13 public assets. The 11 binary/signature files and manifest match the original production artifact hashes emitted before publication. Four updater signatures verify against the unchanged production key; all five manifest platform entries and stable/version/beta channels agree at 0.3.0. Windows installer version 0.3.0.0, Linux x64/ARM64 AppImage/Debian metadata and packaged executables, and universal Mac slices/signatures/stapled tickets/Gatekeeper passed. The actual signed Mac runtime completed an isolated Echo lifecycle, with its owned process and mounted image cleaned up. Website latest-release routing and apex redirect passed.
+- This is distribution verification, not additional installed-update or live-provider acceptance.
 
 Comparative developer trials and voluntary repeat-use evidence remain open. Platform interaction evidence remains scoped to the documented native acceptance runs.

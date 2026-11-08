@@ -1,6 +1,6 @@
 # Lascoria release-readiness backlog
 
-Updated 8 November 2026, during v0.3.0 release preparation. This is the consolidated product/release backlog; evidence lives in the [running checklist](implementation-progress.md) and the stage documents. The repository has been public since 21 October, hosted three-OS CI runs on every pull request and master push, and versioned binaries have been public since v0.1.2. Publishing a release does not close a gate: an unchecked item stays open until its own acceptance evidence exists, and a checked subtask does not close its parent.
+Updated 8 November 2026, after v0.3.0. This is the consolidated product/release backlog; evidence lives in the [running checklist](implementation-progress.md) and the stage documents. The repository has been public since 21 October, hosted three-OS CI runs on every pull request and master push, and versioned binaries have been public since v0.1.2. Publishing a release does not close a gate: an unchecked item stays open until its own acceptance evidence exists, and a checked subtask does not close its parent.
 
 ## Status summary (6 November)
 
@@ -11,7 +11,7 @@ Three states are used for public work, and unreleased work is listed separately.
 | Area | Evidence |
 | --- | --- |
 | Public source and repository policy (R4 rename/opening, PL01 to PL04) | Renamed to `kabudu/lascoria`; public since 21 October; Actions enabled; master protection requires `native (macos-latest)`, `native (windows-latest)` and `native (ubuntu-latest)`. |
-| Versioned binary distribution, v0.1.2 to v0.2.0 | Each release has one universal macOS installer/updater, Windows x64 and Linux x64/ARM64 packages, 13 public assets and matching stable/beta manifests, independently verified after publication. Latest: [v0.2.0](https://github.com/kabudu/lascoria/releases/tag/v0.2.0) from tag `v0.2.0` at `ca899ff`, [production run 42133660750](https://github.com/kabudu/lascoria/actions/runs/42133660750). See [v0.1.9 evidence](implementation-progress.md#v019-release-checklist-3-november). |
+| Versioned binary distribution, v0.1.2 to v0.3.0 | Each release has one universal macOS installer/updater, Windows x64 and Linux x64/ARM64 packages, 13 public assets and matching stable/beta manifests, independently verified after publication. Latest: [v0.3.0](https://github.com/kabudu/lascoria/releases/tag/v0.3.0) from tag `v0.3.0` at `1680731`, [production run 42484377640](https://github.com/kabudu/lascoria/actions/runs/42484377640). See [v0.1.9 evidence](implementation-progress.md#v019-release-checklist-3-november). |
 | Universal macOS distribution | Both architecture slices, Developer ID signatures, stapled notarization and Gatekeeper pass in the public installer and updater for every release since v0.1.2. |
 | Curated release notes and fail-closed release metadata (PL13, PL14) | Versioned sources in `docs/releases/`, checked against the tag by release automation. Rendered previews are recorded in each release PR; the canonical page was inspected at desktop and mobile widths for v0.1.2. |
 
@@ -47,7 +47,7 @@ Everything here is in the public builds. Unless a row says otherwise, macOS has 
 
 | Item | State |
 | --- | --- |
-| D7 Review to delivery, D8 constellation hierarchy | Included in v0.3.0; publication and artifact verification remain tracked in the running checklist until complete. Requirement-by-requirement evidence and remaining scope: [milestone checklist](review-to-delivery.md#milestone-checklist). |
+| D7 Review to delivery, D8 constellation hierarchy | Shipped in v0.3.0; publication and independent artifact verification passed. See the [release checklist](implementation-progress.md#v030-release-checklist-8-november). Requirement-by-requirement evidence and remaining scope: [milestone checklist](review-to-delivery.md#milestone-checklist). |
 
 ### Planned
 
