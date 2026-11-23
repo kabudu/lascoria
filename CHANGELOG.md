@@ -4,6 +4,8 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+- Update the pinned Muse Code CLI and SDK to 1.4.25 and refresh bundled runtime dependencies.
+
 ## 0.3.0 - 2026-11-08
 
 - Deliver work from an isolated task's Workspace tab with one next step at a time: check the changes, send a failing check to Muse, stage, commit, push and open a pull request. Test results count only for the exact files they ran on. Push and pull requests show the destination, branch and commits first, use your own Git and GitHub CLI sign-in, never force-push and never open a duplicate.
