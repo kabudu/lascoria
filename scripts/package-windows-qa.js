@@ -48,7 +48,7 @@ await copyFile(
   'supervisor/target/x86_64-pc-windows-msvc/release/constellation-supervisor.exe',
   join(runtime, 'constellation-supervisor.exe'),
 );
-const node = '.dev/windows-node/node-v24.17.0-win-x64';
+const node = '.dev/windows-node/node-v24.22.3-win-x64';
 const archive = createHash('sha256')
   .update(await readFile('.dev/node-windows.zip'))
   .digest('hex');
@@ -77,7 +77,7 @@ await writeFile(
       dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }) !== '',
       sdk: '1.4.14',
       muse: '1.4.14-R7309.1',
-      node: '24.17.0',
+      node: '24.22.3',
       desktopSha256: await hash(join(output, 'Lascoria.exe')),
       supervisorSha256: await hash(join(runtime, 'constellation-supervisor.exe')),
       nodeSha256: await hash(join(runtime, 'node.exe')),

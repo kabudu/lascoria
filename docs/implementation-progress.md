@@ -985,3 +985,9 @@ Owner-authorised on 5 November after the agreed staging gates. Version 0.2.0 is 
 - This is distribution verification, not additional installed-update or live-provider acceptance.
 
 Comparative developer trials and voluntary repeat-use evidence remain open. Platform interaction evidence remains scoped to the documented native acceptance runs.
+
+### Platform dependency refresh (23 November)
+
+- [x] Refresh npm and compatible Rust lockfiles, and pin CI and bundled Node to verified Node 24 LTS release 24.22.3.
+- [x] Confirm Muse Code 1.4.25-R9361.1 and SDK 1.4.25 are available and share a vendor schema. The native stream-saturation recovery passed. The new workspace trust requirement withholds MCP servers in the default untrusted workspace. The full relay fixture passed with explicit trust of its disposable workspace.
+- [ ] Resolve the compatibility gap with an explicit workspace-scoped consent path or a supported host API for application-supplied tools. Track the Muse upgrade separately in [PR #35](https://github.com/kabudu/lascoria/pull/35). Platform and library upgrades retain the previously validated Muse 1.4.14 pair.
