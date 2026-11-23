@@ -145,3 +145,9 @@ The new permission surface uses server-reported profiles and effective state, ex
 - Attachment admission now counts reservations across all session directories and counts orphaned byte files beyond the former directory scan caps. The caps could silently understate usage in long-lived workspaces. A synthetic Rust fixture exercises both former cutoffs and the existing concurrent-admission tests still cover the global size limit.
 - Snapshot retries bind the request ID to the original session, task and Project folder path. Concurrent captures with conflicting targets now admit only one result. The Project regression checks identical retries, folder mismatch and competing writes.
 - This increment covers the dependency graph and selected Rust trust boundaries. Cross-platform native adversarial acceptance and independent R12 review remain open.
+
+### Independent review follow-up (23 November)
+
+A separate reviewer checked workspace file access, local IPC peer identity and signed updates at d86fe15. Two workspace findings are addressed in source. Preview and snapshot reads check regular-file type before opening and validate the actual opened handle before reading. Unix opens are nonblocking and refuse final symlinks. Windows opens the final reparse point itself so the opened-file check can refuse it. Snapshot limits and mode bits use metadata from the opened file. This narrows the file-read boundary and does not make Git operations an atomic filesystem sandbox.
+
+The scoped review confirmed peer and token checks before dispatch, signed update version checking, and the supervisor lock before updater installation. Cross-platform native adversarial acceptance remains open.

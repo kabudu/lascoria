@@ -610,18 +610,39 @@ async fn stream(
 
 /// Opens `path` without following a final link and confirms, from the open handle, that the
 /// file is a regular file inside `root` (canonical).
-fn open_contained(root: &Path, path: &Path) -> Result<std::fs::File> {
+pub(crate) fn open_contained(root: &Path, path: &Path) -> Result<std::fs::File> {
+    ensure!(
+        std::fs::symlink_metadata(path)?.is_file(),
+        "File must be a regular file inside the repository"
+    );
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW);
+        // A replacement between metadata and open must not block on a pipe.
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x00200000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
     }
     let file = options.open(path).context("File is unavailable")?;
+    let metadata = file.metadata()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x00000400;
+        ensure!(
+            metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT == 0,
+            "File must be a regular file inside the repository"
+        );
+    }
     let real = lascoria_runtime::platform::opened_path(&file)?;
     ensure!(
-        real.starts_with(root) && file.metadata()?.is_file(),
+        real.starts_with(root) && metadata.is_file(),
         "File must remain inside the repository"
     );
     Ok(file)

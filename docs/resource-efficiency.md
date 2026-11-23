@@ -131,3 +131,11 @@ The user accepted the measured macOS overage: "I think I can live with the curre
 Delivery status previously deserialized every retained validation, push and PR command for the session before selecting one per operation and folder. SQLite now returns at most one record per lookup, ordered by timestamp and insertion order for ties. The journal scan is still bounded by the journal cap. A regression test checks folder and session isolation, operation matching, timestamp ordering and the default folder. The Tauri bridge also moves the decoded response payload into the result, avoiding a second JSON allocation for large replies.
 
 These changes bound the amount of JSON Rust deserializes or copies on these paths. Signed-in and active native measurements, platform baselines, and the wider R11 soak remain open.
+
+### Platform and subscription follow-up (23 November)
+
+- [x] Five-minute macOS native idle observation with ten isolated echo sessions on d86fe15. Desktop plus control averaged 243.4 MB RSS and 0.47% of one core. Including Muse, the whole process tree had a measured physical footprint of 846.8 MB.
+- [x] Thirty-minute macOS headless echo soak on d86fe15. Completed 1,793 tasks and 179 restarts with zero errors. Control RSS grew 6.5% between the first and last fifths, within the 20% test gate.
+- [x] Measure isolated live subscription account overhead with zero sessions on d86fe15. Over 61 samples, the signed-in account worker and Muse host averaged 51.7 MB RSS and 0.21% of one core. The entire headless control tree averaged 62.8 MB RSS and 0.29% of one core. The signed-out control tree averaged 14.9 MB RSS and 0.06% of one core. This paired sample covers authentication polling without model requests. It excludes the GUI, physical footprint, and concurrent tasks.
+- [ ] Complete five-minute signed-out packaged runtime baselines for Windows and Linux. The manually dispatched validation workflow runs the echo scenario with a ten-session workload on both hosts.
+- [ ] Complete Windows and Linux native GUI and hardware baselines. Repeat the macOS native observation and measure signed-in GUI use with active and waiting workloads.
