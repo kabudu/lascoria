@@ -134,16 +134,18 @@ test('A large map folds subtasks, keeps attention visible and jumps to what need
     'true',
   );
   await expect(page.getByRole('tab', { name: 'transcript', exact: true })).toBeFocused();
-  expect(
-    await page.evaluate(() => {
-      const panel = document.querySelector('.inspector')!.closest('.floating-panel')!;
-      const r = panel.getBoundingClientRect();
-      const points = [];
-      for (let x = r.x + 4; x < r.right - 4; x += 12)
-        for (let y = r.y + 4; y < r.y + 120; y += 16) points.push([x, y]);
-      return points.every(([x, y]) => panel.contains(document.elementFromPoint(x, y)));
-    }),
-  ).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const panel = document.querySelector('.inspector')!.closest('.floating-panel')!;
+        const r = panel.getBoundingClientRect();
+        const points = [];
+        for (let x = r.x + 4; x < r.right - 4; x += 12)
+          for (let y = r.y + 4; y < r.y + 120; y += 16) points.push([x, y]);
+        return points.every(([x, y]) => panel.contains(document.elementFromPoint(x, y)));
+      }),
+    )
+    .toBe(true);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await jump.click();
   await expect(page.locator('.task-node.selected')).toHaveAttribute('id', 'node-a:sub-77');
