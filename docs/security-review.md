@@ -148,6 +148,6 @@ The new permission surface uses server-reported profiles and effective state, ex
 
 ### Independent review follow-up (23 November)
 
-A separate reviewer checked workspace file access, local IPC peer identity and signed updates at d86fe15. Two workspace findings are addressed in source. Preview and snapshot reads check regular-file type before opening and validate the actual opened handle before reading. Unix opens are nonblocking and refuse final symlinks. Windows opens the final reparse point itself so the opened-file check can refuse it. Snapshot limits and mode bits use metadata from the opened file. This narrows the file-read boundary and does not make Git operations an atomic filesystem sandbox.
+A separate reviewer checked workspace file access, local IPC peer identity and signed updates at d86fe15. Two workspace findings are addressed in source. Preview and snapshot reads check regular-file type before opening and validate the actual opened handle before reading. Unix opens are nonblocking and refuse final symlinks. Windows retains regular-file support for data reparse providers such as cloud storage, with containment checked from the opened handle before reading. Snapshot limits and mode bits use metadata from the opened file. This narrows the file-read boundary and does not make Git operations an atomic filesystem sandbox.
 
 The scoped review confirmed peer and token checks before dispatch, signed update version checking, and the supervisor lock before updater installation. Cross-platform native adversarial acceptance remains open.
