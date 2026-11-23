@@ -116,6 +116,12 @@ test('node activity is visible while working, quiet when waiting or stale, and r
   ];
   status.version = 'activity:4';
   await expect(node.locator('.node-activity-label')).toHaveText('Permission needed');
+  await expect(
+    page.locator('.attention').getByRole('heading', { name: 'Permission decision' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: /Needs your input/ }).click();
+  await expect(page.getByRole('heading', { name: 'Permission decision' })).toBeFocused();
+
   await expect(rail).toHaveCount(0);
   state.approvals = [];
   state.current = false;

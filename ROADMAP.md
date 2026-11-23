@@ -12,6 +12,10 @@ Shipped in v0.2.0: in isolated task worktrees, stage and unstage whole files or 
 - Help with merges and conflicts, without resolving them silently.
 - Respect repository hooks and commit signing where the user has set them up.
 
+## Pull request follow-through
+
+Implementation is underway. The [technical plan and checklist](docs/pr-follow-through.md) track PR observations in the task inspector, feedback handoff, attention integration and acceptance.
+
 ## Editing and terminal (after D2)
 
 Shipped today: open a session's folder or a changed file in the user's own editor; test commands run in a bounded, non-interactive runner. Proposed:

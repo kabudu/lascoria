@@ -873,7 +873,7 @@ const attentionRank: Record<string, number> = {
  * Attention in the order to handle it: decisions and questions that block Muse first, then
  * failures, interruptions and completed work to inspect. Runtime history is not included.
  */
-export function attentionOrder(queue: AttentionItem[]) {
+export function attentionOrder<T extends AttentionItem>(queue: T[]) {
   return (
     queue
       .map((item, index) => ({ item, index }))
@@ -891,7 +891,7 @@ export function attentionOrder(queue: AttentionItem[]) {
 }
 
 /** The attention item after the one the user is on, wrapping around; first when on none. */
-export function nextAttention(queue: AttentionItem[], currentId?: string) {
+export function nextAttention<T extends AttentionItem>(queue: T[], currentId?: string) {
   const ordered = attentionOrder(queue);
   if (!ordered.length) return undefined;
   const at = ordered.findIndex((item) => item.id === currentId);

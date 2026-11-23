@@ -3993,6 +3993,28 @@ button.link {
   flex-shrink: 0;
   font-size: 0.75rem;
 }
+.attention-jump[data-blocking],
+.attention-jump[data-blocking]:hover {
+  color: var(--attention);
+  border-color: var(--attention);
+  background: color-mix(in srgb, var(--attention) 12%, var(--panel));
+  font-weight: 650;
+}
+.attention-jump[data-blocking] .count {
+  background: var(--panel);
+}
+.task-node[data-needs-input] {
+  outline: 2px solid var(--attention);
+  outline-offset: -2px;
+}
+.task-node[data-needs-input]:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.task-node[data-needs-input] .node-activity-label {
+  color: var(--attention);
+  font-weight: 650;
+}
 .delivery-facts dd {
   display: block;
 }
@@ -4027,4 +4049,19 @@ button.link {
 .delivery-facts dd > small:not([role='alert']) {
   margin-top: 2px;
   color: var(--muted);
+}
+
+.attention-decision {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.attention-decision .decision {
+  min-width: 0;
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.attention-decision pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

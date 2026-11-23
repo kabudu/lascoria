@@ -178,6 +178,7 @@ test('session header permissions and model controls: native changes, cross-windo
     await page.getByRole('button', { name: 'Run capability check', exact: true }).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
     const deadline = Date.now() + 25000;
+    let followedAttention = false;
     while (Date.now() < deadline) {
       const row = (await status()).sessions.find((r: any) => r.id === sessionId);
       for (const entry of row.state.approvals ?? []) {
@@ -185,6 +186,14 @@ test('session header permissions and model controls: native changes, cross-windo
           (c: any) => c.scope === 'once' && c.decision === 'approved',
         );
         expect(choice).toBeTruthy();
+        if (!followedAttention) {
+          await page.getByRole('button', { name: /Needs your input/ }).click();
+          await expect(
+            page.getByRole('heading', { name: 'Permission decision', exact: true }),
+          ).toBeFocused();
+          followedAttention = true;
+        }
+
         await page.getByRole('button', { name: choice.label, exact: true }).click();
       }
       if (row.state.permissionProbe?.observed && !row.state.activeTurnId) break;
