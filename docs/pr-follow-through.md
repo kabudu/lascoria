@@ -28,7 +28,8 @@ Goal: follow a task from opening its GitHub pull request through failed checks, 
 - [x] Add a distinct Needs your input control and a labelled node cue for blocking permissions and questions. Focus the exact decision from the header or the existing attention navigation.
 - [x] Bring the demo’s attention flow into the app. Reveal the highest-priority blocking decision in Attention and show its real permission or answer controls there.
 - [x] Focused hierarchy, node-activity and native-bridge permission workflows passed. They cover revealing a question in a previously collapsed Attention panel, locating its node, focusing the question and presenting a permission decision inline.
-- [ ] Run full local CI on the complete increment. The earlier run was interrupted to apply inline Attention. The replacement run is in progress.
+- [x] Full local CI passed for the app implementation at `51bcfd0`: 115 Rust tests, 108 Node tests with one Linux-only skip and 58 browser workflows.
+- [ ] Hosted CI: macOS and Windows passed on `51bcfd0`. Linux reported a Bubblewrap loopback startup failure. Verify the revised fixture distinguishes that exact failure from successful native capability evidence.
 - [ ] Verify the full native workflow on a disposable GitHub PR.
 - [ ] Run comparative developer trials.
 

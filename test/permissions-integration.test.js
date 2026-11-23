@@ -255,6 +255,7 @@ test(
     // Only this isolated fixture approves a server-minted one-time request.
     const deadline = Date.now() + 25000;
     let observed;
+    let sandboxStartupFailure;
     while (Date.now() < deadline) {
       const row = (await status()).sessions.find((r) => r.id === sessionId);
       for (const entry of row.state.approvals ?? []) {
@@ -271,16 +272,41 @@ test(
         });
       }
       observed = row.state.permissionProbe;
-      if (observed?.observed && !row.state.activeTurnId) break;
+      if (!row.state.activeTurnId && observed?.turnId === probe.result.turnId) {
+        // Some Linux runners advertise sandbox support, then reject Bubblewrap's
+        // loopback setup before the probe command can execute.
+        if (process.platform === 'linux') {
+          sandboxStartupFailure = row.state.items.find(
+            (item) =>
+              item.turnId === probe.result.turnId &&
+              item.kind === 'toolCall' &&
+              item.status === 'failed' &&
+              item.tool === 'bash' &&
+              item.args?.includes(observed.marker) &&
+              item.visibleOutput?.includes(
+                'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted',
+              ),
+          );
+        }
+        if (observed.observed || sandboxStartupFailure) break;
+      }
       await delay(100);
     }
-    assert.ok(
-      observed?.observed,
-      JSON.stringify((await status()).sessions.find((r) => r.id === sessionId).state),
-    );
-    assert.equal(observed.currentBoundary, true);
-    for (const value of Object.values(observed.observed.results))
-      assert.ok(['allowed', 'denied', 'notChecked'].includes(value.status));
+    assert.equal(observed?.currentBoundary, true);
+    if (sandboxStartupFailure) {
+      assert.equal(
+        observed.observed,
+        null,
+        'A sandbox startup failure cannot provide capability evidence',
+      );
+      t.diagnostic(
+        'Bubblewrap loopback setup denied on this host. Verified that the exact native failure leaves capabilities unobserved.',
+      );
+    } else {
+      assert.ok(observed?.observed, 'Expected completed native probe output for the matching turn');
+      for (const value of Object.values(observed.observed.results))
+        assert.ok(['allowed', 'denied', 'notChecked'].includes(value.status));
+    }
     assert.equal(
       (await status()).commands.filter((c) => c.operation === 'workspace/run').length,
       0,
