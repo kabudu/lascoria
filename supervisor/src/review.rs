@@ -269,12 +269,19 @@ pub async fn handle(
             None => None,
         };
         let key = format!("capture_{request_id}");
-        if let Some(prior) = db.lock().unwrap().get("artifacts", &key)? {
+        let folder = folder.unwrap_or(Value::Null);
+        let replay = |prior: Value| -> Result<Value> {
             ensure!(
-                prior["sessionId"] == session_id && prior["taskId"] == params["taskId"],
+                prior["sessionId"] == session_id
+                    && prior["taskId"] == params["taskId"]
+                    && prior["folder"]["id"] == folder["id"]
+                    && prior["folder"]["path"] == folder["path"],
                 "Capture ID reused with different target"
             );
-            return Ok(prior);
+            Ok(prior)
+        };
+        if let Some(prior) = db.lock().unwrap().get("artifacts", &key)? {
+            return replay(prior);
         }
         ensure!(
             db.lock().unwrap().count("artifacts")? < 100,
@@ -289,24 +296,29 @@ pub async fn handle(
                 .is_some_and(|turns| turns.iter().any(|t| t["turnId"] == task)),
             "Unknown producing turn"
         );
-        let target = folder
-            .as_ref()
-            .and_then(|f| f["path"].as_str())
-            .map_or(root, Path::new);
+        let target = folder["path"].as_str().map_or(root, Path::new);
         let mut row = capture(target).await?;
         ensure!(
             capture(target).await?["fingerprint"] == row["fingerprint"],
             "Repository changed during capture; try again"
         );
-        if let Some(folder) = folder {
-            row["folder"] = folder;
+        if !folder.is_null() {
+            row["folder"] = folder.clone();
         }
         row["id"] = json!(key);
         row["sessionId"] = json!(session_id);
         row["taskId"] = json!(task);
         row["provenance"] = json!("userAsserted");
         row["revision"] = json!(1);
-        db.lock().unwrap().put("artifacts", &key, &row)?;
+        let db = db.lock().unwrap();
+        if let Some(prior) = db.get("artifacts", &key)? {
+            return replay(prior);
+        }
+        ensure!(
+            db.count("artifacts")? < 100,
+            "Artifact retention limit reached"
+        );
+        db.put("artifacts", &key, &row)?;
         return Ok(row);
     }
     if operation == "review/list" {
@@ -586,6 +598,47 @@ mod tests {
         )
         .await?;
         assert_eq!(snapshot["folder"]["name"], "API");
+        assert_eq!(
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"f-api"}),
+                "c2"
+            )
+            .await?,
+            snapshot
+        );
+        assert!(
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"f-app"}),
+                "c2"
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("Capture ID reused with different target")
+        );
+        let (app_capture, api_capture) = tokio::join!(
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"f-app"}),
+                "c3"
+            ),
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"f-api"}),
+                "c3"
+            ),
+        );
+        let (saved, refused) = match (app_capture, api_capture) {
+            (Ok(saved), Err(refused)) | (Err(refused), Ok(saved)) => (saved, refused),
+            results => anyhow::bail!("Expected a single capture for the shared ID: {results:?}"),
+        };
+        assert!(
+            refused
+                .to_string()
+                .contains("Capture ID reused with different target")
+        );
+        assert_eq!(
+            db.lock().unwrap().get("artifacts", "capture_c3")?,
+            Some(saved)
+        );
         let patch = snapshot["patch"].as_str().unwrap();
         assert!(
             patch.contains("api.txt") && !patch.contains("app.txt"),
