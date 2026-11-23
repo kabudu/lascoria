@@ -111,6 +111,7 @@ test('node activity is visible while working, quiet when waiting or stale, and r
         availableChoices: [],
         rawArgs: '{}',
         toolName: 'bash',
+        subject: { kind: 'shell', command: 'npm test' },
       },
     },
   ];
@@ -119,6 +120,10 @@ test('node activity is visible while working, quiet when waiting or stale, and r
   await expect(
     page.locator('.attention').getByRole('heading', { name: 'Permission decision' }),
   ).toBeVisible();
+  await expect(page.getByLabel('Requested command')).toHaveText('npm test');
+  await expect(
+    page.locator('.attention details').filter({ hasText: 'Full request details' }),
+  ).not.toHaveAttribute('open', '');
   await page.getByRole('button', { name: /Needs your input/ }).click();
   await expect(page.getByRole('heading', { name: 'Permission decision' })).toBeFocused();
 

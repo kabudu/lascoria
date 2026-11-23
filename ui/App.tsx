@@ -2152,7 +2152,7 @@ export function App() {
                 >
                   {decisionsWaiting.length > 0 ? (
                     <>
-                      <span aria-hidden="true">!</span> Needs your input
+                      <span aria-hidden="true">!</span> Needs your input{' '}
                       <span className="count">{decisionsWaiting.length}</span>
                     </>
                   ) : (
@@ -4653,19 +4653,35 @@ function DecisionPanels({
     <>
       {approvals.map((entry) => {
         const a = entry.requested;
+        const command =
+          a.subject?.kind === 'shell' && typeof a.subject.command === 'string'
+            ? a.subject.command
+            : undefined;
         return (
           <section className="decision" key={a.approvalId}>
             <h3 id={`decision-approval-${a.approvalId}`} tabIndex={-1}>
               Permission decision
             </h3>
-            <p>Workspace: {session.workspace}</p>
-            <p>
-              <strong>{a.toolName}</strong> · {text(a.subject)}
-            </p>
-            <pre>{a.rawArgs}</pre>
+            {only && command !== undefined ? (
+              <>
+                <p>Run a command in this task’s workspace</p>
+                <pre className="attention-command" tabIndex={0} aria-label="Requested command">
+                  {command}
+                </pre>
+              </>
+            ) : (
+              <>
+                <p>Workspace: {session.workspace}</p>
+                <p>
+                  <strong>{a.toolName}</strong> · {text(a.subject)}
+                </p>
+                <pre>{a.rawArgs}</pre>
+              </>
+            )}
             {a.subagentOrigin && <p>Delegated origin: {text(a.subagentOrigin)}</p>}
             <details>
-              <summary>Request identity and provenance</summary>
+              <summary>{only ? 'Full request details' : 'Request identity and provenance'}</summary>
+              <p>Workspace: {session.workspace}</p>
               <pre>{text(a)}</pre>
             </details>
             {allowance?.sessionId === session.id && allowance?.approvalId === a.approvalId && (

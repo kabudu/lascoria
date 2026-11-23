@@ -4065,3 +4065,8 @@ button.link {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.attention-decision .attention-command {
+  max-height: 8rem;
+  overflow: auto;
+}

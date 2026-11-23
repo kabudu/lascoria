@@ -29,8 +29,10 @@ Goal: follow a task from opening its GitHub pull request through failed checks, 
 - [x] Bring the demo’s attention flow into the app. Reveal the highest-priority blocking decision in Attention and show its real permission or answer controls there.
 - [x] Focused hierarchy, node-activity and native-bridge permission workflows passed. They cover revealing a question in a previously collapsed Attention panel, locating its node, focusing the question and presenting a permission decision inline.
 - [x] Full local CI passed for the app implementation at `51bcfd0`: 115 Rust tests, 108 Node tests with one Linux-only skip and 58 browser workflows.
-- [ ] Hosted CI: macOS and Windows passed on `51bcfd0`. Linux reported a Bubblewrap loopback startup failure. Verify the revised fixture distinguishes that exact failure from successful native capability evidence.
-- [ ] Verify the full native workflow on a disposable GitHub PR.
+- [x] Hosted macOS, Windows and Linux passed on `5c6d58c`. Linux verified that the exact Bubblewrap loopback startup failure leaves capability evidence unobserved.
+- [x] Verify a real private GitHub PR in the packaged macOS app. A hosted check failed on the first head. Polling surfaced it with the inspector closed; selecting the Attention row opened Workspace, and the preview added the check and first head to the Muse draft. After a controlled fixture correction was committed and pushed through the supervisor, hosted CI passed on the second head, the card cue cleared and the first result remained in history. The disposable PR was closed.
+- [x] Visual QA of native Attention: one live SDK permission request was approved from the auto-expanded panel. Raw request metadata crowded the inline card, so the revised build shows the exact shell command and moves the full payload into a disclosure. Native inspection confirmed spacing, header-to-decision focus and inline rejection. The focused delivery and node-activity browser workflows passed on the visual fix.
+- [ ] Full local and hosted CI on the final visual fix.
 - [ ] Run comparative developer trials.
 
 
