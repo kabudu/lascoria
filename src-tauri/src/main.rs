@@ -159,11 +159,14 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
             .to_string()
     })?
     .map_err(|e| e.to_string())?;
-    let response: Value = serde_json::from_slice(&result).map_err(|e| e.to_string())?;
+    let mut response: Value = serde_json::from_slice(&result).map_err(|e| e.to_string())?;
     if let Some(error) = response["error"].as_str() {
         return Err(error.into());
     }
-    Ok(response["result"].clone())
+    Ok(response
+        .get_mut("result")
+        .map(Value::take)
+        .unwrap_or(Value::Null))
 }
 #[tauri::command]
 async fn supervisor_request(operation: String, params: Value, id: String) -> Result<Value, String> {

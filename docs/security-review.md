@@ -136,3 +136,11 @@ Workspace handoff now includes the selected folder ID and session Project revisi
 ### Session permission controls (2 November)
 
 The new permission surface uses server-reported profiles and effective state, explicit human review, worker-generation-bound confirmation keys and durable command receipts. Custom/unrestricted profile selection is refused. Read-only cannot approve command/write requests or relax review rules. Saved approval scopes require explicit confirmation; unknown scope/decision values fail closed. Capability checks run only as ordinary Muse tasks and never as Workspace Run or escalation. Exact native tool evidence is required for displayed results. See [permissions](permissions.md) for the scope and compatibility limits; this scoped review does not close other security acceptance items.
+
+### Rust dependency and delivery review (23 November)
+
+- Updated bundled SQLite via rusqlite 0.41.1 for [RUSTSEC-2026-0459](https://rustsec.org/advisories/RUSTSEC-2026-0459.html), url 2.5.9 for [RUSTSEC-2026-0592](https://rustsec.org/advisories/RUSTSEC-2026-0592.html), cookie 0.18.3 for [RUSTSEC-2026-0594](https://rustsec.org/advisories/RUSTSEC-2026-0594.html), and rustix 1.1.6 for [RUSTSEC-2026-0486](https://rustsec.org/advisories/RUSTSEC-2026-0486.html).
+- Delivery validates GitHub.com repositories and now pins the GitHub CLI subprocess to that host and removes inherited debug flags. The controlled CLI requires the pinned host during PR creation and recovery.
+- The supply-chain gate checks all three Rust lockfiles. Chrono 0.4.45 appears as an optional Tauri dependency in the lockfile. The gate accepts its maintenance warning only if the locked desktop dependency tree across all targets has no active path to that package. A failed tree inspection or an active dependency keeps the gate from passing.
+- This increment covers the dependency graph and selected Rust trust boundaries. Cross-platform native adversarial acceptance and independent R12 review remain open.
+- Attachment admission now counts reservations across all session directories and counts orphaned byte files beyond the former directory scan caps. The caps could silently understate usage in long-lived workspaces. A synthetic Rust fixture exercises both former cutoffs and the existing concurrent-admission tests still cover the global size limit.

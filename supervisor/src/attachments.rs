@@ -131,7 +131,7 @@ fn manifests(dir: &Path) -> Result<Vec<Value>> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Ok(found);
     };
-    for entry in entries.take(4 * MAX_PER_SESSION + 16) {
+    for entry in entries {
         let path = entry?.path();
         if path.extension().is_some_and(|e| e == "json")
             && let Ok(text) = fs::read_to_string(&path)
@@ -156,8 +156,9 @@ fn reserved_bytes(root: &Path, now: u128) -> u64 {
     let Ok(sessions) = fs::read_dir(root.join("attachments")) else {
         return 0;
     };
-    let mut total = 0;
-    for session in sessions.flatten().take(256) {
+    let mut total = 0u64;
+    // Limiting traversal would undercount reservations in a long-lived workspace.
+    for session in sessions.flatten() {
         let dir = session.path();
         let mut declared = std::collections::HashSet::new();
         for manifest in manifests(&dir).unwrap_or_default() {
@@ -170,16 +171,16 @@ fn reserved_bytes(root: &Path, now: u128) -> u64 {
                 continue;
             }
             let length = fs::metadata(bytes_path(&dir, &id)).map_or(0, |m| m.len());
-            total += manifest["bytes"].as_u64().unwrap_or(0).max(length);
+            total = total.saturating_add(manifest["bytes"].as_u64().unwrap_or(0).max(length));
             declared.insert(format!("{id}.bin"));
         }
         let Ok(files) = fs::read_dir(&dir) else {
             continue;
         };
-        for file in files.flatten().take(4 * MAX_PER_SESSION + 16) {
+        for file in files.flatten() {
             let name = file.file_name().to_string_lossy().into_owned();
             if name.ends_with(".bin") && !declared.contains(&name) {
-                total += file.metadata().map_or(0, |m| m.len());
+                total = total.saturating_add(file.metadata().map_or(0, |m| m.len()));
             }
         }
     }
@@ -338,7 +339,7 @@ pub fn begin(root: &Path, params: &Value) -> Result<Value> {
         "A session can hold {MAX_PER_SESSION} attachments waiting to be sent; remove one first"
     );
     ensure!(
-        reserved + size <= MAX_TOTAL_BYTES,
+        reserved.saturating_add(size) <= MAX_TOTAL_BYTES,
         "Waiting attachments use the {} MB storage limit; send or remove some first",
         MAX_TOTAL_BYTES / 1024 / 1024
     );
@@ -863,6 +864,23 @@ mod tests {
             write_manifest(&dir, manifest["id"].as_str().unwrap(), &manifest)?;
         }
         begin_one(&sessions[0])?;
+        Ok(())
+    }
+
+    #[test]
+    fn reservations_include_all_session_directories_and_orphaned_files() -> Result<()> {
+        let root = root();
+        for i in 0..257 {
+            let session = uuid::Uuid::from_u128(i).to_string();
+            let dir = session_dir(&root.0, &session)?;
+            fs::write(bytes_path(&dir, "orphan"), b"x")?;
+        }
+        let session = uuid::Uuid::from_u128(0).to_string();
+        let dir = session_dir(&root.0, &session)?;
+        for i in 0..49 {
+            fs::write(bytes_path(&dir, &i.to_string()), b"x")?;
+        }
+        assert_eq!(reserved_bytes(&root.0, crate::db::now_ms()), 306);
         Ok(())
     }
 

@@ -125,3 +125,9 @@ The user accepted the measured macOS overage: "I think I can live with the curre
 - It does not cover Windows or Linux, the signed-in account host (R11-5), active streaming or tool workloads, other window states, or any future growth. Each still has to be measured against the target, and any regression above today's figures reopens the decision.
 - R11 stays open: signed-in host, active workloads, leak/soak with the window, and Windows/Linux baselines remain outstanding. No further RSS tuning is planned for macOS unless a new measurement shows growth.
 
+
+### Rust delivery and desktop IPC (23 November)
+
+Delivery status previously deserialized every retained validation, push and PR command for the session before selecting one per operation and folder. SQLite now returns at most one record per lookup, ordered by timestamp and insertion order for ties. The journal scan is still bounded by the journal cap. A regression test checks folder and session isolation, operation matching, timestamp ordering and the default folder. The Tauri bridge also moves the decoded response payload into the result, avoiding a second JSON allocation for large replies.
+
+These changes bound the amount of JSON Rust deserializes or copies on these paths. Signed-in and active native measurements, platform baselines, and the wider R11 soak remain open.

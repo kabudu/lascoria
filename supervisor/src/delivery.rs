@@ -442,6 +442,9 @@ async fn gh(
         .args(args)
         .current_dir(root)
         .env("GH_PROMPT_DISABLED", "1")
+        .env("GH_HOST", "github.com")
+        .env_remove("GH_DEBUG")
+        .env_remove("DEBUG")
         .env("GH_NO_UPDATE_NOTIFIER", "1")
         .env("GH_SPINNER_DISABLED", "1")
         .env("NO_COLOR", "1")
@@ -704,14 +707,10 @@ fn validation(
     files: Option<&str>,
 ) -> Result<Value> {
     let session = row["id"].as_str().unwrap_or_default();
-    let runs = db.lock().unwrap().commands_matching(
-        "json_extract(value,'$.operation')='workspace/run' AND json_extract(value,'$.sessionId')=?1",
-        &[&session],
-    )?;
-    let Some(run) = runs
-        .into_iter()
-        .filter(|r| r["params"]["folderId"].as_str() == folder)
-        .max_by_key(|r| r["createdAtMillis"].as_u64().unwrap_or(0))
+    let Some(run) = db
+        .lock()
+        .unwrap()
+        .latest_folder_command("workspace/run", session, folder)?
     else {
         return Ok(json!({"state": "missing"}));
     };
@@ -744,18 +743,13 @@ fn validation(
 /// The latest push and pull-request commands for this folder.
 fn last_actions(db: &SharedDb, row: &Value, folder: Option<&str>) -> Result<Value> {
     let session = row["id"].as_str().unwrap_or_default();
-    let all = db.lock().unwrap().commands_matching(
-        "json_extract(value,'$.operation') IN ('workspace/push','workspace/pullRequest') AND json_extract(value,'$.sessionId')=?1",
-        &[&session],
-    )?;
-    let latest = |operation: &str| {
-        all.iter()
-            .filter(|c| c["operation"] == operation && c["params"]["folderId"].as_str() == folder)
-            .max_by_key(|c| c["createdAtMillis"].as_u64().unwrap_or(0))
+    let db = db.lock().unwrap();
+    let latest = |operation: &str| -> Result<Value> {
+        Ok(db.latest_folder_command(operation, session, folder)?
             .map(|c| json!({"id": c["id"], "status": c["status"], "result": c["result"], "error": c["error"], "createdAtMillis": c["createdAtMillis"]}))
-            .unwrap_or(Value::Null)
+            .unwrap_or(Value::Null))
     };
-    Ok(json!({"push": latest("workspace/push"), "pullRequest": latest("workspace/pullRequest")}))
+    Ok(json!({"push": latest("workspace/push")?, "pullRequest": latest("workspace/pullRequest")?}))
 }
 
 /// Read-only delivery state. With `remote: true` it also asks the remote (and GitHub) what
@@ -1516,7 +1510,7 @@ mod tests {
         std::fs::write(&state, "[]").unwrap();
         let script = dir.join("gh");
         std::fs::write(&script, format!(
-            "#!/bin/sh\nstate='{}'\necho \"$*\" >> '{}'\ncase \"$1 $2\" in\n\
+            "#!/bin/sh\nstate='{}'\n[ \"$GH_HOST\" = github.com ] || exit 91\necho \"$*\" >> '{}'\ncase \"$1 $2\" in\n\
              'pr view') cat \"$state.view\" ;;\n\
              'pr list') cat \"$state\" ;;\n\
              'pr create') body=$(cat); printf '[{{\"number\":7,\"url\":\"https://github.com/o/r/pull/7\",\"state\":\"OPEN\",\"isDraft\":true,\"title\":\"t\",\"headRefName\":\"lascoria/s1\",\"headRefOid\":\"x\",\"baseRefName\":\"main\"}}]' > \"$state\"; {}\n\

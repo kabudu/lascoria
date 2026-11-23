@@ -140,6 +140,32 @@ function main() {
     for (const list of Object.values(report.warnings ?? {}))
       for (const w of list) {
         const id = w.advisory?.id ?? `${w.kind} ${w.package.name}`;
+        if (
+          manifest === 'src-tauri' &&
+          id === 'RUSTSEC-2026-0543' &&
+          w.kind === 'unmaintained' &&
+          w.package.name === 'chrono' &&
+          w.package.version === '0.4.45'
+        ) {
+          // Cargo records serde_with's optional dependency even when it isn't built.
+          // Keep the warning if chrono becomes reachable on any target.
+          const tree = execFileSync(
+            'cargo',
+            [
+              'tree',
+              '--locked',
+              '--offline',
+              '--target',
+              'all',
+              '-e',
+              'all',
+              '-i',
+              'chrono@0.4.45',
+            ],
+            { cwd: join(root, manifest), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+          );
+          if (!tree.trim()) continue;
+        }
         if (!reviewed[id])
           problems.push(
             `${manifest}: unreviewed ${w.kind} ${id} ${w.package.name} ${w.package.version}`,
