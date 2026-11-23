@@ -117,6 +117,7 @@ test('node activity is visible while working, quiet when waiting or stale, and r
   ];
   status.version = 'activity:4';
   await expect(node.locator('.node-activity-label')).toHaveText('Permission needed');
+  await expect(page.getByRole('button', { name: 'Show current task', exact: true })).toHaveCount(0);
   await expect(
     page.locator('.attention').getByRole('heading', { name: 'Permission decision' }),
   ).toBeVisible();

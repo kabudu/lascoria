@@ -1500,6 +1500,60 @@ export function App() {
         entry.kind === 'approval' ? 'Permission needed' : 'Answer needed',
       );
   }
+  const showActiveDiscovery = !!activeTask && !blockingTargets.has(activeTask.id);
+  const showDiscovery = showActiveDiscovery || outside.length > 0 || temporary;
+  const discoveryRef = useRef<HTMLElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
+  const [panelTopInset, setPanelTopInset] = useState(76);
+  const [panelViewportHeight, setPanelViewportHeight] = useState(window.innerHeight);
+  useLayoutEffect(() => {
+    const chrome = chromeRef.current;
+    if (!chrome || prefs.canvasControlsCollapsed) {
+      setPanelTopInset(76);
+      return;
+    }
+    const measure = () => {
+      setPanelViewportHeight(window.innerHeight);
+      setPanelTopInset(
+        window.matchMedia('(max-width: 1100px)').matches
+          ? Math.ceil(chrome.getBoundingClientRect().bottom) + 8
+          : 76,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(chrome);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [prefs.canvasControlsCollapsed, !!session]);
+
+  const [discoveryHeight, setDiscoveryHeight] = useState(0);
+  useLayoutEffect(() => {
+    const rail = discoveryRef.current;
+    if (!rail) return;
+    const measure = () => setDiscoveryHeight(Math.ceil(rail.getBoundingClientRect().height));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    return () => observer.disconnect();
+  }, [showDiscovery]);
+  const discoveryInset = showDiscovery ? 48 + noticeHeight + discoveryHeight + 12 : 12;
+  // When expanded tools displace the left column, keep its two panels usable.
+  const sessionsLayout = prefs.panels?.sessions;
+  const stackedPanels =
+    panelTopInset > 76 &&
+    Math.abs((sessionsLayout?.x ?? 16) - (attentionLayout?.x ?? 16)) < 264 &&
+    (attentionLayout?.y ?? 460) > (sessionsLayout?.y ?? 150);
+  const sessionsTop = Math.max(panelTopInset, sessionsLayout?.y ?? 150);
+  const attentionTop = stackedPanels
+    ? Math.min(
+        Math.max(sessionsTop + 72, attentionLayout?.y ?? 460),
+        panelViewportHeight - discoveryInset - 64,
+      )
+    : panelTopInset;
   function toggleGroup(node: Task) {
     const groups = latestPrefs.current.collapsedGroups ?? [];
     updatePrefs({
@@ -1936,6 +1990,9 @@ export function App() {
         <aside className="sidebar">
           <FloatingPanel
             title="Sessions"
+            bottomInset={discoveryInset}
+            topInset={panelTopInset}
+            heightLimit={stackedPanels ? Math.max(56, attentionTop - sessionsTop - 8) : undefined}
             layout={prefs.panels?.sessions}
             initial={{ x: 16, y: 150 }}
             onChange={(value) => panelChange('sessions', value)}
@@ -2004,6 +2061,9 @@ export function App() {
           </FloatingPanel>
           <FloatingPanel
             title="Attention"
+            bottomInset={discoveryInset}
+            topInset={attentionTop}
+            minVisibleHeight={stackedPanels ? 64 : undefined}
             badge={queue.length}
             layout={
               autoOpenAttention && attentionLayout
@@ -2071,7 +2131,7 @@ export function App() {
       )}
       <main id="workspace">
         {session && (
-          <div className="workspace-chrome">
+          <div className="workspace-chrome" ref={chromeRef}>
             <div className="workspace-title">
               <div>
                 <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
@@ -2505,8 +2565,9 @@ export function App() {
           </section>
         ) : (
           <>
-            {(activeTask || outside.length > 0 || temporary) && (
+            {showDiscovery && (
               <section
+                ref={discoveryRef}
                 className="canvas-discovery"
                 aria-label="Canvas navigation"
                 style={{ bottom: 48 + noticeHeight }}
@@ -2516,7 +2577,7 @@ export function App() {
                     New card positions are temporary: saved layout is full.
                   </span>
                 )}
-                {activeTask && (
+                {activeTask && showActiveDiscovery && (
                   <>
                     <span className="current-task-status" role="status">
                       {nodeActivity(activeTask, session, connected).label}: {activeTask.label}
@@ -2872,6 +2933,8 @@ export function App() {
               </section>
               <FloatingPanel
                 title="Task inspector"
+                bottomInset={discoveryInset}
+                topInset={panelTopInset}
                 badge={
                   (session.state.userInputs?.length ?? 0) +
                     (session.state.approvals?.length ?? 0) || undefined

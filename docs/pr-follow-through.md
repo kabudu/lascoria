@@ -32,7 +32,9 @@ Goal: follow a task from opening its GitHub pull request through failed checks, 
 - [x] Hosted macOS, Windows and Linux passed on `5c6d58c`. Linux verified that the exact Bubblewrap loopback startup failure leaves capability evidence unobserved.
 - [x] Verify a real private GitHub PR in the packaged macOS app. A hosted check failed on the first head. Polling surfaced it with the inspector closed; selecting the Attention row opened Workspace, and the preview added the check and first head to the Muse draft. After a controlled fixture correction was committed and pushed through the supervisor, hosted CI passed on the second head, the card cue cleared and the first result remained in history. The disposable PR was closed.
 - [x] Visual QA of native Attention: one live SDK permission request was approved from the auto-expanded panel. Raw request metadata crowded the inline card, so the revised build shows the exact shell command and moves the full payload into a disclosure. Native inspection confirmed spacing, header-to-decision focus and inline rejection. The focused delivery and node-activity browser workflows passed on the visual fix.
-- [ ] Full local and hosted CI on the final visual fix.
+- [x] Full local and hosted CI passed on `1ae87d7` before layout polish.
+- [x] Workspace layout polish: suppress the duplicate blocking-task message in the bottom navigation strip. Keep floating panels clear of the measured strip and, on narrow windows, the expanded Canvas toolbar. Keep Sessions and Attention from covering one another in the shared left column. Seven focused browser workflows passed, including clearance at 820 × 600; native macOS visual QA confirmed the permission card, node and header remain visible and the navigation strip clears the inspector.
+- [ ] Full local and hosted CI on the layout polish.
 - [ ] Run comparative developer trials.
 
 
