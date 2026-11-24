@@ -13,7 +13,6 @@ fn root(row: &Value) -> Result<&Path> {
         row["managedWorkspace"].is_object(),
         "PR updates require an isolated task worktree"
     );
-    workspace::check_trusted_root(row)?;
     Ok(Path::new(
         row["workspace"].as_str().context("Worktree missing")?,
     ))
@@ -222,6 +221,7 @@ pub async fn needs_check(db: &SharedDb, row: &Value, folder: Option<&str>) -> Re
 }
 
 pub async fn preview(row: &Value, params: &Value) -> Result<Value> {
+    workspace::check_trusted_root(row)?;
     let root = root(row)?;
     guards(root).await?;
     clean(root).await?;
@@ -335,6 +335,7 @@ pub async fn status(db: &SharedDb, row: &Value, folder: Option<&str>) -> Result<
 }
 
 pub async fn apply(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> {
+    workspace::check_trusted_root(row)?;
     let root = root(row)?;
     let reviewed = &params["preview"];
     // Re-observe the GitHub identity and base. Preview did the bounded fetch already.
@@ -389,6 +390,7 @@ pub async fn apply(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> 
 }
 
 pub async fn change(db: &SharedDb, row: &Value, params: &Value, operation: &str) -> Result<Value> {
+    workspace::check_trusted_root(row)?;
     let root = root(row)?;
     let pending = async {
         guards(root).await?;
