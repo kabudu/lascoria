@@ -68,9 +68,7 @@ fn endpoints(db: &crate::db::Db, params: &Value) -> Result<Value> {
             .as_str()
             .context("Select a receiving task")?,
     )?;
-    let scoped = workspace::scoped(&row, source["folderId"].as_str())?;
-    workspace::check_trusted_root(&scoped)?;
-    Ok(scoped)
+    workspace::scoped(&row, source["folderId"].as_str())
 }
 
 fn no_cycle(edges: &[Value], source: &Value, target: &Value) -> bool {
@@ -163,6 +161,7 @@ async fn preview(db: &SharedDb, params: &Value) -> Result<Value> {
         };
         (row, record)
     };
+    workspace::check_trusted_root(&row)?;
     let root = Path::new(row["workspace"].as_str().context("Workspace required")?);
     let file_revision = workspace::content_fingerprint(root).await?;
     let (body, truncated) = match params["selection"]["kind"].as_str() {
@@ -447,4 +446,70 @@ pub async fn overlaps(db: &SharedDb) -> Result<Value> {
         matches.push(json!({"path":path,"owners":owners}));
     }
     Ok(json!({"matches":matches,"incomplete":incomplete,"observedAtMillis":crate::db::now_ms()}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Db;
+    use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn overlap_matches_shared_repository_identity_only_and_omits_archived_worktrees()
+    -> Result<()> {
+        let directory = dunce::canonicalize(std::env::temp_dir())?
+            .join(format!("lascoria-overlap-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory)?;
+        let result = async {
+            let database = Arc::new(Mutex::new(Db::open(&directory.join("state.sqlite"))?));
+            let repo = directory.join("repo");
+            let unrelated = directory.join("separate");
+            for source in [&repo, &unrelated] {
+                std::fs::create_dir(source)?;
+                workspace::git(source, &["init", "-q", "-b", "main"]).await?;
+                workspace::git(source, &["config", "user.name", "Fixture"]).await?;
+                workspace::git(source, &["config", "user.email", "fixture@example.invalid"])
+                    .await?;
+                std::fs::write(source.join("shared.txt"), "original\n")?;
+                workspace::git(source, &["add", "."]).await?;
+                workspace::git(source, &["commit", "-qm", "initial"]).await?;
+            }
+            for (id, source) in [("a", &repo), ("b", &repo), ("other", &unrelated)] {
+                let target = directory.join(id);
+                let managed = workspace::create(source, &target, id).await?;
+                std::fs::write(target.join("shared.txt"), format!("change {id}\n"))?;
+                database.lock().unwrap().put(
+                    "sessions",
+                    id,
+                    &json!({
+                        "id":id,"lifecycle":"connected","managedWorkspace":managed,
+                        "state":{"turns":[{"turnId":format!("turn-{id}")}]}
+                    }),
+                )?;
+            }
+            let observed = overlaps(&database).await?;
+            assert_eq!(observed["incomplete"], false);
+            assert_eq!(observed["matches"].as_array().unwrap().len(), 1);
+            assert_eq!(observed["matches"][0]["path"], "shared.txt");
+            let owners = observed["matches"][0]["owners"].as_array().unwrap();
+            assert_eq!(
+                owners
+                    .iter()
+                    .map(|owner| owner["sessionId"].as_str().unwrap())
+                    .collect::<BTreeSet<_>>(),
+                BTreeSet::from(["a", "b"])
+            );
+            {
+                let db = database.lock().unwrap();
+                let mut row = db.get("sessions", "b")?.unwrap();
+                row["lifecycle"] = json!("archived");
+                db.put("sessions", "b", &row)?;
+            }
+            assert_eq!(overlaps(&database).await?["matches"], json!([]));
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        let _ = std::fs::remove_dir_all(directory);
+        result
+    }
 }

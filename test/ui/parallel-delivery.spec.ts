@@ -16,6 +16,7 @@ test('three Muse tasks hand off evidence, detect overlap and deliver a recovered
   test.setTimeout(180_000);
   const root = await mkdtemp('/tmp/lsc-coord-');
   const repo = join(root, 'source');
+  const contributor = join(root, 'contributor');
   const remote = join(root, 'origin.git');
   const state = join(root, 'state');
   const gh = join(root, 'gh');
@@ -38,6 +39,27 @@ test('three Muse tasks hand off evidence, detect overlap and deliver a recovered
   await git(repo, 'remote', 'add', 'origin', 'https://github.com/fixture/parallel.git');
   await git(repo, 'config', 'remote.origin.pushurl', remote);
   await git(repo, 'push', '-q', 'origin', 'main');
+  const originalHead = await git(repo, 'rev-parse', 'HEAD');
+  await exec('git', ['clone', '-q', remote, contributor]);
+  await git(contributor, 'config', 'user.name', 'Fixture');
+  await git(contributor, 'config', 'user.email', 'fixture@example.invalid');
+  const realGit = (await exec('which', ['git'])).stdout.trim();
+  const gitBin = join(root, 'git');
+  // Preserve production remote identity checks. Only fetches to the fixture host are
+  // routed to its bare repository, and the Git worktree operations remain real.
+  await writeFile(
+    gitBin,
+    `#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = fetch ]; then
+    exec '${realGit}' -c 'url.${remote}.insteadOf=https://github.com/fixture/parallel.git' "$@"
+  fi
+done
+exec '${realGit}' "$@"
+`,
+  );
+  await chmod(gitBin, 0o755);
+
   await writeFile(prFile, '[]');
   await writeFile(
     gh,
@@ -54,6 +76,7 @@ esac
   const env = {
     ...process.env,
     ...model.env,
+    PATH: root + ':' + process.env.PATH,
     SCH_STATE_DIR: state,
     SCH_PROVIDER: 'meta',
     SCH_AUTH_MANAGED: '0',
@@ -140,7 +163,7 @@ esac
           headRefName: initialDelivery.branch,
           headRefOid: await git(b.worktree, 'rev-parse', 'HEAD'),
           baseRefName: 'main',
-          baseRefOid: await git(repo, 'rev-parse', 'HEAD'),
+          baseRefOid: await git(contributor, 'rev-parse', 'HEAD'),
           mergeStateStatus: mergedState,
           isCrossRepository: false,
           isDraft: false,
@@ -252,11 +275,13 @@ esac
     await expect(page.locator('.task-node[data-delivery="Waiting on CI"]')).toHaveCount(1);
 
     // The PR base moves while C retains its independent edit.
-    await writeFile(join(repo, 'sum.mjs'), change('a + b + 1'));
-    await git(repo, 'add', 'sum.mjs');
-    await git(repo, 'commit', '-qm', 'Change the same file on the PR base');
-    await git(repo, 'push', '-q', 'origin', 'main');
-    const baseHead = await git(repo, 'rev-parse', 'HEAD');
+    await writeFile(join(contributor, 'sum.mjs'), change('a + b + 1'));
+    await git(contributor, 'add', 'sum.mjs');
+    await git(contributor, 'commit', '-qm', 'Change the same file on the PR base');
+    await git(contributor, 'push', '-q', 'origin', 'main');
+    const baseHead = await git(contributor, 'rev-parse', 'HEAD');
+    await expect(git(b.worktree, 'cat-file', '-e', baseHead)).rejects.toThrow();
+    const trackingBefore = await git(b.worktree, 'rev-parse', 'origin/main');
     await writePr('DIRTY', 'pending');
     await delivery.getByRole('button', { name: 'Check again' }).click();
     const cue = page.locator('.task-node[data-delivery="PR has conflicts"]');
@@ -270,6 +295,8 @@ esac
     await delivery.getByRole('button', { name: 'Update from base…' }).click();
     const baseReview = delivery.getByRole('region', { name: 'Review base update' });
     await expect(baseReview).toContainText(baseHead.slice(0, 12));
+    await git(b.worktree, 'cat-file', '-e', baseHead);
+    expect(await git(b.worktree, 'rev-parse', 'origin/main')).toBe(trackingBefore);
     await expect(baseReview).toContainText('sum.mjs');
     const stale = await call('workspace/basePreview', { ...bScope, remote: 'origin', number: 17 });
     await writeFile(join(b.worktree, 'unrelated.local'), 'Keep this untracked edit.\n');
@@ -372,12 +399,12 @@ esac
     await writePr('CLEAN', 'success');
     await delivery.getByRole('button', { name: 'Check again' }).click();
     await expect(page.locator('.task-node[data-delivery="Ready for review"]')).toHaveCount(1);
-    expect(await git(repo, 'rev-parse', 'HEAD')).toBe(baseHead);
+    expect(await git(repo, 'rev-parse', 'HEAD')).toBe(originalHead);
     // A clean base update is still a reviewable merge, with no automatic commit.
-    await writeFile(join(repo, 'design.md'), 'An independent base update.\n');
-    await git(repo, 'add', 'design.md');
-    await git(repo, 'commit', '-qm', 'Advance the base without overlap');
-    await git(repo, 'push', '-q', 'origin', 'main');
+    await writeFile(join(contributor, 'design.md'), 'An independent base update.\n');
+    await git(contributor, 'add', 'design.md');
+    await git(contributor, 'commit', '-qm', 'Advance the base without overlap');
+    await git(contributor, 'push', '-q', 'origin', 'main');
     await writePr('BEHIND', 'success');
     await delivery.getByRole('button', { name: 'Check again' }).click();
     await basePanel.getByRole('button', { name: 'Update from base…' }).click();
