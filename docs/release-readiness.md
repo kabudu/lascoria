@@ -58,7 +58,7 @@ The sections below keep the detailed acceptance contract and dated evidence. Dat
 ### v0.5.0 parallel delivery
 
 - [x] Complete the four [parallel delivery workstreams](parallel-delivery.md) and the integrated three-session validation.
-- [ ] Review the final revision and record local and hosted validation before merge.
+- [x] Review the final revision and record local, native and hosted validation in [PR #38](https://github.com/kabudu/lascoria/pull/38) before merge.
 - [ ] Validate and publish signed distribution in a separately authorised release.
 
 ## Release blockers
