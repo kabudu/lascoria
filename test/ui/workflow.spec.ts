@@ -258,7 +258,11 @@ test('real Muse implementation, tests and review through React and the native Ru
       )
       .toBe('completed');
     await expect(
-      page.getByRole('button', { name: /Workflow child.*completed, Workflow step/ }).first(),
+      page
+        .getByRole('button', {
+          name: /Addition reviewer, completed, Workflow step of Addition review/,
+        })
+        .first(),
     ).toBeVisible();
     await expect(page.getByRole('region', { name: 'Sessions panel', exact: true })).toBeVisible();
     const inspectorWindow = page.getByRole('region', { name: 'Task inspector panel', exact: true });
@@ -470,7 +474,9 @@ test('real Muse implementation, tests and review through React and the native Ru
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(mapBounds.x + mapBounds.width);
     }
     await page
-      .getByRole('button', { name: /Workflow child.*completed, Workflow step/ })
+      .getByRole('button', {
+        name: /Addition reviewer, completed, Workflow step of Addition review/,
+      })
       .first()
       .click();
     await expect(
@@ -481,7 +487,7 @@ test('real Muse implementation, tests and review through React and the native Ru
     await expect(
       page
         .getByRole('region', { name: 'Attention' })
-        .getByRole('button', { name: /Inspect completion: Workflow child/ }),
+        .getByRole('button', { name: /Inspect completion: Addition reviewer/ }),
     ).toHaveCount(0);
     await page.getByRole('button', { name: 'Open owning turn', exact: true }).click();
 
