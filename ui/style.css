@@ -466,7 +466,7 @@ main {
   min-height: 114px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   align-items: flex-start;
   text-align: left;
   padding: 15px;
@@ -487,6 +487,7 @@ main {
   font-size: 0.86rem;
   font-weight: 500;
   overflow-wrap: anywhere;
+  flex-shrink: 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -674,7 +675,7 @@ main {
 }
 .revision-badge {
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
+  border-radius: 8px;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -683,7 +684,7 @@ main {
   font-size: 0.8rem;
 }
 .revision-badge.stale {
-  border-left-color: var(--error);
+  background: color-mix(in srgb, var(--error) 7%, var(--panel));
 }
 .revision-badge small {
   color: var(--muted);
@@ -1131,7 +1132,7 @@ main {
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: 0 3px 12px #0000000a;
-  padding: 12px 14px;
+  padding: 10px 14px;
 }
 .task-node:hover {
   box-shadow: 0 8px 22px #0000001a;
@@ -3216,8 +3217,8 @@ dialog.settings-dialog[open] {
 .efficiency-alert {
   margin: 0;
   padding: 0.45rem 0.6rem;
-  border-left: 3px solid var(--attention);
-  background: var(--panel);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--attention) 8%, var(--panel));
   font-size: 0.8rem;
 }
 .efficiency-alert button {
@@ -3903,9 +3904,8 @@ button.link {
   gap: 4px;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
   border-radius: 8px;
-  background: var(--panel);
+  background: var(--bg);
 }
 .delivery-step p {
   margin: 0;
@@ -3915,10 +3915,10 @@ button.link {
 .delivery-step.step-conflicts,
 .delivery-step.step-diverged,
 .delivery-step.step-unknown {
-  border-left-color: var(--attention);
+  background: color-mix(in srgb, var(--attention) 8%, var(--panel));
 }
 .delivery-step.step-delivered {
-  border-left-color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, var(--panel));
 }
 .delivery-facts {
   display: grid;
@@ -4069,4 +4069,196 @@ button.link {
 .attention-decision .attention-command {
   max-height: 8rem;
   overflow: auto;
+}
+
+.task-handoffs,
+.file-overlaps,
+.base-update {
+  border-top: 1px solid var(--line);
+  padding-block: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.base-update {
+  display: grid;
+  gap: 0.85rem;
+}
+.base-update > button {
+  justify-self: start;
+}
+.base-update-heading {
+  display: grid;
+  gap: 0.25rem;
+}
+.base-update-heading :is(h4, p),
+.base-update > p {
+  margin: 0;
+}
+.base-update-heading h4 {
+  font-size: 1.04rem;
+}
+.base-update-revision,
+.base-file-actions,
+.base-update-actions,
+.base-confirm-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+}
+.base-update-revision {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.base-update-revision code {
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  background: var(--raised);
+}
+.base-paths {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.base-paths li {
+  display: grid;
+  min-width: 0;
+  gap: 0.45rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.55rem;
+  background: var(--bg);
+}
+.base-paths li code {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.base-update-actions {
+  padding-top: 0.25rem;
+}
+.base-update .base-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+}
+.base-update .base-quiet:hover:not(:disabled) {
+  background: var(--accent-surface);
+}
+.base-file-actions button,
+.base-update-actions button {
+  font-size: 0.78rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.55rem;
+}
+.base-update-error {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 9%, var(--panel));
+  border-radius: 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.base-update .decision {
+  margin-block: 0;
+}
+.base-confirm-actions {
+  margin-top: 0.75rem;
+}
+.task-handoffs form {
+  display: grid;
+  gap: 0.8rem;
+  margin-block: 0.4rem 0.25rem;
+}
+.task-handoffs form label {
+  margin: 0;
+}
+.task-handoffs form > button {
+  justify-self: start;
+}
+.task-handoffs textarea {
+  width: 100%;
+  min-height: 5rem;
+}
+.handoff-review pre {
+  margin: 0;
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: var(--panel);
+}
+.handoff-list,
+.overlap-list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.handoff-list > li,
+.overlap-list > li {
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  background: var(--bg);
+}
+.handoff-list > li,
+.handoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+.handoff-endpoint {
+  min-width: 0;
+  flex: 1 1 10rem;
+  display: grid;
+  gap: 0.1rem;
+  font-size: 0.82rem;
+}
+.handoff-endpoint > span,
+.handoff-status {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.handoff-status.current {
+  color: var(--success);
+}
+.handoff-status.stale {
+  color: var(--attention);
+}
+.handoff-review {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+  margin-block: 0.65rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--bg);
+}
+.handoff-review h4 {
+  margin: 0;
+}
+.coordination-action {
+  font-size: 0.78rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.5rem;
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+}
+.coordination-action:hover:not(:disabled) {
+  background: var(--accent-surface);
+}
+.overlap-list ul {
+  padding: 0;
+  list-style: none;
+}
+.file-overlaps > p {
+  margin-bottom: 0.55rem;
+}
+.task-node[data-delivery] .node-activity-label,
+.task-node[data-file-overlap] .node-activity-label,
+.task-node[data-task-handoff] .node-activity-label {
+  color: var(--accent);
 }

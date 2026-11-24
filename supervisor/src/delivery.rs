@@ -549,7 +549,7 @@ async fn observe_pr(root: &Path, repo: &str, branch: &str, number: u64) -> Resul
             "--repo",
             repo,
             "--json",
-            "number,url,state,headRefName,headRefOid,isCrossRepository,reviewDecision,statusCheckRollup",
+            "number,url,state,headRefName,headRefOid,isCrossRepository,reviewDecision,statusCheckRollup,baseRefName,baseRefOid,mergeStateStatus,isDraft",
         ],
         None,
         QUERY,
@@ -607,7 +607,79 @@ async fn observe_pr(root: &Path, repo: &str, branch: &str, number: u64) -> Resul
             Some("REVIEW_REQUIRED") => "Review required",
             _ => "No review decision reported",
         },
-        "checks": checks_preview, "checkCount": checks.len(), "observedAtMillis": now_ms()
+        "checks": checks_preview, "checkCount": checks.len(), "observedAtMillis": now_ms(),
+        "baseBranch": pr["baseRefName"], "baseHead": pr["baseRefOid"],
+        "mergeState": pr["mergeStateStatus"], "draft": pr["isDraft"]
+    }))
+}
+
+pub async fn base_target(row: &Value, params: &Value, fetch: bool) -> Result<Value> {
+    let local = local(row, params["remote"].as_str()).await?;
+    let remote = local
+        .remote
+        .map(|index| &local.remotes[index])
+        .context("Choose the pull request's fetch remote")?;
+    let repo = github_repository(&remote.fetch)
+        .context("The source remote must fetch from the pull request's GitHub repository")?;
+    if let Some(push_repo) = github_repository(&remote.url) {
+        ensure!(
+            push_repo.eq_ignore_ascii_case(&repo),
+            "The PR and base branch use different repositories"
+        );
+    }
+    let number = params["number"]
+        .as_u64()
+        .filter(|number| *number > 0)
+        .context("Choose an observed pull request")?;
+    let _permit = REMOTE_QUERIES
+        .try_acquire()
+        .context("GitHub is busy; try again")?;
+    let observed = observe_pr(&local.root, &repo, &local.branch, number).await?;
+    ensure!(
+        observed["state"] == "OPEN" && observed["head"] == local.head,
+        "The current pull request head must match this task branch"
+    );
+    let base = observed["baseBranch"]
+        .as_str()
+        .context("GitHub did not report the base branch")?;
+    let base_head = observed["baseHead"]
+        .as_str()
+        .filter(|head| head.len() == 40 && head.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .context("GitHub did not report a valid base revision")?;
+    ensure!(
+        base.len() <= 240 && !base.starts_with('-'),
+        "Invalid PR base branch"
+    );
+    let base_ref = format!("refs/heads/{base}");
+    read(&local.root, &["check-ref-format", &base_ref]).await?;
+    if fetch && !has_commit(&local.root, base_head).await {
+        network(
+            &local.root,
+            &[
+                "-c",
+                "fetch.recurseSubmodules=false",
+                "-c",
+                "maintenance.auto=false",
+                "fetch",
+                "--no-tags",
+                "--no-write-fetch-head",
+                "--no-recurse-submodules",
+                "--",
+                &remote.fetch,
+                &base_ref,
+            ],
+            QUERY,
+        )
+        .await?;
+    }
+    ensure!(
+        has_commit(&local.root, base_head).await,
+        "The base moved during fetch. Refresh the preview."
+    );
+    Ok(json!({
+        "head":local.head,"branch":local.branch,"baseBranch":base,"baseHead":base_head,
+        "number":number,"remote":remote.name,"repository":repo,
+        "revision":revision(&local.root, &local.branch, &local.head, &remote.name, &remote.url, &remote.fetch, &remote.receive_pack)
     }))
 }
 
@@ -888,6 +960,8 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
         "clean": staged + unstaged + untracked + conflicts == 0,
         "filesFingerprint": files,
         "validation": validation(db, row, folder, files.as_deref())?,
+        "baseUpdateNeedsCheck": crate::base_update::needs_check(db, row, folder).await?,
+        "basePending": crate::base_update::status(db, row, folder).await?,
         "remotes": local.remotes.iter().map(|r| json!({"name": r.name, "url": redact(&r.url), "host": host(&r.url)})).collect::<Vec<_>>(),
         "remote": remote.map(|r| json!({"name": r.name, "url": redact(&r.url), "host": host(&r.url)})),
         "trackingHead": tracking,

@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { request } from './api';
 import { Staging } from './Staging';
 import { Delivery } from './Delivery';
+import {
+  FileOverlaps,
+  TaskHandoffs,
+  type HandoffTarget,
+  type OverlapScan,
+  type TaskRef,
+} from './TaskHandoffs';
 import type { Json, SessionRow } from './types';
 
 /**
@@ -35,6 +42,7 @@ export function Workspace({
   onPrObservation,
   revealPullRequest,
   linkedTaskId,
+  parallel,
 }: {
   session: SessionRow;
   commands: Json[];
@@ -44,6 +52,17 @@ export function Workspace({
   initialFolderId?: string;
   revealPullRequest?: boolean;
   linkedTaskId?: string;
+  parallel?: {
+    task?: TaskRef;
+    targets: HandoffTarget[];
+    overlaps?: OverlapScan;
+    focus?: 'delivery' | 'handoffs' | 'overlap';
+    observation: (folderId?: string) => Json;
+    append: (task: TaskRef, text: string) => void;
+    jump: (task: TaskRef) => void;
+    refreshOverlap: () => void;
+    refreshHandoffs: () => void;
+  };
   onPrObservation: (folderId: string | undefined, value: Json) => void;
   /** D2: open a repository-relative path in the user's editor. */
   openInEditor?: (path: string, folderId?: string) => void;
@@ -184,6 +203,7 @@ export function Workspace({
       </section>
       {!removed && !archived && managed && (
         <Delivery
+          key={folderId ?? session.id}
           sessionId={session.id}
           folderId={folderId}
           ready={ready}
@@ -209,8 +229,36 @@ export function Workspace({
           draftFeedback={(text) => attach(`\n\n${text}`)}
           revealPullRequest={revealPullRequest}
           linkedTaskId={linkedTaskId}
+          parallelDelivery={!!parallel}
+          initialObservation={parallel?.observation(folderId)}
+          openInEditor={openInEditor ? (path) => openInEditor(path, folderId) : undefined}
           onObservation={(value) => onPrObservation(folderId, value)}
         />
+      )}
+      {!removed && !archived && parallel && (
+        <>
+          {parallel.task && (
+            <TaskHandoffs
+              key={`${parallel.task.turnId}:${folderId ?? ''}`}
+              source={{ ...parallel.task, folderId }}
+              targets={parallel.targets}
+              reveal={parallel.focus === 'handoffs'}
+              append={parallel.append}
+              changed={parallel.refreshHandoffs}
+            />
+          )}
+          {managed && (
+            <FileOverlaps
+              sessionId={session.id}
+              folderId={folderId}
+              scan={parallel.overlaps}
+              targets={parallel.targets}
+              reveal={parallel.focus === 'overlap'}
+              jump={parallel.jump}
+              refresh={parallel.refreshOverlap}
+            />
+          )}
+        </>
       )}
       {!removed && !archived && (
         <Staging

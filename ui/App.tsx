@@ -27,6 +27,14 @@ import {
 import { Account } from './Account';
 import type { AccountStatus } from './Account';
 import { Workspace } from './Workspace';
+import { deliveryCue } from './Delivery';
+import {
+  taskKey,
+  type HandoffLink,
+  type HandoffTarget,
+  type OverlapScan,
+  type TaskRef,
+} from './TaskHandoffs';
 import { ArchiveSession } from './ArchiveSession';
 import { SessionRelay } from './SessionRelay';
 import { SessionConnections } from './SessionConnections';
@@ -34,7 +42,7 @@ import { RenameSession } from './RenameSession';
 import { SessionSettings } from './SessionSettings';
 import { Permissions, PermissionProfileField } from './Permissions';
 import { permissionSummary } from './permissionPresentation';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { recordTiming, timingSnapshot } from './diagnostics';
 import { useCanvasGestures } from './useCanvasGestures';
 import { useConstellation } from './useConstellation';
@@ -588,47 +596,156 @@ export function App() {
       clearTimeout(timer);
     };
   }, [connected, status.pid]);
+  const parallelDelivery = status.features?.includes('parallelDelivery') ?? false;
+  const [overlaps, setOverlaps] = useState<OverlapScan>();
+  const overlapInFlight = useRef(false);
+  const overlapEpoch = useRef(0);
+  const [handoffLinks, setHandoffLinks] = useState<HandoffLink[]>([]);
+  const handoffEpoch = useRef(0);
+  const hasWorktrees = status.sessions.some(
+    (row) =>
+      row.lifecycle !== 'archived' &&
+      !row.workspaceDiscarded &&
+      (row.managedWorkspace || row.managedWorkspaces?.length),
+  );
+  async function refreshOverlap() {
+    if (!parallelDelivery || overlapInFlight.current || !connected || !hasWorktrees) return;
+    const epoch = overlapEpoch.current;
+    overlapInFlight.current = true;
+    try {
+      const value = await request<OverlapScan>('workspace/overlap');
+      if (epoch === overlapEpoch.current) setOverlaps(value);
+    } catch {
+      if (epoch === overlapEpoch.current) setOverlaps({ matches: [], incomplete: true });
+    } finally {
+      overlapInFlight.current = false;
+    }
+  }
+  async function refreshHandoffLinks() {
+    if (!parallelDelivery || !connected) return;
+    const epoch = ++handoffEpoch.current;
+    try {
+      const value = await request<{ links: HandoffLink[] }>('handoff/links');
+      if (epoch === handoffEpoch.current) setHandoffLinks(value.links);
+    } catch {
+      if (epoch === handoffEpoch.current) setHandoffLinks([]);
+    }
+  }
+  useEffect(() => {
+    if (!parallelDelivery || !connected || !hasWorktrees) return;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void refreshOverlap();
+    };
+    refresh();
+    const timer = setInterval(refresh, 20_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      overlapEpoch.current++;
+      setOverlaps(undefined);
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [parallelDelivery, connected, hasWorktrees, status.pid]);
+  useEffect(() => {
+    void refreshHandoffLinks();
+    return () => {
+      handoffEpoch.current++;
+      setHandoffLinks([]);
+    };
+  }, [parallelDelivery, connected, status.pid]);
+  const taskLabels = prefs.labels;
+  const coordinationTasks = useMemo<HandoffTarget[]>(
+    () =>
+      parallelDelivery
+        ? status.sessions
+            .filter((row) => row.lifecycle !== 'archived')
+            .slice(-32)
+            .flatMap((row) =>
+              tasks(row, { labels: taskLabels })
+                .filter((node) => !node.item && node.turnId)
+                .slice(-12)
+                .map((node) => ({
+                  sessionId: row.id,
+                  turnId: node.turnId!,
+                  label: `${sessionName(row)} · ${node.label}`,
+                })),
+            )
+            .slice(-96)
+        : [],
+    [parallelDelivery, status.sessions, taskLabels],
+  );
+  const handoffTaskTargets = new Map<string, TaskRef>();
+  for (const link of handoffLinks) {
+    handoffTaskTargets.set(taskKey(link.source), link.source);
+    handoffTaskTargets.set(taskKey(link.target), link.target);
+  }
+  const overlapTaskTargets = new Map<string, TaskRef>();
+  for (const match of overlaps?.matches ?? [])
+    for (const owner of match.owners) {
+      if (owner.turnId) {
+        const target = {
+          sessionId: owner.sessionId,
+          turnId: owner.turnId,
+          folderId: owner.folderId ?? undefined,
+        };
+        overlapTaskTargets.set(taskKey(target), target);
+      }
+    }
   const [attentionWorkspace, setAttentionWorkspace] = useState<
-    { sessionId: string; folderId?: string; jump: number } | undefined
+    | {
+        sessionId: string;
+        folderId?: string;
+        jump: number;
+        focus?: 'delivery' | 'handoffs' | 'overlap';
+      }
+    | undefined
   >();
   const seenPullRequests = new Set<string>();
-  const prAttention = prObservations.flatMap(({ sessionId, folderId, value }) => {
-    const row = status.sessions.find((candidate) => candidate.id === sessionId);
-    if (!row || row.lifecycle === 'archived' || value.state !== 'OPEN') return [];
-    if (folderId && !row.projectContext?.folders.some((folder) => folder.id === folderId))
-      return [];
-    const checkedFailure = value.checks.some((check: Json) => check.state === 'Failed');
-    if (!checkedFailure && value.review !== 'Changes requested') return [];
-    const id = `github:${value.url}:${value.head}`;
-    if (seenPullRequests.has(id)) return [];
-    const sessionTasks = tasks(row, prefs);
-    const receipt = status.commands.find(
-      (command) =>
-        command.operation === 'workspace/pullRequest' &&
-        command.status === 'applied' &&
-        command.sessionId === sessionId &&
-        command.params?.folderId === folderId &&
-        command.result?.pullRequest?.url === value.url,
-    );
-    const linkedTask = sessionTasks.find(
-      (node) => !node.item && node.id === receipt?.params?.linkedTaskId,
-    )?.id;
-    const target = linkedTask ?? sessionTasks.findLast((node) => !node.item)?.id;
-    if (!target) return [];
-    seenPullRequests.add(id);
-    return [
-      {
-        id,
-        sessionId,
-        folderId,
-        target,
-        linkedTask,
-        kind: 'failure',
-        pr: true,
-        label: `PR #${value.number} · ${checkedFailure ? 'Checks failed' : 'Changes requested'}`,
-      },
-    ];
-  });
+  const deliveryTargets = new Map<
+    string,
+    { label: string; sessionId: string; folderId?: string }
+  >();
+  const prAttention = (connected ? prObservations : []).flatMap(
+    ({ sessionId, folderId, value }) => {
+      const row = status.sessions.find((candidate) => candidate.id === sessionId);
+      if (!row || row.lifecycle === 'archived' || value.state !== 'OPEN') return [];
+      if (folderId && !row.projectContext?.folders.some((folder) => folder.id === folderId))
+        return [];
+      const cue = deliveryCue(value);
+      if (!cue) return [];
+      const id = `github:${value.url}:${value.head}`;
+      if (seenPullRequests.has(id)) return [];
+      const sessionTasks = tasks(row, prefs);
+      const receipt = status.commands.find(
+        (command) =>
+          command.operation === 'workspace/pullRequest' &&
+          command.status === 'applied' &&
+          command.sessionId === sessionId &&
+          command.params?.folderId === folderId &&
+          command.result?.pullRequest?.url === value.url,
+      );
+      const linkedTask = sessionTasks.find(
+        (node) => !node.item && node.id === receipt?.params?.linkedTaskId,
+      )?.id;
+      const target = linkedTask ?? sessionTasks.findLast((node) => !node.item)?.id;
+      if (!target) return [];
+      if (linkedTask) deliveryTargets.set(linkedTask, { label: cue.label, sessionId, folderId });
+      seenPullRequests.add(id);
+      if (!cue.attention) return [];
+      return [
+        {
+          id,
+          sessionId,
+          folderId,
+          target,
+          linkedTask,
+          kind: 'failure',
+          pr: true,
+          label: `PR #${value.number} · ${cue.label}`,
+        },
+      ];
+    },
+  );
   const prTaskTargets = new Set(
     prAttention.flatMap(({ linkedTask }) => (linkedTask ? [linkedTask] : [])),
   );
@@ -1412,6 +1529,43 @@ export function App() {
     setTab('transcript');
     setRevealTarget(node.id);
   }
+  function jumpWorkspace(
+    target: { sessionId: string; turnId?: string; folderId?: string },
+    focus: 'delivery' | 'handoffs' | 'overlap',
+  ) {
+    const row = status.sessions.find((row) => row.id === target.sessionId);
+    if (!row) return;
+    const node = tasks(row, prefs).find((node) => !node.item && node.turnId === target.turnId);
+    if (node) showTask(node);
+    setAttentionWorkspace((previous) => ({
+      sessionId: target.sessionId,
+      folderId: target.folderId,
+      focus,
+      jump: (previous?.jump ?? 0) + 1,
+    }));
+    setTab('workspace');
+    openInspector();
+    requestAnimationFrame(() => document.getElementById('tab-workspace')?.focus());
+  }
+  function appendHandoff(target: TaskRef, value: string) {
+    if ((drafts[target.sessionId] ?? '').length + value.length > 16000) {
+      setError('This handoff would exceed the receiving draft limit.');
+      return;
+    }
+    const row = status.sessions.find(
+      (row) => row.id === target.sessionId && row.lifecycle !== 'archived',
+    );
+    const node =
+      row && tasks(row, prefs).find((node) => !node.item && node.turnId === target.turnId);
+    if (!node) return;
+    setDrafts((previous) => ({
+      ...previous,
+      [target.sessionId]: (previous[target.sessionId] ?? '') + value,
+    }));
+    showTask(node);
+    openInspector();
+    setNotice('Added to the receiving draft. Review it before sending to Muse.');
+  }
   function attentionTab(entry: (typeof queue)[number]) {
     if ('pr' in entry) {
       setAttentionWorkspace((previous) => ({
@@ -1419,6 +1573,7 @@ export function App() {
         folderId:
           'folderId' in entry && typeof entry.folderId === 'string' ? entry.folderId : undefined,
         jump: (previous?.jump ?? 0) + 1,
+        focus: 'delivery',
       }));
       return 'workspace' as const;
     }
@@ -2770,6 +2925,12 @@ export function App() {
                         </svg>
                         {visible.map((node, index) => {
                           const p = position(node, index);
+                          const delivery = deliveryTargets.get(node.id);
+                          const overlap = overlapTaskTargets.get(node.id);
+                          const handoff = handoffTaskTargets.get(node.id);
+                          const cue =
+                            delivery?.label ??
+                            (overlap ? 'File overlap' : handoff ? 'Task handoff' : undefined);
                           const blocker = blockingTargets.get(node.id);
                           const activity = blocker
                             ? { label: blocker, kind: 'waiting', busy: false }
@@ -2782,6 +2943,9 @@ export function App() {
                               data-activity={activity.kind}
                               data-needs-input={blockingTargets.has(node.id) || undefined}
                               data-pr-review={prTaskTargets.has(node.id) || undefined}
+                              data-delivery={delivery?.label}
+                              data-file-overlap={!!overlap || undefined}
+                              data-task-handoff={!!handoff || undefined}
                               style={{ left: p.x, top: p.y }}
                               title="Drag to arrange; Shift+arrow keys move; arrow keys navigate; F folds subtasks"
                               onPointerDown={(event) => {
@@ -2825,6 +2989,14 @@ export function App() {
                                   suppressNodeClick.current = null;
                                   return;
                                 }
+                                if (blocker) return select(node);
+                                if (delivery)
+                                  return jumpWorkspace(
+                                    { ...delivery, turnId: node.turnId ?? undefined },
+                                    'delivery',
+                                  );
+                                if (overlap) return jumpWorkspace(overlap, 'overlap');
+                                if (handoff) return jumpWorkspace(handoff, 'handoffs');
                                 select(node);
                               }}
                               onKeyDown={(e) => {
@@ -2876,7 +3048,7 @@ export function App() {
                                 }
                               }}
                               id={`node-${node.id}`}
-                              aria-label={`${node.label}, ${node.status}, ${taskOwner(node, nodes)}, ${activity.label}${prTaskTargets.has(node.id) ? ', GitHub PR needs review' : ''}${prefs.collapsedGroups?.includes(node.id) ? ', subtasks folded' : ''}`}
+                              aria-label={`${node.label}, ${node.status}, ${taskOwner(node, nodes)}, ${activity.label}${cue ? `, ${cue}` : ''}${prefs.collapsedGroups?.includes(node.id) ? ', subtasks folded' : ''}`}
                             >
                               <small>
                                 <span className="node-symbol" aria-hidden="true">
@@ -2903,7 +3075,7 @@ export function App() {
                                 <i className={`status-dot ${activity.kind}`} aria-hidden="true" />
                                 <span className="node-activity-label" title={activity.label}>
                                   {activity.label}
-                                  {prTaskTargets.has(node.id) && ' · PR needs review'}
+                                  {cue && !blocker && ` · ${cue}`}
                                 </span>
                               </span>
                               {activity.busy && (
@@ -3098,7 +3270,35 @@ export function App() {
                             ? attentionWorkspace.folderId
                             : undefined
                         }
-                        revealPullRequest={attentionWorkspace?.sessionId === session.id}
+                        revealPullRequest={
+                          attentionWorkspace?.sessionId === session.id &&
+                          attentionWorkspace.focus === 'delivery'
+                        }
+                        parallel={
+                          parallelDelivery
+                            ? {
+                                task:
+                                  task && !task.item && task.turnId
+                                    ? { sessionId: session.id, turnId: task.turnId }
+                                    : undefined,
+                                targets: coordinationTasks,
+                                overlaps,
+                                focus:
+                                  attentionWorkspace?.sessionId === session.id
+                                    ? attentionWorkspace.focus
+                                    : undefined,
+                                observation: (folderId) =>
+                                  prObservations.find(
+                                    (item) =>
+                                      item.sessionId === session.id && item.folderId === folderId,
+                                  )?.value,
+                                append: appendHandoff,
+                                jump: (target) => jumpWorkspace(target, 'overlap'),
+                                refreshOverlap: () => void refreshOverlap(),
+                                refreshHandoffs: () => void refreshHandoffLinks(),
+                              }
+                            : undefined
+                        }
                         onPrObservation={(folderId, value) => {
                           setPrObservations((previous) => {
                             const rest = previous.filter(

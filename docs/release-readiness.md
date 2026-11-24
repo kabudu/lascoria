@@ -55,6 +55,12 @@ Branches, merge/conflict help and hooks/signing (after D1); an embedded editor a
 
 The sections below keep the detailed acceptance contract and dated evidence. Dated notes describe the state on their date.
 
+### v0.5.0 parallel delivery
+
+- [x] Complete the four [parallel delivery workstreams](parallel-delivery.md) and the integrated three-session validation.
+- [ ] Review the final revision and record local and hosted validation before merge.
+- [ ] Validate and publish signed distribution in a separately authorised release.
+
 ## Release blockers
 
 ### R1 - Detect and install Muse during onboarding

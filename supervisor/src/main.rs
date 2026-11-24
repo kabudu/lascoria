@@ -1,5 +1,7 @@
 mod attachments;
 mod auth;
+mod base_update;
+mod coordination;
 mod credentials;
 mod data;
 mod db;
@@ -58,6 +60,7 @@ const FEATURES: &[&str] = &[
     "decisionTriage",
     "decisionTool",
     "idleStop",
+    "parallelDelivery",
 ];
 
 use anyhow::{Context, Result, bail, ensure};
@@ -529,6 +532,15 @@ impl Actor {
             if operation == "workspace/changes" {
                 return staging::changes(&row).await;
             }
+            if operation == "workspace/baseStatus" {
+                return base_update::status(&self.db, &row, params["folderId"].as_str()).await;
+            }
+            if operation == "workspace/basePreview" {
+                workspace::idle(&self.db, &row)?;
+                return timeout(Duration::from_secs(50), base_update::preview(&row, &params))
+                    .await
+                    .context("Preview timed out; refresh and try again")?;
+            }
             if operation == "workspace/reusable" {
                 return workspace::reusable(&self.db, &row, &params).await;
             }
@@ -540,6 +552,10 @@ impl Actor {
                     "workspace/discard",
                     "workspace/push",
                     "workspace/pullRequest",
+                    "workspace/baseApply",
+                    "workspace/baseStage",
+                    "workspace/baseFinish",
+                    "workspace/baseAbort",
                     "session/archive"
                 ]
                 .contains(&operation),
@@ -580,8 +596,41 @@ impl Actor {
                     "Wait for the current push or pull request to finish"
                 );
             }
+            if [
+                "workspace/stage",
+                "workspace/commit",
+                "workspace/push",
+                "workspace/pullRequest",
+            ]
+            .contains(&operation)
+            {
+                ensure!(
+                    !base_update::has_merge(&row).await?,
+                    "Finish or abort the pending merge before delivery"
+                );
+            }
+            if operation == "workspace/push" {
+                ensure!(
+                    !base_update::needs_check(&self.db, &row, params["folderId"].as_str()).await?,
+                    "Run fresh passing checks on this revision before pushing the base update"
+                );
+            }
+            if operation.starts_with("workspace/base") {
+                ensure!(
+                    !delivery::running(&self.db, session)?,
+                    "Wait for the current delivery action to finish"
+                );
+            }
             if let Some(previous) = workspace::begin(&self.db, id, operation, &params, session)? {
                 return Ok(previous);
+            }
+            if operation == "workspace/baseApply" {
+                let result = base_update::apply(&self.db, &row, &params, id).await;
+                return workspace::finish(&self.db, id, result);
+            }
+            if operation.starts_with("workspace/base") {
+                let result = base_update::change(&self.db, &row, &params, operation).await;
+                return workspace::finish(&self.db, id, result);
             }
             if operation == "workspace/run" {
                 return match workspace::run(self.db.clone(), row, id.to_owned(), params).await {
@@ -1321,6 +1370,16 @@ async fn connection(
         }
         if request["operation"] == "session/rename" {
             return session_names::rename(&db.lock().unwrap(), &request["params"], request["id"].as_str().context("Request ID required")?);
+        }
+        if request["operation"] == "workspace/overlap" {
+            return timeout(Duration::from_secs(15), coordination::overlaps(&db)).await
+                .context("The overlap observation timed out")?;
+        }
+        if request["operation"].as_str().is_some_and(|op| op.starts_with("handoff/")) {
+            return timeout(Duration::from_secs(28), coordination::handoff(
+                &db, request["operation"].as_str().unwrap(), &request["params"],
+                request["id"].as_str().context("Request ID required")?,
+            )).await.context("The handoff could not be checked in time")?;
         }
         // Delivery status may ask a remote and GitHub (bounded); it must not hold the command lane.
         if request["operation"] == "workspace/delivery" {

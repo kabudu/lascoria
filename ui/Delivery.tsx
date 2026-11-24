@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { request } from './api';
+import { BaseUpdate } from './BaseUpdate';
 import type { Json } from './types';
 
 /** The next delivery step for one isolated worktree, derived only from supervisor state. */
@@ -60,6 +61,13 @@ export function openPullRequest(d: Json) {
 }
 
 export function deliveryStep(d: Json): Step {
+  if (d.basePending?.owned)
+    return {
+      kind: 'basePending',
+      headline: d.basePending.conflicts?.length
+        ? 'Resolve the base update conflicts'
+        : 'Review the pending base update',
+    };
   const last = [d.last?.push, d.last?.pullRequest].filter(Boolean);
   const sending = last.find((c: Json) => c.status === 'running');
   if (d.changes.conflicts)
@@ -67,6 +75,12 @@ export function deliveryStep(d: Json): Step {
       kind: 'conflicts',
       headline: 'Resolve merge conflicts first',
       detail: `${plural(d.changes.conflicts, 'file')} with conflicts. Resolve them with your Git client; delivery is paused.`,
+    };
+  if (d.basePending)
+    return {
+      kind: 'basePending',
+      headline: 'Finish the pending merge first',
+      detail: 'Finish or abort this merge with your Git client.',
     };
   if (sending)
     return {
@@ -122,6 +136,15 @@ export function deliveryStep(d: Json): Step {
       label: 'Commit staged changes…',
     };
   }
+  if (d.baseUpdateNeedsCheck)
+    return {
+      kind: 'check',
+      headline: 'Check this base update',
+      detail: 'Run fresh passing checks on this revision before pushing.',
+      ...(d.validation.run?.command
+        ? { action: 'runTests' as const, label: `Run ${d.validation.run.command}` }
+        : { action: 'chooseTest' as const, label: 'Choose a test command' }),
+    };
   if (!d.branchCommits.total) return { kind: 'empty', headline: 'No changes to deliver yet' };
   if (!d.remote)
     return d.remotes.length
@@ -187,6 +210,28 @@ export function deliveryStep(d: Json): Step {
   };
 }
 
+export function deliveryCue(observation: Json) {
+  if (observation?.state !== 'OPEN') return;
+  if (observation.mergeState === 'DIRTY') return { label: 'PR has conflicts', attention: true };
+  if (observation.checks?.some((check: Json) => check.state === 'Failed'))
+    return { label: 'Checks failed', attention: true };
+  if (observation.review === 'Changes requested')
+    return { label: 'Changes requested', attention: true };
+  if (observation.mergeState === 'BEHIND') return { label: 'PR behind base', attention: true };
+  if (observation.checks?.some((check: Json) => check.state === 'Pending'))
+    return { label: 'Waiting on CI', attention: false };
+  if (!observation.draft && observation.review === 'Review required')
+    return { label: 'Ready for review', attention: false };
+  if (
+    !observation.draft &&
+    observation.checkCount > 0 &&
+    observation.checkCount === observation.checks?.length &&
+    observation.checks.every((check: Json) => check.state === 'Passed') &&
+    observation.review !== 'Approved'
+  )
+    return { label: 'Ready for review', attention: false };
+}
+
 function Commits({ list }: { list: Json }) {
   return (
     <ol className="delivery-commits" aria-label="Commits">
@@ -223,6 +268,9 @@ export function Delivery({
   onObservation,
   revealPullRequest,
   linkedTaskId,
+  parallelDelivery,
+  openInEditor,
+  initialObservation,
 }: {
   sessionId: string;
   folderId?: string;
@@ -239,11 +287,14 @@ export function Delivery({
   draftFeedback: (text: string) => void;
   revealPullRequest?: boolean;
   linkedTaskId?: string;
+  parallelDelivery?: boolean;
+  openInEditor?: (path: string) => void;
+  initialObservation?: Json;
   onObservation: (value: Json) => void;
 }) {
   const [d, setD] = useState<Json>(null);
   const [error, setError] = useState('');
-  const [observation, setObservation] = useState<Json>(null);
+  const [observation, setObservation] = useState<Json>(initialObservation ?? null);
   const [feedback, setFeedback] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [confirm, setConfirm] = useState<'push' | 'pullRequest' | null>(null);
@@ -358,6 +409,14 @@ export function Delivery({
   const needsIdle = ['runTests', 'stageAll', 'commit', 'push', 'pullRequest'];
   const blocked = needsIdle.includes(step.action ?? '') && (!ready || busy);
   const openPr = openPullRequest(d);
+  const offersBase =
+    parallelDelivery &&
+    !d.basePending &&
+    d.clean &&
+    observation?.state === 'OPEN' &&
+    observation.head === d.head &&
+    observation.baseHead &&
+    ['BEHIND', 'DIRTY'].includes(observation.mergeState);
 
   async function loadComments() {
     const current = ++generation.current;
@@ -452,18 +511,37 @@ export function Delivery({
           Check again
         </button>
       </div>
-      <div className={`delivery-step step-${step.kind}`} role="status" aria-live="polite">
-        <strong>{step.headline}</strong>
-        {step.detail && <p>{step.detail}</p>}
-      </div>
+      {!(parallelDelivery && d.basePending?.owned) && (
+        <div className={`delivery-step step-${step.kind}`} role="status" aria-live="polite">
+          <strong>{step.headline}</strong>
+          {step.detail && <p>{step.detail}</p>}
+        </div>
+      )}
       {error && <p role="alert">{error}</p>}
       {refused && !confirm && <p role="alert">{refused}</p>}
-      {step.action && !confirm && (
+      {step.action && !confirm && !offersBase && (
         <div className="row">
           <button className="primary" disabled={blocked} onClick={() => void act()}>
             {step.label}
           </button>
         </div>
+      )}
+      {parallelDelivery && (!d.basePending || d.basePending.owned) && (
+        <BaseUpdate
+          sessionId={sessionId}
+          folderId={folderId}
+          remote={d.remote?.name}
+          observation={offersBase ? observation : null}
+          pending={d.basePending}
+          ready={ready && !busy}
+          mutate={mutate}
+          refresh={async () => {
+            await load(false);
+            changed();
+          }}
+          openInEditor={openInEditor}
+          draft={draftFeedback}
+        />
       )}
       {blocked && !busy && (
         <small>Wait for a current, idle Muse session and any running test command.</small>
