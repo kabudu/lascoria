@@ -69,6 +69,7 @@ test('node activity is visible while working, quiet when waiting or stale, and r
     clamp: getComputedStyle(e).webkitLineClamp,
   }));
   expect(titleBounds.clamp).toBe('2');
+  expect(titleBounds.height).toBeGreaterThanOrEqual(titleBounds.lineHeight * 2 - 1);
   expect(titleBounds.height).toBeLessThanOrEqual(titleBounds.lineHeight * 2 + 1);
 
   expect(await rail.locator('span').evaluate((e) => getComputedStyle(e).animationName)).toBe(

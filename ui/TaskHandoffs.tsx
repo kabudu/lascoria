@@ -126,7 +126,7 @@ export function TaskHandoffs({
     >
       <summary>Task handoffs{mine.length ? ` (${mine.length})` : ''}</summary>
       {mine.length > 0 && (
-        <ul className="handoff-list" aria-label="Saved task handoffs">
+        <ul className="handoff-list" aria-label="Saved task handoffs" role="list">
           {mine.map((link) => {
             const incoming = taskKey(link.target) === current;
             return (
@@ -357,7 +357,7 @@ export function FileOverlaps({
       )}
       {scan?.incomplete && <p className="muted">Some open worktrees could not be compared.</p>}
       {mine.length > 0 && (
-        <ul className="overlap-list" aria-label="Overlapping files">
+        <ul className="overlap-list" aria-label="Overlapping files" role="list">
           {mine.map((item) => (
             <li key={item.path}>
               <code>{item.path}</code>

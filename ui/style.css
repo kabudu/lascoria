@@ -466,7 +466,7 @@ main {
   min-height: 114px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   align-items: flex-start;
   text-align: left;
   padding: 15px;
@@ -487,6 +487,7 @@ main {
   font-size: 0.86rem;
   font-weight: 500;
   overflow-wrap: anywhere;
+  flex-shrink: 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -1131,7 +1132,7 @@ main {
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: 0 3px 12px #0000000a;
-  padding: 12px 14px;
+  padding: 10px 14px;
 }
 .task-node:hover {
   box-shadow: 0 8px 22px #0000001a;
