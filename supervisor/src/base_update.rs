@@ -1,5 +1,10 @@
 //! A PR base update stays inside its isolated task worktree and uses Git's merge metadata.
-use crate::{delivery, git, staging::Rejected, worker::SharedDb, workspace};
+use crate::{
+    delivery, git,
+    staging::{self, Rejected},
+    worker::SharedDb,
+    workspace,
+};
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -24,7 +29,7 @@ async fn read(root: &Path, args: &[&str]) -> Result<String> {
     )?)
 }
 
-async fn run(root: &Path, args: &[&str]) -> Result<()> {
+async fn run(root: &Path, args: &[&str], index: Option<&Path>) -> Result<()> {
     let mut command = vec![
         "-c",
         "rerere.enabled=false",
@@ -38,7 +43,16 @@ async fn run(root: &Path, args: &[&str]) -> Result<()> {
         "submodule.recurse=false",
     ];
     command.extend_from_slice(args);
-    git::run(root, &command, Duration::from_secs(12), false).await?;
+    git::run_with(
+        root,
+        &command,
+        Duration::from_secs(12),
+        git::Options {
+            index_file: index,
+            ..git::Options::default()
+        },
+    )
+    .await?;
     Ok(())
 }
 
@@ -376,6 +390,7 @@ pub async fn apply(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> 
             "--",
             sha,
         ],
+        None,
     )
     .await;
     let pending = status(db, row, params["folderId"].as_str()).await?;
@@ -392,6 +407,14 @@ pub async fn apply(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> 
 pub async fn change(db: &SharedDb, row: &Value, params: &Value, operation: &str) -> Result<Value> {
     workspace::check_trusted_root(row)?;
     let root = root(row)?;
+    // Hold Git's real index lock from the final preview recheck through the commit.
+    // Commit from its private copy so Git can refresh its own stat cache and clean
+    // up native merge metadata without letting another process replace the staged tree.
+    let index = if operation == "workspace/baseFinish" {
+        Some(staging::lock_index(&staging::index_path(root).await?)?)
+    } else {
+        None
+    };
     let pending = async {
         guards(root).await?;
         let pending = status(db, row, params["folderId"].as_str()).await?;
@@ -406,7 +429,7 @@ pub async fn change(db: &SharedDb, row: &Value, params: &Value, operation: &str)
     .await
     .map_err(|error| Rejected(error.to_string()))?;
     match operation {
-        "workspace/baseAbort" => run(root, &["merge", "--abort"]).await?,
+        "workspace/baseAbort" => run(root, &["merge", "--abort"], None).await?,
         "workspace/baseStage" => {
             let chosen = params["path"].as_str().context("Choose a conflict file")?;
             ensure!(
@@ -467,6 +490,7 @@ pub async fn change(db: &SharedDb, row: &Value, params: &Value, operation: &str)
             run(
                 root,
                 &["commit", "--no-edit", "--no-gpg-sign", "-m", &message],
+                index.as_ref().map(|guard| guard.temp.as_path()),
             )
             .await?;
         }

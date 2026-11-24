@@ -470,9 +470,9 @@ fn reject(message: impl Into<String>) -> anyhow::Error {
 
 /// Git's own lock on the index, held while Lascoria prepares and publishes a new index. Any
 /// Git process honouring the lock waits or fails; the lock is removed unless published.
-struct IndexLock {
+pub(crate) struct IndexLock {
     lock: PathBuf,
-    temp: PathBuf,
+    pub(crate) temp: PathBuf,
     published: bool,
 }
 impl Drop for IndexLock {
@@ -484,7 +484,7 @@ impl Drop for IndexLock {
     }
 }
 
-async fn index_path(root: &Path) -> Result<PathBuf> {
+pub(crate) async fn index_path(root: &Path) -> Result<PathBuf> {
     let text = String::from_utf8(read(root, &["rev-parse", "--git-path", "index"]).await?)?;
     let path = root.join(text.trim_end_matches(['\n', '\r']));
     // dunce: Git on Windows does not accept verbatim `\\?\` paths in GIT_INDEX_FILE.
@@ -492,7 +492,7 @@ async fn index_path(root: &Path) -> Result<PathBuf> {
     Ok(parent.join(path.file_name().context("Index path")?))
 }
 
-fn lock_index(index: &Path) -> Result<IndexLock> {
+pub(crate) fn lock_index(index: &Path) -> Result<IndexLock> {
     let lock = index.with_file_name(format!(
         "{}.lock",
         index.file_name().unwrap().to_string_lossy()

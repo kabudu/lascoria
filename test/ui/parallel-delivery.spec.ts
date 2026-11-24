@@ -367,7 +367,24 @@ esac
     await openWorkspace();
     await basePanel.getByRole('button', { name: 'Stage resolution' }).click();
     await basePanel.getByRole('button', { name: 'Review merge commit' }).click();
-    await basePanel.getByRole('button', { name: 'Commit base update' }).click();
+    const commitBase = basePanel.getByRole('button', { name: 'Commit base update' });
+    const indexLock = await git(
+      b.worktree,
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-path',
+      'index.lock',
+    );
+    await writeFile(indexLock, '', { flag: 'wx' });
+    try {
+      await commitBase.click();
+      await expect(basePanel.getByText('Another Git process', { exact: false })).toBeVisible();
+      expect(await git(b.worktree, 'rev-parse', 'HEAD')).toBe(initialDelivery.head);
+      expect(await git(b.worktree, 'rev-parse', 'MERGE_HEAD')).toBe(baseHead);
+    } finally {
+      await rm(indexLock);
+    }
+    await commitBase.click();
     await expect(delivery.getByText('Check this base update')).toBeVisible();
     const merged = await call('workspace/delivery', bScope);
     expect(await git(b.worktree, 'show', '-s', '--format=%P')).toBe(
