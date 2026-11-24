@@ -130,6 +130,10 @@ function main() {
   // Rust: RustSec advisories and licences of every third-party crate in each lockfile.
   let crates = 0;
   for (const manifest of manifests) {
+    // Resolve the locked graph before offline advisory reachability checks on a clean runner.
+    const metadata = JSON.parse(
+      run('cargo', ['metadata', '--format-version', '1', '--locked'], join(root, manifest)),
+    );
     const report = JSON.parse(
       run('cargo', ['audit', '--json', '--file', `${manifest}/Cargo.lock`]),
     );
@@ -171,9 +175,6 @@ function main() {
             `${manifest}: unreviewed ${w.kind} ${id} ${w.package.name} ${w.package.version}`,
           );
       }
-    const metadata = JSON.parse(
-      run('cargo', ['metadata', '--format-version', '1', '--locked'], join(root, manifest)),
-    );
     for (const p of metadata.packages) {
       if (!p.source) continue; // this repository's own crates
       crates++;
