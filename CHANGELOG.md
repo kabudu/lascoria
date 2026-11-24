@@ -4,7 +4,11 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
-- Update the pinned Muse Code CLI and SDK to 1.4.25 and refresh bundled runtime dependencies.
+## 0.4.0 - 2026-11-24
+
+- Follow GitHub pull requests from the Workspace tab. See failed checks and change requests in Attention, and preview selected feedback before adding it to the original Muse draft.
+- Answer a blocking question or review a permission request from the Attention panel. Jump straight to the task that needs you.
+- Update to Muse Code 1.4.25. Local agent messaging uses explicit, revocable trust for the current workspace and a separate permission for each connected pair. Manual sharing stays available.
 
 ## 0.3.0 - 2026-11-08
 

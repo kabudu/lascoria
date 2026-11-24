@@ -992,4 +992,12 @@ Comparative developer trials and voluntary repeat-use evidence remain open. Plat
 - [x] Refresh npm and compatible Rust lockfiles, and pin CI and bundled Node to the verified Node 24 LTS release 24.22.3. The supply-chain scan passed with zero known vulnerabilities and the existing reviewed informational warnings.
 - [x] Add explicit trust and revocation for the exact folder in a resumable standalone session. New and recovered hosts start without Lascoria workspace trust. Existing local messages and pair permissions remain independent of host trust.
 - [x] Require the current Muse host's authenticated MCP tool-listing receipt before showing Muse messaging as available.
-- [ ] Validate controlled Muse lifecycle, recovery and native bridge on the upgraded pins, then verify the hosted platform matrix.
+- [x] Full local CI passed on `4eae868`, including native stream saturation and recovery and all 58 browser workflows. [Hosted macOS, Windows and Linux checks](https://github.com/kabudu/lascoria/actions/runs/45332172201) passed.
+- [x] Signed-in macOS QA verified bidirectional Muse Wonder messaging, one-time tool approvals, workspace trust revocation and manual sharing without a model call. The trial used a packaged Tauri debug app with a release-mode supervisor. The hosted macOS desktop build passed.
+- [x] Merge PR #34 at `6ccac34` and PR #35 at `f3153dd`.
+
+## v0.4.0 release checklist
+
+- [x] Prepare the version and curated notes for GitHub pull request follow-through, blocking decisions and Muse Code 1.4.25.
+- [ ] Validate the reviewed release candidate, check signed artifacts and exercise saved-session migration from v0.3.0.
+- [ ] Tag the accepted default-branch revision, publish the verified platform binaries and reconcile the public downloads and updater manifest.

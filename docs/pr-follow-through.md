@@ -34,7 +34,7 @@ Goal: follow a task from opening its GitHub pull request through failed checks, 
 - [x] Visual QA of native Attention: one live SDK permission request was approved from the auto-expanded panel. Raw request metadata crowded the inline card, so the revised build shows the exact shell command and moves the full payload into a disclosure. Native inspection confirmed spacing, header-to-decision focus and inline rejection. The focused delivery and node-activity browser workflows passed on the visual fix.
 - [x] Full local and hosted CI passed on `1ae87d7` before layout polish.
 - [x] Workspace layout polish: suppress the duplicate blocking-task message in the bottom navigation strip. Keep floating panels clear of the measured strip and, on narrow windows, the expanded Canvas toolbar. Keep Sessions and Attention from covering one another in the shared left column. Seven focused browser workflows passed, including clearance at 820 × 600; native macOS visual QA confirmed the permission card, node and header remain visible and the navigation strip clears the inspector.
-- [ ] Full local and hosted CI on the layout polish.
+- [x] Full local CI and all three hosted platform jobs passed on the final layout and security fixes at `5a9cbda`. [Validation](https://github.com/kabudu/lascoria/actions/runs/45268135285).
 - [ ] Run comparative developer trials.
 
 
