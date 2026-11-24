@@ -303,13 +303,6 @@ esac
       await expect(form.getByLabel('Open as a draft')).toBeChecked();
       await form.screenshot({ path: 'test-results/delivery-pr-review.png' });
       await form.getByLabel('Title').fill('Fix a');
-      await form.getByRole('button', { name: 'Open pull request' }).click();
-      await expect(step).toContainText('Pull request #12 is open', { timeout: 20000 });
-      await expect(primary).toHaveText('Open pull request');
-      const log = await readFile(calls, 'utf8');
-      expect(log.match(/pr create/g)).toHaveLength(1);
-      expect(log).toContain(`--head ${branch} --base main --title Fix a --body-file - --draft`);
-      phase('open pull request');
       const observed = {
         number: 12,
         url: 'https://github.com/fixture/app/pull/12',
@@ -319,6 +312,18 @@ esac
         reviewDecision: 'CHANGES_REQUESTED',
         statusCheckRollup: [{ name: 'Build', status: 'COMPLETED', conclusion: 'FAILURE' }],
       };
+      // A background poll can arrive as soon as the create receipt is observable.
+      await writeFile(
+        prs + '.view',
+        JSON.stringify({ ...observed, reviewDecision: null, statusCheckRollup: [] }),
+      );
+      await form.getByRole('button', { name: 'Open pull request' }).click();
+      await expect(step).toContainText('Pull request #12 is open', { timeout: 20000 });
+      await expect(primary).toHaveText('Open pull request');
+      const log = await readFile(calls, 'utf8');
+      expect(log.match(/pr create/g)).toHaveLength(1);
+      expect(log).toContain(`--head ${branch} --base main --title Fix a --body-file - --draft`);
+      phase('open pull request');
       await writeFile(prs + '.view', JSON.stringify(observed));
       const refresh = delivery.getByRole('button', { name: 'Check again' });
       await expect(refresh).toBeEnabled();
@@ -380,8 +385,11 @@ esac
       await page.getByRole('tab', { name: 'transcript', exact: true }).click();
       await expect(delivery).toHaveCount(0);
       await writeFile(prs + '.view', JSON.stringify(observed));
+      const previousPolls = pollResults.length;
       await page.clock.fastForward(80_000);
-      await expect.poll(() => pollResults.at(-1), { timeout: 25_000 }).toEqual({ head });
+      await expect
+        .poll(() => pollResults.slice(previousPolls).at(-1), { timeout: 25_000 })
+        .toEqual({ head });
       await expect(prAttention).toBeVisible();
       await prAttention.click();
       await expect(delivery.getByText('Build · Failed')).toBeVisible();
