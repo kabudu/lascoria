@@ -31,12 +31,20 @@ export function Workspace({
   mutate,
   attach,
   openInEditor,
+  initialFolderId,
+  onPrObservation,
+  revealPullRequest,
+  linkedTaskId,
 }: {
   session: SessionRow;
   commands: Json[];
   busy: boolean;
   mutate: (operation: string, params: Json) => Promise<Json>;
   attach: (text: string) => void;
+  initialFolderId?: string;
+  revealPullRequest?: boolean;
+  linkedTaskId?: string;
+  onPrObservation: (folderId: string | undefined, value: Json) => void;
   /** D2: open a repository-relative path in the user's editor. */
   openInEditor?: (path: string, folderId?: string) => void;
 }) {
@@ -52,7 +60,7 @@ export function Workspace({
   // R15: a Project session's tab works on one folder at a time; each isolated folder has
   // its own worktree and task branch. The supervisor resolves the folder ID itself.
   const folders = session.projectContext?.folders;
-  const [chosen, setChosen] = useState<string>();
+  const [chosen, setChosen] = useState(initialFolderId);
   const folderId = folders ? (folders.find((f) => f.id === chosen) ?? folders[0])?.id : undefined;
   const scope = folderId ? { folderId } : {};
   const managed = session.managedWorkspaces
@@ -198,6 +206,10 @@ export function Workspace({
             )
           }
           openCommit={() => setCommitRequest((n) => n + 1)}
+          draftFeedback={(text) => attach(`\n\n${text}`)}
+          revealPullRequest={revealPullRequest}
+          linkedTaskId={linkedTaskId}
+          onObservation={(value) => onPrObservation(folderId, value)}
         />
       )}
       {!removed && !archived && (

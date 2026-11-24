@@ -195,6 +195,32 @@ impl Db {
         let rows = statement.query_map(params, |row| row.get::<_, String>(0))?;
         rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
     }
+    /// Read only the latest record for this delivery operation and folder.
+    pub fn latest_folder_command(
+        &self,
+        operation: &str,
+        session: &str,
+        folder: Option<&str>,
+    ) -> Result<Option<Value>> {
+        let record: Option<String> = self
+            .0
+            .query_row(
+                "SELECT value FROM commands
+             WHERE json_extract(value,'$.operation')=?1
+               AND json_extract(value,'$.sessionId')=?2
+               AND CASE WHEN json_type(value,'$.params.folderId')='text'
+                        THEN json_extract(value,'$.params.folderId') END IS ?3
+             ORDER BY CASE WHEN json_type(value,'$.createdAtMillis')='integer'
+                           THEN max(json_extract(value,'$.createdAtMillis'),0) ELSE 0 END DESC,
+                      rowid DESC LIMIT 1",
+                params![operation, session, folder],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(record
+            .map(|value| serde_json::from_str(&value))
+            .transpose()?)
+    }
     /// Whether a developer test command is still running for this session.
     pub fn test_running(&self, session: &str) -> Result<bool> {
         Ok(self.0.query_row(
@@ -525,6 +551,44 @@ mod tests {
                 "outcomeUnknown"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn latest_delivery_command_is_scoped_and_breaks_timestamp_ties() -> Result<()> {
+        let db = Db::open(Path::new(":memory:"))?;
+        for (id, operation, session, folder, timestamp) in [
+            ("first", "workspace/run", "s", Some("a"), 10),
+            ("other_folder", "workspace/run", "s", Some("b"), 30),
+            ("other_session", "workspace/run", "t", Some("a"), 30),
+            ("other_operation", "workspace/push", "s", Some("a"), 30),
+            ("tied", "workspace/run", "s", Some("a"), 10),
+            ("older", "workspace/run", "s", Some("a"), 5),
+            ("default", "workspace/run", "s", None, 20),
+        ] {
+            db.put(
+                "commands",
+                id,
+                &json!({
+                    "id": id, "operation": operation, "sessionId": session,
+                    "params": {"folderId": folder}, "createdAtMillis": timestamp
+                }),
+            )?;
+        }
+        assert_eq!(
+            db.latest_folder_command("workspace/run", "s", Some("a"))?
+                .unwrap()["id"],
+            "tied"
+        );
+        assert_eq!(
+            db.latest_folder_command("workspace/run", "s", None)?
+                .unwrap()["id"],
+            "default"
+        );
+        assert!(
+            db.latest_folder_command("workspace/run", "s", Some("missing"))?
+                .is_none()
+        );
         Ok(())
     }
 }

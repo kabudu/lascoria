@@ -157,4 +157,26 @@ test('A large map folds subtasks, keeps attention visible and jumps to what need
   await expect(page.locator('#node-a\\:t1')).toHaveCSS('left', '340px');
   await expect(page.locator('#node-a\\:t1')).toHaveCSS('top', '120px');
   expect(value.positions['a:t1']).toEqual({ x: 340, y: 120 });
+  await page.getByRole('button', { name: 'Collapse Attention panel' }).click();
+  status.sessions[1].state.userInputs = [
+    {
+      userInputId: 'confirm-login',
+      turnId: 't2',
+      questions: [{ id: 'destination', question: 'Where should sign-in redirect?' }],
+    },
+  ];
+  status.version = 'hierarchy:2';
+  const needsInput = page.getByRole('button', { name: /Needs your input/ });
+  await expect(needsInput).toContainText('1');
+  await expect(
+    page.locator('.attention').getByLabel('Where should sign-in redirect?'),
+  ).toBeVisible();
+  await needsInput.click();
+  await expect(page.getByRole('heading', { name: 'Muse needs an answer' })).toBeFocused();
+  await expect(page.getByLabel('Where should sign-in redirect?')).toBeVisible();
+  await expect(page.locator('#node-b\\:t2')).toHaveAttribute('data-needs-input', 'true');
+  status.sessions[1].state.userInputs = [];
+  status.version = 'hierarchy:3';
+  await expect(needsInput).toHaveCount(0);
+  await expect(jump).toBeVisible();
 });

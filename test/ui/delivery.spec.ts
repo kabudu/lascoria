@@ -48,6 +48,8 @@ test('Review to delivery: validate, fix, commit, push and open one pull request 
 echo "$*" >> '${calls}'
 case "$1 $2" in
   'pr list') cat '${prs}' ;;
+  'pr view') cat '${prs}.view' ;;
+  'api --hostname') cat '${prs}.comments' ;;
   'pr create') cat > /dev/null
     printf '[{"number":12,"url":"https://github.com/fixture/app/pull/12","state":"OPEN","isDraft":true,"title":"Fix a","headRefName":"%s","headRefOid":"x","baseRefName":"main"}]' "$(echo "$*" | sed 's/.*--head \\([^ ]*\\).*/\\1/')" > '${prs}'
     echo https://github.com/fixture/app/pull/12 ;;
@@ -105,6 +107,7 @@ esac
     const branch = managed[0].branch;
     await writeFile(join(appTree, 'a.txt'), 'changed by Muse\n');
 
+    const pollResults: Array<{ head?: string; error?: string }> = [];
     await context.exposeBinding('nativeBridge', async (_s, command, args) => {
       const input =
         command === 'connect_supervisor'
@@ -119,6 +122,8 @@ esac
         throw error;
       });
       const data = JSON.parse(stdout);
+      if (args?.params?.pollPullRequest)
+        pollResults.push({ head: data.result?.head, error: data.error });
       if (data.error) throw new Error(data.error);
       return data.result;
     });
@@ -128,6 +133,7 @@ esac
       };
     });
     const page = await context.newPage();
+    await page.clock.install();
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Delivery work', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Deliver this work' })).toHaveCount(0);
@@ -304,6 +310,81 @@ esac
       expect(log.match(/pr create/g)).toHaveLength(1);
       expect(log).toContain(`--head ${branch} --base main --title Fix a --body-file - --draft`);
       phase('open pull request');
+      const observed = {
+        number: 12,
+        url: 'https://github.com/fixture/app/pull/12',
+        state: 'OPEN',
+        headRefName: branch,
+        headRefOid: head,
+        reviewDecision: 'CHANGES_REQUESTED',
+        statusCheckRollup: [{ name: 'Build', status: 'COMPLETED', conclusion: 'FAILURE' }],
+      };
+      await writeFile(prs + '.view', JSON.stringify(observed));
+      const refresh = delivery.getByRole('button', { name: 'Check again' });
+      await expect(refresh).toBeEnabled();
+      await refresh.click();
+      await delivery.getByText('GitHub · open · PR #12', { exact: true }).click();
+      await expect(delivery.getByText('Build · Failed')).toBeVisible();
+      await delivery.getByRole('button', { name: 'Review feedback' }).click();
+      await expect(delivery.getByText('Preview feedback for the session draft')).toBeVisible();
+      await expect(delivery.locator('.decision pre')).toContainText(head);
+      await writeFile(
+        prs + '.comments',
+        JSON.stringify([
+          { id: 42, commit_id: head, path: 'a.txt', line: 1, body: 'Please cover the empty case.' },
+          { id: 43, commit_id: 'e'.repeat(40), path: 'a.txt', line: 2, body: 'Old feedback' },
+        ]),
+      );
+      await delivery.getByRole('button', { name: 'Load review comments' }).click();
+      await expect(
+        delivery.getByText('Please cover the empty case.', { exact: true }),
+      ).toBeVisible();
+      await expect(delivery.getByText('Old feedback')).toHaveCount(0);
+      await delivery.getByRole('button', { name: 'Preview comment for Muse' }).click();
+      await expect(delivery.locator('.decision pre')).toContainText('#discussion_r42');
+      const prAttention = page
+        .locator('.attention')
+        .getByRole('button', { name: /PR #12 · Checks failed/ });
+      await expect(prAttention).toBeVisible();
+      await expect(page.locator('.task-node[data-pr-review]')).toHaveCount(1);
+      await page.locator('.snapshot-folder select').selectOption({ label: 'API' });
+      await prAttention.click();
+      await expect(page.locator('.snapshot-folder select').locator('option:checked')).toHaveText(
+        'App',
+      );
+      await expect(delivery.getByText('Build · Failed')).toBeVisible();
+
+      await writeFile(
+        prs + '.view',
+        JSON.stringify({
+          ...observed,
+          headRefOid: 'f'.repeat(40),
+          reviewDecision: 'APPROVED',
+          statusCheckRollup: [{ name: 'Build', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+        }),
+      );
+      await refresh.click();
+      await expect(delivery.getByText('Build · Passed')).toBeVisible();
+      await expect(prAttention).toHaveCount(0);
+      await expect(page.locator('.task-node[data-pr-review]')).toHaveCount(0);
+      await expect(
+        delivery.getByText('Your local commit differs from this GitHub result.'),
+      ).toBeVisible();
+      await expect(delivery.getByRole('button', { name: 'Add to draft' })).toHaveCount(0);
+      await delivery.getByText('Previously observed commits', { exact: true }).click();
+      const history = delivery
+        .getByText('Previously observed commits', { exact: true })
+        .locator('..');
+      await expect(history.getByText('Build · Failed')).toBeVisible();
+      await expect(history.getByText(head.slice(0, 12), { exact: true })).toBeVisible();
+      await page.getByRole('tab', { name: 'transcript', exact: true }).click();
+      await expect(delivery).toHaveCount(0);
+      await writeFile(prs + '.view', JSON.stringify(observed));
+      await page.clock.fastForward(80_000);
+      await expect.poll(() => pollResults.at(-1), { timeout: 25_000 }).toEqual({ head });
+      await expect(prAttention).toBeVisible();
+      await prAttention.click();
+      await expect(delivery.getByText('Build · Failed')).toBeVisible();
     } else {
       await expect(step).toContainText('Pushed to origin', { timeout: 20000 });
     }

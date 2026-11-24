@@ -21,7 +21,7 @@ use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
-    sync::LazyLock,
+    sync::{LazyLock, Mutex},
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -41,6 +41,34 @@ const MAX_COMMITS: usize = 50;
 const MAX_REMOTES: usize = 20;
 /// Remote queries from status refreshes, across every window and session.
 static REMOTE_QUERIES: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(2));
+
+const MAX_OBSERVED_PRS: usize = 32;
+const MAX_PRIOR_HEADS: usize = 4;
+
+/// Metadata only, scoped to this supervisor lifetime. The newest observation's head
+/// is never included in its history. No network work happens while holding this lock.
+#[derive(Default)]
+struct PrHistory(Vec<(String, Vec<Value>)>);
+
+impl PrHistory {
+    fn record(&mut self, key: String, current: &Value) -> Vec<Value> {
+        let mut heads = self
+            .0
+            .iter()
+            .position(|(id, _)| *id == key)
+            .map(|index| self.0.remove(index).1)
+            .unwrap_or_default();
+        heads.retain(|value| value["head"] != current["head"]);
+        heads.truncate(MAX_PRIOR_HEADS);
+        let prior = heads.clone();
+        heads.insert(0, current.clone());
+        self.0.insert(0, (key, heads));
+        self.0.truncate(MAX_OBSERVED_PRS);
+        prior
+    }
+}
+
+static PR_HISTORY: LazyLock<Mutex<PrHistory>> = LazyLock::new(|| Mutex::new(PrHistory::default()));
 
 fn reject(message: impl Into<String>) -> anyhow::Error {
     Rejected(message.into()).into()
@@ -414,6 +442,9 @@ async fn gh(
         .args(args)
         .current_dir(root)
         .env("GH_PROMPT_DISABLED", "1")
+        .env("GH_HOST", "github.com")
+        .env_remove("GH_DEBUG")
+        .env_remove("DEBUG")
         .env("GH_NO_UPDATE_NOTIFIER", "1")
         .env("GH_SPINNER_DISABLED", "1")
         .env("NO_COLOR", "1")
@@ -507,6 +538,166 @@ async fn open_pull_requests(root: &Path, repository: &str, branch: &str) -> Resu
         .collect())
 }
 
+/// Observe the recorded PR by number, even after its branch is deleted.
+async fn observe_pr(root: &Path, repo: &str, branch: &str, number: u64) -> Result<Value> {
+    let output = gh(
+        root,
+        &[
+            "pr",
+            "view",
+            &number.to_string(),
+            "--repo",
+            repo,
+            "--json",
+            "number,url,state,headRefName,headRefOid,isCrossRepository,reviewDecision,statusCheckRollup",
+        ],
+        None,
+        QUERY,
+    )
+    .await?;
+    let pr: Value = serde_json::from_str(&output).context("Unexpected GitHub PR response")?;
+    let url = format!("https://github.com/{repo}/pull/{number}");
+    let head = pr["headRefOid"].as_str().unwrap_or_default();
+    ensure!(
+        pr["url"]
+            .as_str()
+            .is_some_and(|value| value.eq_ignore_ascii_case(&url))
+            && pr["number"].as_u64() == Some(number)
+            && pr["headRefName"] == branch
+            && pr["isCrossRepository"] != true
+            && head.len() == 40
+            && head.bytes().all(|b| b.is_ascii_hexdigit())
+            && matches!(pr["state"].as_str(), Some("OPEN" | "CLOSED" | "MERGED")),
+        "GitHub returned a different pull request or an invalid revision"
+    );
+    let checks = pr["statusCheckRollup"]
+        .as_array()
+        .context("GitHub did not return check data")?;
+    let checks_preview = checks
+        .iter()
+        .take(50)
+        .map(|check| {
+            let name = check["name"]
+                .as_str()
+                .or_else(|| check["context"].as_str())
+                .unwrap_or("Unnamed check");
+            let state = match (
+                check["status"].as_str(),
+                check["conclusion"].as_str(),
+                check["state"].as_str(),
+            ) {
+                (_, Some("FAILURE" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE"), _)
+                | (_, _, Some("FAILURE" | "ERROR")) => "Failed",
+                (_, Some("SUCCESS"), _) | (_, _, Some("SUCCESS")) => "Passed",
+                (Some("COMPLETED"), Some("NEUTRAL" | "SKIPPED" | "CANCELLED" | "STALE"), _) => {
+                    "Ended"
+                }
+                (Some("QUEUED" | "IN_PROGRESS" | "PENDING" | "WAITING" | "REQUESTED"), _, _)
+                | (_, _, Some("PENDING" | "EXPECTED")) => "Pending",
+                _ => "Unknown",
+            };
+            json!({"name": redact(name).chars().take(160).collect::<String>(), "state": state})
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "url": url, "number": number, "state": pr["state"], "head": head,
+        "review": match pr["reviewDecision"].as_str() {
+            Some("APPROVED") => "Approved",
+            Some("CHANGES_REQUESTED") => "Changes requested",
+            Some("REVIEW_REQUIRED") => "Review required",
+            _ => "No review decision reported",
+        },
+        "checks": checks_preview, "checkCount": checks.len(), "observedAtMillis": now_ms()
+    }))
+}
+
+fn with_pr_history(mut current: Value) -> Result<Value> {
+    let key = current["url"]
+        .as_str()
+        .context("Missing GitHub PR URL")?
+        .to_ascii_lowercase();
+    let history = PR_HISTORY
+        .lock()
+        .map_err(|_| anyhow::anyhow!("GitHub observation cache is unavailable"))?
+        .record(key, &current);
+    current["previousHeads"] = json!(history);
+    Ok(current)
+}
+
+async fn poll_recorded_pr(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> {
+    let folder = params["folderId"].as_str();
+    let last = last_actions(db, row, folder)?;
+    let action = &last["pullRequest"];
+    let receipt = &action["result"];
+    let Some(number) = receipt["pullRequest"]["number"].as_u64().filter(|n| *n > 0) else {
+        return Ok(Value::Null);
+    };
+    if action["status"] != "applied" {
+        return Ok(Value::Null);
+    }
+    let local = local(row, params["remote"].as_str()).await?;
+    let Some(remote) = local.remote.map(|index| &local.remotes[index]) else {
+        return Ok(Value::Null);
+    };
+    let repo = github_repository(&remote.url).or_else(|| github_repository(&remote.fetch));
+    let Some(repo) = repo.filter(|repo| {
+        receipt["repository"]
+            .as_str()
+            .is_some_and(|r| r.eq_ignore_ascii_case(repo))
+    }) else {
+        return Ok(Value::Null);
+    };
+    let _permit = REMOTE_QUERIES.acquire().await?;
+    with_pr_history(observe_pr(&local.root, &repo, &local.branch, number).await?)
+}
+
+/// Fetch a single bounded page on demand. Only comments on the selected head are draftable.
+async fn review_feedback(local: &Local, repo: &str, request: &Value) -> Result<Value> {
+    let number = request["number"]
+        .as_u64()
+        .filter(|n| *n > 0)
+        .context("Expected a pull request number")?;
+    ensure!(
+        request["head"].as_str() == Some(&local.head),
+        "The local commit changed. Refresh GitHub status."
+    );
+    let endpoint =
+        format!("repos/{repo}/pulls/{number}/comments?per_page=30&sort=created&direction=desc");
+    let _permit = REMOTE_QUERIES.acquire().await?;
+    let output = gh(
+        &local.root,
+        &["api", "--hostname", "github.com", &endpoint],
+        None,
+        QUERY,
+    )
+    .await?;
+    let comments: Vec<Value> =
+        serde_json::from_str(&output).context("Unexpected GitHub review response")?;
+    let current = observe_pr(&local.root, repo, &local.branch, number).await?;
+    ensure!(
+        current["head"] == local.head && current["state"] == "OPEN",
+        "The pull request changed. Refresh GitHub status."
+    );
+    let comments = comments
+        .iter()
+        .take(30)
+        .filter_map(|comment| {
+            if comment["commit_id"] != local.head {
+                return None;
+            }
+            let id = comment["id"].as_u64()?;
+            let body = redact(comment["body"].as_str()?);
+            let path = redact(comment["path"].as_str()?);
+            Some(
+                json!({"id": id, "body": body.chars().take(2000).collect::<String>(),
+            "truncated": body.chars().count() > 2000,
+            "path": path.chars().take(240).collect::<String>(), "line": comment["line"].as_u64()}),
+            )
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({"comments": comments}))
+}
+
 /// The latest finished or running test command in this folder, and whether its result still
 /// describes the files as they are now. Old runs without a file fingerprint are not current.
 fn validation(
@@ -516,14 +707,10 @@ fn validation(
     files: Option<&str>,
 ) -> Result<Value> {
     let session = row["id"].as_str().unwrap_or_default();
-    let runs = db.lock().unwrap().commands_matching(
-        "json_extract(value,'$.operation')='workspace/run' AND json_extract(value,'$.sessionId')=?1",
-        &[&session],
-    )?;
-    let Some(run) = runs
-        .into_iter()
-        .filter(|r| r["params"]["folderId"].as_str() == folder)
-        .max_by_key(|r| r["createdAtMillis"].as_u64().unwrap_or(0))
+    let Some(run) = db
+        .lock()
+        .unwrap()
+        .latest_folder_command("workspace/run", session, folder)?
     else {
         return Ok(json!({"state": "missing"}));
     };
@@ -556,23 +743,21 @@ fn validation(
 /// The latest push and pull-request commands for this folder.
 fn last_actions(db: &SharedDb, row: &Value, folder: Option<&str>) -> Result<Value> {
     let session = row["id"].as_str().unwrap_or_default();
-    let all = db.lock().unwrap().commands_matching(
-        "json_extract(value,'$.operation') IN ('workspace/push','workspace/pullRequest') AND json_extract(value,'$.sessionId')=?1",
-        &[&session],
-    )?;
-    let latest = |operation: &str| {
-        all.iter()
-            .filter(|c| c["operation"] == operation && c["params"]["folderId"].as_str() == folder)
-            .max_by_key(|c| c["createdAtMillis"].as_u64().unwrap_or(0))
+    let db = db.lock().unwrap();
+    let latest = |operation: &str| -> Result<Value> {
+        Ok(db.latest_folder_command(operation, session, folder)?
             .map(|c| json!({"id": c["id"], "status": c["status"], "result": c["result"], "error": c["error"], "createdAtMillis": c["createdAtMillis"]}))
-            .unwrap_or(Value::Null)
+            .unwrap_or(Value::Null))
     };
-    Ok(json!({"push": latest("workspace/push"), "pullRequest": latest("workspace/pullRequest")}))
+    Ok(json!({"push": latest("workspace/push")?, "pullRequest": latest("workspace/pullRequest")?}))
 }
 
 /// Read-only delivery state. With `remote: true` it also asks the remote (and GitHub) what
 /// they hold, within bounded deadlines; failures are reported, not hidden.
 pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> {
+    if params["pollPullRequest"] == true {
+        return poll_recorded_pr(db, row, params).await;
+    }
     let folder = params["folderId"].as_str();
     let local = local(row, params["remote"].as_str()).await?;
     let root = &local.root;
@@ -613,8 +798,16 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
     let mut checked = json!({"checked": false});
     let mut exclude = tracking.clone().unwrap_or_else(|| local.base.clone());
     let mut pull_request = Value::Null;
+    let mut observation = Value::Null;
+    let last = last_actions(db, row, folder)?;
     let repository =
         remote.and_then(|r| github_repository(&r.url).or_else(|| github_repository(&r.fetch)));
+    if let Some(feedback) = params["reviewFeedback"].as_object() {
+        let repo = repository
+            .as_deref()
+            .context("Choose a GitHub remote first")?;
+        return review_feedback(&local, repo, &Value::Object(feedback.clone())).await;
+    }
     if let (Some(r), true) = (remote, params["checkRemote"] == true) {
         let _permit = REMOTE_QUERIES.acquire().await?;
         checked = match remote_head(root, r, &local.branch).await {
@@ -642,6 +835,22 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
                 }
                 Err(e) => json!({"checked": false, "error": redact(&format!("{e:#}"))}),
             };
+        }
+        if let Some(repo) = &repository {
+            let receipt = &last["pullRequest"]["result"];
+            let tracked = receipt["repository"]
+                .as_str()
+                .filter(|value| value.eq_ignore_ascii_case(repo))
+                .and_then(|_| receipt["pullRequest"]["number"].as_u64())
+                .or_else(|| pull_request["open"][0]["number"].as_u64());
+            if let Some(number) = tracked.filter(|number| *number > 0) {
+                observation = match observe_pr(root, repo, &local.branch, number).await {
+                    Ok(value) => with_pr_history(value)?,
+                    Err(_) => {
+                        json!({"error": "Could not read GitHub status. Check your GitHub CLI sign-in and refresh."})
+                    }
+                };
+            }
         }
     }
     let (total, commits) = if has_commit(root, &exclude).await {
@@ -693,7 +902,8 @@ pub async fn status(db: &SharedDb, row: &Value, params: &Value) -> Result<Value>
         "pullRequest": pull_request,
         "suggestedBase": base_branch.or(source_branch),
         "suggestedTitle": last_subject,
-        "last": last_actions(db, row, folder)?,
+        "last": last,
+        "pullRequestObservation": observation,
         "checkedAtMillis": now_ms(),
     }))
 }
@@ -938,6 +1148,32 @@ pub fn running(db: &SharedDb, session: &str) -> Result<bool> {
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn pr_history_bounds_previous_heads_and_evicts_inactive_prs() {
+        let mut cache = PrHistory::default();
+        for revision in 0..8 {
+            cache.record("repo/1".into(), &json!({"head": revision}));
+        }
+        let history = cache.record("repo/1".into(), &json!({"head": 6}));
+        assert_eq!(
+            history,
+            vec![
+                json!({"head": 7}),
+                json!({"head": 5}),
+                json!({"head": 4}),
+                json!({"head": 3})
+            ]
+        );
+        for number in 2..=(MAX_OBSERVED_PRS + 1) {
+            cache.record(format!("repo/{number}"), &json!({"head": 0}));
+        }
+        assert!(
+            cache
+                .record("repo/1".into(), &json!({"head": 9}))
+                .is_empty()
+        );
+    }
 
     struct Fixture(PathBuf);
     impl Drop for Fixture {
@@ -1274,7 +1510,8 @@ mod tests {
         std::fs::write(&state, "[]").unwrap();
         let script = dir.join("gh");
         std::fs::write(&script, format!(
-            "#!/bin/sh\nstate='{}'\necho \"$*\" >> '{}'\ncase \"$1 $2\" in\n\
+            "#!/bin/sh\nstate='{}'\n[ \"$GH_HOST\" = github.com ] || exit 91\necho \"$*\" >> '{}'\ncase \"$1 $2\" in\n\
+             'pr view') cat \"$state.view\" ;;\n\
              'pr list') cat \"$state\" ;;\n\
              'pr create') body=$(cat); printf '[{{\"number\":7,\"url\":\"https://github.com/o/r/pull/7\",\"state\":\"OPEN\",\"isDraft\":true,\"title\":\"t\",\"headRefName\":\"lascoria/s1\",\"headRefOid\":\"x\",\"baseRefName\":\"main\"}}]' > \"$state\"; {}\n\
              echo https://github.com/o/r/pull/7 ;;\nesac\n",
@@ -1336,6 +1573,40 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(view["pullRequest"]["open"][0]["number"], 7);
+        let observation_file = fixture.0.join("prs.json.view");
+        let mut observed = json!({
+            "number": 7, "url": "https://github.com/o/r/pull/7",
+            "state": "OPEN", "headRefName": "lascoria/s1", "headRefOid": params["head"],
+            "reviewDecision": "CHANGES_REQUESTED",
+            "statusCheckRollup": [{"name":"CI", "status":"COMPLETED","conclusion":"FAILURE"}]
+        });
+        std::fs::write(&observation_file, observed.to_string()).unwrap();
+        let snapshot = status(&db, &row, &json!({"checkRemote": true}))
+            .await
+            .unwrap();
+        assert_eq!(
+            snapshot["pullRequestObservation"]["checks"][0]["state"],
+            "Failed"
+        );
+        assert_eq!(snapshot["pullRequestObservation"]["head"], params["head"]);
+        observed["headRefOid"] = json!("f".repeat(40));
+        observed["statusCheckRollup"] = json!([{"context":"CI","state":"SUCCESS"}]);
+        std::fs::write(&observation_file, observed.to_string()).unwrap();
+        let snapshot = status(&db, &row, &json!({"checkRemote": true}))
+            .await
+            .unwrap();
+        assert_eq!(
+            snapshot["pullRequestObservation"]["checks"][0]["state"],
+            "Passed"
+        );
+        assert_ne!(snapshot["pullRequestObservation"]["head"], params["head"]);
+        observed["url"] = json!("https://github.com/o/other/pull/7");
+        std::fs::write(&observation_file, observed.to_string()).unwrap();
+        let snapshot = status(&db, &row, &json!({"checkRemote": true}))
+            .await
+            .unwrap();
+        assert!(snapshot["pullRequestObservation"]["error"].is_string());
+
         // Signed out: status says so plainly and nothing is attempted.
         {
             use std::os::unix::fs::PermissionsExt;

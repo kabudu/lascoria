@@ -31,8 +31,8 @@ Everything here is in the public builds. Unless a row says otherwise, macOS has 
 | R8 Account usage and `/usage` | Live subscription `usage/changed`; no-observation, stale, API-key and signed-out states during active turns, tools and waiting states, on all three OSes. |
 | R9 Skill picker | Muse-originated `skill/changed`; plugin skills; the full validation matrix on all three OSes. |
 | R10 Decision assistance | Windows and Linux acceptance; a live OpenAI adapter trial; broader independent quality checks; a live Muse model choosing the tool unprompted. |
-| R11 Resource efficiency | Signed-in host, active workloads and window states; Windows and Linux baselines; revalidation on the current SDK and packaged build; automated regression thresholds. |
-| R12 Security review | Adversarial OS testing on all three platforms; installed signed acceptance of peer binding; independent review; findings closure with regression evidence. |
+| R11 Resource efficiency | Signed-in account-only sample recorded. Signed-in and active native GUI workloads, repeat observations, Windows and Linux baselines and regression thresholds remain open. |
+| R12 Security review | Scoped independent source review completed. Verify its workspace fixes, finish broader adversarial OS testing and installed signed acceptance, and close remaining findings. |
 | R13 UX, DX and language review | Full journey review and findings register; native accessibility journeys. |
 | R14 Attachments | Linux drops; remaining pick/paste and failure cases; real-provider media; R11/R12 checks for this boundary. |
 | R15 Sessions and Projects | Linux folder intake; a live multi-repository task on all three OSes; permission, Git and recovery matrix; Project naming at creation. |

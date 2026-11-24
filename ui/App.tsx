@@ -508,10 +508,137 @@ export function App() {
   const task = nodes.find((t) => t.id === prefs.selection) ?? activeTask ?? nodes[0];
   const selectedTask = useRef(task?.id);
   selectedTask.current = task?.id;
-  const queue = attention(
-    { ...status, sessions: status.sessions.filter((s) => s.lifecycle !== 'archived') },
-    prefs,
+  const [prObservations, setPrObservations] = useState<
+    { sessionId: string; folderId?: string; value: Json }[]
+  >([]);
+  const prPollInput = useRef({ status, prObservations });
+  prPollInput.current = { status, prObservations };
+  useEffect(() => {
+    if (!connected || !status.pid) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = new Map<string, { due: number; failures: number }>();
+    async function tick() {
+      try {
+        if (document.visibilityState !== 'visible') return;
+        const snapshot = prPollInput.current;
+        const sources = new Map<string, Json>();
+        const scopes = new Set<string>();
+        for (const receipt of [...snapshot.status.commands].sort(
+          (a, b) => (b.createdAtMillis ?? 0) - (a.createdAtMillis ?? 0),
+        )) {
+          if (receipt.operation !== 'workspace/pullRequest') continue;
+          const row = snapshot.status.sessions.find(
+            (candidate) => candidate.id === receipt.sessionId,
+          );
+          if (!row || row.lifecycle === 'archived') continue;
+          const folderId = receipt.params?.folderId;
+          if (folderId && !row.projectContext?.folders.some((folder) => folder.id === folderId))
+            continue;
+          const scope = JSON.stringify([row.id, folderId]);
+          if (scopes.has(scope)) continue;
+          scopes.add(scope);
+          const url = receipt.result?.pullRequest?.url;
+          if (receipt.status !== 'applied' || typeof url !== 'string') continue;
+          const key = url.toLowerCase();
+          if (!sources.has(key)) sources.set(key, receipt);
+          if (sources.size >= 32) break;
+        }
+        for (const key of schedule.keys()) if (!sources.has(key)) schedule.delete(key);
+        const now = Date.now();
+        const next = [...sources]
+          .sort(([a], [b]) => (schedule.get(a)?.due ?? 0) - (schedule.get(b)?.due ?? 0))
+          .find(([key]) => (schedule.get(key)?.due ?? 0) <= now);
+        if (!next) return;
+        const [key, receipt] = next;
+        const sessionId = receipt.sessionId;
+        const folderId = receipt.params?.folderId;
+        const sameScope = (item: (typeof prObservations)[number]) =>
+          item.sessionId === sessionId && item.folderId === folderId;
+        const before = snapshot.prObservations.find(sameScope);
+        let value: Json = null;
+        try {
+          value = await request('workspace/delivery', {
+            sessionId,
+            folderId,
+            remote: receipt.params?.remote,
+            pollPullRequest: true,
+          });
+          schedule.set(key, {
+            due: value?.state === 'OPEN' ? Date.now() + 60_000 : Infinity,
+            failures: 0,
+          });
+        } catch {
+          const failures = Math.min((schedule.get(key)?.failures ?? 0) + 1, 4);
+          schedule.set(key, { due: Date.now() + 60_000 * 2 ** failures, failures });
+        }
+        if (stopped) return;
+        setPrObservations((previous) => {
+          if (previous.find(sameScope) !== before) return previous;
+          const rest = previous.filter((item) => !sameScope(item));
+          return value?.head ? [{ sessionId, folderId, value }, ...rest].slice(0, 32) : rest;
+        });
+      } finally {
+        if (!stopped) timer = setTimeout(() => void tick(), 15_000);
+      }
+    }
+    timer = setTimeout(() => void tick(), 15_000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [connected, status.pid]);
+  const [attentionWorkspace, setAttentionWorkspace] = useState<
+    { sessionId: string; folderId?: string; jump: number } | undefined
+  >();
+  const seenPullRequests = new Set<string>();
+  const prAttention = prObservations.flatMap(({ sessionId, folderId, value }) => {
+    const row = status.sessions.find((candidate) => candidate.id === sessionId);
+    if (!row || row.lifecycle === 'archived' || value.state !== 'OPEN') return [];
+    if (folderId && !row.projectContext?.folders.some((folder) => folder.id === folderId))
+      return [];
+    const checkedFailure = value.checks.some((check: Json) => check.state === 'Failed');
+    if (!checkedFailure && value.review !== 'Changes requested') return [];
+    const id = `github:${value.url}:${value.head}`;
+    if (seenPullRequests.has(id)) return [];
+    const sessionTasks = tasks(row, prefs);
+    const receipt = status.commands.find(
+      (command) =>
+        command.operation === 'workspace/pullRequest' &&
+        command.status === 'applied' &&
+        command.sessionId === sessionId &&
+        command.params?.folderId === folderId &&
+        command.result?.pullRequest?.url === value.url,
+    );
+    const linkedTask = sessionTasks.find(
+      (node) => !node.item && node.id === receipt?.params?.linkedTaskId,
+    )?.id;
+    const target = linkedTask ?? sessionTasks.findLast((node) => !node.item)?.id;
+    if (!target) return [];
+    seenPullRequests.add(id);
+    return [
+      {
+        id,
+        sessionId,
+        folderId,
+        target,
+        linkedTask,
+        kind: 'failure',
+        pr: true,
+        label: `PR #${value.number} · ${checkedFailure ? 'Checks failed' : 'Changes requested'}`,
+      },
+    ];
+  });
+  const prTaskTargets = new Set(
+    prAttention.flatMap(({ linkedTask }) => (linkedTask ? [linkedTask] : [])),
   );
+  const queue = [
+    ...attention(
+      { ...status, sessions: status.sessions.filter((s) => s.lifecycle !== 'archived') },
+      prefs,
+    ),
+    ...prAttention,
+  ];
   // Desktop notifications (D4): announce attention that appears after the first real status,
   // so reopening Lascoria never replays what was already waiting. The native side shows at
   // most one notification per key and only while no Lascoria window has focus.
@@ -1285,15 +1412,49 @@ export function App() {
     setTab('transcript');
     setRevealTarget(node.id);
   }
+  function attentionTab(entry: (typeof queue)[number]) {
+    if ('pr' in entry) {
+      setAttentionWorkspace((previous) => ({
+        sessionId: entry.sessionId,
+        folderId:
+          'folderId' in entry && typeof entry.folderId === 'string' ? entry.folderId : undefined,
+        jump: (previous?.jump ?? 0) + 1,
+      }));
+      return 'workspace' as const;
+    }
+    return entry.kind === 'review' ? ('diff' as const) : ('transcript' as const);
+  }
   // "Take me to what needs attention": blocking decisions first, then failures and finished
   // work, across every open session. Each press moves to the next item.
   const lastJump = useRef<string | undefined>(undefined);
-  function goToAttention() {
-    const items = latestQueue.current;
+  const [decisionFocus, setDecisionFocus] = useState<{ id: string; sessionId: string }>();
+  useEffect(() => {
+    if (!decisionFocus) return;
+    const heading = document.getElementById(decisionFocus.id);
+    if (
+      !heading?.closest('.attention-decision') &&
+      (decisionFocus.sessionId !== session?.id || tab !== 'transcript')
+    )
+      return;
+    heading?.scrollIntoView({ block: 'nearest' });
+    heading?.focus({ preventScroll: true });
+    setDecisionFocus(undefined);
+  }, [decisionFocus, session?.id, tab]);
+  function focusAttention(entry: (typeof queue)[number], destination: string) {
+    if (entry.kind === 'approval' || entry.kind === 'question') {
+      setDecisionFocus({ id: `decision-${entry.kind}-${entry.id}`, sessionId: entry.sessionId });
+    } else {
+      requestAnimationFrame(() => document.getElementById(`tab-${destination}`)?.focus());
+    }
+  }
+  function goToAttention(blockingOnly = false) {
+    const items = blockingOnly
+      ? latestQueue.current.filter(({ kind }) => kind === 'approval' || kind === 'question')
+      : latestQueue.current;
     const current = items.find(
       (entry) => entry.id === lastJump.current && entry.target === latestPrefs.current.selection,
     );
-    const entry = nextAttention(items, current?.id);
+    const entry = nextAttention(items, blockingOnly ? undefined : current?.id);
     if (!entry) {
       setNotice('Nothing needs attention.');
       return;
@@ -1306,16 +1467,93 @@ export function App() {
       view: 'map',
       collapsed: (latestPrefs.current.collapsed ?? []).filter((id) => id !== entry.target),
     });
-    const tab = entry.kind === 'review' ? 'diff' : 'transcript';
+    if (blockingOnly) {
+      setCollapsedForDecision(undefined);
+      focusAttention(entry, 'transcript');
+      if (entry.target) setRevealTarget(entry.target);
+      return;
+    }
+    const tab = attentionTab(entry);
     setTab(tab);
     openInspector();
     if (entry.target) setRevealTarget(entry.target);
     // Keyboard and screen-reader users land where the item is, not back on the canvas.
-    requestAnimationFrame(() => document.getElementById(`tab-${tab}`)?.focus());
+    focusAttention(entry, tab);
   }
   const jump = useRef(goToAttention);
   jump.current = goToAttention;
   const waiting = attentionOrder(queue);
+  const decisionsWaiting = waiting.filter(({ kind }) => kind === 'approval' || kind === 'question');
+  const firstDecision = decisionsWaiting[0];
+  const decisionSession = status.sessions.find((row) => row.id === firstDecision?.sessionId);
+  const attentionLayout = prefs.panels?.attention;
+  const [collapsedForDecision, setCollapsedForDecision] = useState<string>();
+  const decisionKey = firstDecision && JSON.stringify([firstDecision.sessionId, firstDecision.id]);
+  const autoOpenAttention = !!decisionKey && collapsedForDecision !== decisionKey;
+  const attentionExpanded = autoOpenAttention || !attentionLayout?.collapsed;
+  const inlineDecision = attentionExpanded && decisionSession ? firstDecision : undefined;
+  const blockingTargets = new Map<string, string>();
+  for (const entry of decisionsWaiting) {
+    if (entry.target && !blockingTargets.has(entry.target))
+      blockingTargets.set(
+        entry.target,
+        entry.kind === 'approval' ? 'Permission needed' : 'Answer needed',
+      );
+  }
+  const showActiveDiscovery = !!activeTask && !blockingTargets.has(activeTask.id);
+  const showDiscovery = showActiveDiscovery || outside.length > 0 || temporary;
+  const discoveryRef = useRef<HTMLElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
+  const [panelTopInset, setPanelTopInset] = useState(76);
+  const [panelViewportHeight, setPanelViewportHeight] = useState(window.innerHeight);
+  useLayoutEffect(() => {
+    const chrome = chromeRef.current;
+    if (!chrome || prefs.canvasControlsCollapsed) {
+      setPanelTopInset(76);
+      return;
+    }
+    const measure = () => {
+      setPanelViewportHeight(window.innerHeight);
+      setPanelTopInset(
+        window.matchMedia('(max-width: 1100px)').matches
+          ? Math.ceil(chrome.getBoundingClientRect().bottom) + 8
+          : 76,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(chrome);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [prefs.canvasControlsCollapsed, !!session]);
+
+  const [discoveryHeight, setDiscoveryHeight] = useState(0);
+  useLayoutEffect(() => {
+    const rail = discoveryRef.current;
+    if (!rail) return;
+    const measure = () => setDiscoveryHeight(Math.ceil(rail.getBoundingClientRect().height));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    return () => observer.disconnect();
+  }, [showDiscovery]);
+  const discoveryInset = showDiscovery ? 48 + noticeHeight + discoveryHeight + 12 : 12;
+  // When expanded tools displace the left column, keep its two panels usable.
+  const sessionsLayout = prefs.panels?.sessions;
+  const stackedPanels =
+    panelTopInset > 76 &&
+    Math.abs((sessionsLayout?.x ?? 16) - (attentionLayout?.x ?? 16)) < 264 &&
+    (attentionLayout?.y ?? 460) > (sessionsLayout?.y ?? 150);
+  const sessionsTop = Math.max(panelTopInset, sessionsLayout?.y ?? 150);
+  const attentionTop = stackedPanels
+    ? Math.min(
+        Math.max(sessionsTop + 72, attentionLayout?.y ?? 460),
+        panelViewportHeight - discoveryInset - 64,
+      )
+    : panelTopInset;
   function toggleGroup(node: Task) {
     const groups = latestPrefs.current.collapsedGroups ?? [];
     updatePrefs({
@@ -1426,8 +1664,10 @@ export function App() {
       className="attention-row"
       onClick={() => {
         updatePrefs({ sessionId: entry.sessionId, selection: entry.target });
-        setTab(entry.kind === 'review' ? 'diff' : 'transcript');
+        const destination = attentionTab(entry);
+        setTab(destination);
         openInspector();
+        focusAttention(entry, destination);
       }}
     >
       <span className={`attention-icon ${entry.kind}`}>
@@ -1750,6 +1990,9 @@ export function App() {
         <aside className="sidebar">
           <FloatingPanel
             title="Sessions"
+            bottomInset={discoveryInset}
+            topInset={panelTopInset}
+            heightLimit={stackedPanels ? Math.max(56, attentionTop - sessionsTop - 8) : undefined}
             layout={prefs.panels?.sessions}
             initial={{ x: 16, y: 150 }}
             onChange={(value) => panelChange('sessions', value)}
@@ -1809,18 +2052,31 @@ export function App() {
                     {s.state.current ? (s.state.activeTurnId ? 'Running' : 'Idle') : s.lifecycle} ·{' '}
                     {queue.filter((q) => q.sessionId === s.id).length} attention
                   </span>
+                  {prAttention.some((item) => item.sessionId === s.id) && (
+                    <small>GitHub PR needs review</small>
+                  )}
                 </button>
               ))}
             </nav>
           </FloatingPanel>
           <FloatingPanel
             title="Attention"
+            bottomInset={discoveryInset}
+            topInset={attentionTop}
+            minVisibleHeight={stackedPanels ? 64 : undefined}
             badge={queue.length}
-            layout={prefs.panels?.attention}
+            layout={
+              autoOpenAttention && attentionLayout
+                ? { ...attentionLayout, collapsed: false }
+                : attentionLayout
+            }
             initial={{ x: 16, y: 460 }}
-            onChange={(value) => panelChange('attention', value)}
+            onChange={(value) => {
+              setCollapsedForDecision(value.collapsed ? decisionKey : undefined);
+              panelChange('attention', value);
+            }}
           >
-            {!prefs.panels?.attention?.collapsed && (
+            {attentionExpanded && (
               <section className="attention" aria-labelledby="attention-heading">
                 <div className="section-heading">
                   <h2 id="attention-heading">Attention</h2>
@@ -1830,7 +2086,28 @@ export function App() {
                   <p className="muted">Nothing needs attention.</p>
                 ) : (
                   <>
-                    {queue.filter((entry) => !isHistoricalInterruption(entry)).map(renderAttention)}
+                    {inlineDecision && decisionSession && (
+                      <div className="attention-decision">
+                        <strong>{sessionName(decisionSession)}</strong>
+                        <DecisionPanels
+                          key={decisionKey}
+                          session={decisionSession}
+                          only={inlineDecision.id}
+                          disabled={
+                            busy ||
+                            !connected ||
+                            !decisionSession.state.current ||
+                            decisionSession.lifecycle !== 'connected'
+                          }
+                          mutate={mutate}
+                        />
+                      </div>
+                    )}
+                    {queue
+                      .filter(
+                        (entry) => !isHistoricalInterruption(entry) && entry !== inlineDecision,
+                      )
+                      .map(renderAttention)}
                     {queue.some(isHistoricalInterruption) && (
                       <details className="attention-history">
                         <summary>
@@ -1854,7 +2131,7 @@ export function App() {
       )}
       <main id="workspace">
         {session && (
-          <div className="workspace-chrome">
+          <div className="workspace-chrome" ref={chromeRef}>
             <div className="workspace-title">
               <div>
                 <p className="eyebrow">{session?.workspace ?? 'YOUR LOCAL WORKSPACE'}</p>
@@ -1928,11 +2205,21 @@ export function App() {
               {waiting.length > 0 && (
                 <button
                   className="attention-jump"
-                  onClick={goToAttention}
+                  data-blocking={decisionsWaiting.length > 0 || undefined}
+                  onClick={() => goToAttention(decisionsWaiting.length > 0)}
                   aria-keyshortcuts="Meta+J Control+J"
                   title="Go to the next thing that needs you (⌘J or Ctrl+J)"
                 >
-                  Next to review <span className="count">{waiting.length}</span>
+                  {decisionsWaiting.length > 0 ? (
+                    <>
+                      <span aria-hidden="true">!</span> Needs your input{' '}
+                      <span className="count">{decisionsWaiting.length}</span>
+                    </>
+                  ) : (
+                    <>
+                      Next to review <span className="count">{waiting.length}</span>
+                    </>
+                  )}
                 </button>
               )}
               <button className="primary" onClick={() => setModal('start')}>
@@ -2278,8 +2565,9 @@ export function App() {
           </section>
         ) : (
           <>
-            {(activeTask || outside.length > 0 || temporary) && (
+            {showDiscovery && (
               <section
+                ref={discoveryRef}
                 className="canvas-discovery"
                 aria-label="Canvas navigation"
                 style={{ bottom: 48 + noticeHeight }}
@@ -2289,7 +2577,7 @@ export function App() {
                     New card positions are temporary: saved layout is full.
                   </span>
                 )}
-                {activeTask && (
+                {activeTask && showActiveDiscovery && (
                   <>
                     <span className="current-task-status" role="status">
                       {nodeActivity(activeTask, session, connected).label}: {activeTask.label}
@@ -2482,13 +2770,18 @@ export function App() {
                         </svg>
                         {visible.map((node, index) => {
                           const p = position(node, index);
-                          const activity = nodeActivity(node, session, connected);
+                          const blocker = blockingTargets.get(node.id);
+                          const activity = blocker
+                            ? { label: blocker, kind: 'waiting', busy: false }
+                            : nodeActivity(node, session, connected);
                           return (
                             <button
                               key={node.id}
                               className={`task-node ${task?.id === node.id ? 'selected' : ''} activity-${activity.kind}`}
                               aria-busy={activity.busy}
                               data-activity={activity.kind}
+                              data-needs-input={blockingTargets.has(node.id) || undefined}
+                              data-pr-review={prTaskTargets.has(node.id) || undefined}
                               style={{ left: p.x, top: p.y }}
                               title="Drag to arrange; Shift+arrow keys move; arrow keys navigate; F folds subtasks"
                               onPointerDown={(event) => {
@@ -2583,7 +2876,7 @@ export function App() {
                                 }
                               }}
                               id={`node-${node.id}`}
-                              aria-label={`${node.label}, ${node.status}, ${taskOwner(node, nodes)}, ${activity.label}${prefs.collapsedGroups?.includes(node.id) ? ', subtasks folded' : ''}`}
+                              aria-label={`${node.label}, ${node.status}, ${taskOwner(node, nodes)}, ${activity.label}${prTaskTargets.has(node.id) ? ', GitHub PR needs review' : ''}${prefs.collapsedGroups?.includes(node.id) ? ', subtasks folded' : ''}`}
                             >
                               <small>
                                 <span className="node-symbol" aria-hidden="true">
@@ -2610,6 +2903,7 @@ export function App() {
                                 <i className={`status-dot ${activity.kind}`} aria-hidden="true" />
                                 <span className="node-activity-label" title={activity.label}>
                                   {activity.label}
+                                  {prTaskTargets.has(node.id) && ' · PR needs review'}
                                 </span>
                               </span>
                               {activity.busy && (
@@ -2639,6 +2933,8 @@ export function App() {
               </section>
               <FloatingPanel
                 title="Task inspector"
+                bottomInset={discoveryInset}
+                topInset={panelTopInset}
                 badge={
                   (session.state.userInputs?.length ?? 0) +
                     (session.state.approvals?.length ?? 0) || undefined
@@ -2671,7 +2967,9 @@ export function App() {
                     {task &&
                       queue.some(
                         (entry) =>
-                          entry.target === task.id && ['review', 'failure'].includes(entry.kind),
+                          entry.target === task.id &&
+                          !('pr' in entry) &&
+                          ['review', 'failure'].includes(entry.kind),
                       ) && (
                         <div>
                           <button
@@ -2794,8 +3092,25 @@ export function App() {
                   >
                     {tab === 'workspace' && (
                       <Workspace
-                        key={`${session.id}:${session.projectContext?.revision ?? 0}`}
+                        key={`${session.id}:${session.projectContext?.revision ?? 0}:${attentionWorkspace?.jump ?? 0}`}
+                        initialFolderId={
+                          attentionWorkspace?.sessionId === session.id
+                            ? attentionWorkspace.folderId
+                            : undefined
+                        }
+                        revealPullRequest={attentionWorkspace?.sessionId === session.id}
+                        onPrObservation={(folderId, value) => {
+                          setPrObservations((previous) => {
+                            const rest = previous.filter(
+                              (item) => item.sessionId !== session.id || item.folderId !== folderId,
+                            );
+                            return value?.head
+                              ? [{ sessionId: session.id, folderId, value }, ...rest].slice(0, 32)
+                              : rest;
+                          });
+                        }}
                         session={session}
+                        linkedTaskId={task && !task.item ? task.id : undefined}
                         commands={status.commands}
                         busy={busy}
                         mutate={mutate}
@@ -2832,6 +3147,9 @@ export function App() {
                           </section>
                         )}
                         <DecisionPanels
+                          except={
+                            inlineDecision?.sessionId === session.id ? inlineDecision.id : undefined
+                          }
                           session={session}
                           disabled={!available || busy}
                           mutate={mutate}
@@ -4379,27 +4697,54 @@ function DecisionPanels({
   session,
   disabled,
   mutate,
+  only,
+  except,
 }: {
   session: SessionRow;
   disabled: boolean;
+  only?: string;
+  except?: string;
   mutate: (operation: string, params: Json) => Promise<Json>;
 }) {
   const [allowance, setAllowance] = useState<Json>();
+  const visible = (id: string) => id !== except && (!only || id === only);
+  const approvals = (session.state.approvals ?? []).filter((entry) =>
+    visible(entry.requested.approvalId),
+  );
+  const inputs = (session.state.userInputs ?? []).filter((input) => visible(input.userInputId));
   return (
     <>
-      {(session.state.approvals ?? []).map((entry) => {
+      {approvals.map((entry) => {
         const a = entry.requested;
+        const command =
+          a.subject?.kind === 'shell' && typeof a.subject.command === 'string'
+            ? a.subject.command
+            : undefined;
         return (
           <section className="decision" key={a.approvalId}>
-            <h3>Permission decision</h3>
-            <p>Workspace: {session.workspace}</p>
-            <p>
-              <strong>{a.toolName}</strong> · {text(a.subject)}
-            </p>
-            <pre>{a.rawArgs}</pre>
+            <h3 id={`decision-approval-${a.approvalId}`} tabIndex={-1}>
+              Permission decision
+            </h3>
+            {only && command !== undefined ? (
+              <>
+                <p>Run a command in this task’s workspace</p>
+                <pre className="attention-command" tabIndex={0} aria-label="Requested command">
+                  {command}
+                </pre>
+              </>
+            ) : (
+              <>
+                <p>Workspace: {session.workspace}</p>
+                <p>
+                  <strong>{a.toolName}</strong> · {text(a.subject)}
+                </p>
+                <pre>{a.rawArgs}</pre>
+              </>
+            )}
             {a.subagentOrigin && <p>Delegated origin: {text(a.subagentOrigin)}</p>}
             <details>
-              <summary>Request identity and provenance</summary>
+              <summary>{only ? 'Full request details' : 'Request identity and provenance'}</summary>
+              <p>Workspace: {session.workspace}</p>
               <pre>{text(a)}</pre>
             </details>
             {allowance?.sessionId === session.id && allowance?.approvalId === a.approvalId && (
@@ -4493,7 +4838,7 @@ function DecisionPanels({
           </section>
         );
       })}
-      {(session.state.userInputs ?? []).map((input) => (
+      {inputs.map((input) => (
         <form
           className="decision"
           key={input.userInputId}
@@ -4507,7 +4852,9 @@ function DecisionPanels({
             });
           }}
         >
-          <h3>Muse needs an answer</h3>
+          <h3 id={`decision-question-${input.userInputId}`} tabIndex={-1}>
+            Muse needs an answer
+          </h3>
           {input.questions.map((q: Json) => (
             <label key={q.id}>
               {q.question}

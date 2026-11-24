@@ -13,6 +13,10 @@ export function FloatingPanel({
   children,
   badge,
   actions,
+  bottomInset = 12,
+  topInset = 76,
+  heightLimit = Infinity,
+  minVisibleHeight = 100,
 }: {
   title: string;
   layout?: PanelLayout;
@@ -21,6 +25,10 @@ export function FloatingPanel({
   children: ReactNode;
   badge?: number;
   actions?: ReactNode;
+  bottomInset?: number;
+  topInset?: number;
+  heightLimit?: number;
+  minVisibleHeight?: number;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [position, setPosition] = useState(layout ?? { ...initial, collapsed: false });
@@ -34,12 +42,17 @@ export function FloatingPanel({
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
+  const bottom = Math.min(bottomInset, Math.max(12, size.height - 176));
+  const top = Math.max(
+    76,
+    Math.min(topInset, Math.max(76, size.height - bottom - minVisibleHeight)),
+  );
   const clamp = (x: number, y: number) => ({
     x: Math.max(
       8,
       Math.min(x, size.width - Math.min(ref.current?.offsetWidth ?? 280, size.width - 16) - 8),
     ),
-    y: Math.max(76, Math.min(y, size.height - 64)),
+    y: Math.max(top, Math.min(y, size.height - bottom - minVisibleHeight)),
   });
   const visible = clamp(position.x, position.y);
   const collapsed = layout?.collapsed ?? position.collapsed;
@@ -51,7 +64,10 @@ export function FloatingPanel({
       style={{
         left: visible.x,
         top: visible.y,
-        maxHeight: Math.max(100, size.height - visible.y - 12),
+        maxHeight: Math.min(
+          heightLimit,
+          Math.max(minVisibleHeight, size.height - visible.y - bottom),
+        ),
       }}
     >
       <div className="panel-heading">

@@ -24,9 +24,10 @@ pub fn artifact_root<'a>(artifact: &'a Value, workspace: &'a Path) -> &'a Path {
 }
 
 pub async fn capture(root: &Path) -> Result<Value> {
+    let canonical_root = tokio::fs::canonicalize(root).await?;
     let top = String::from_utf8(git(root, &["rev-parse", "--show-toplevel"]).await?)?;
     ensure!(
-        tokio::fs::canonicalize(root).await? == tokio::fs::canonicalize(top.trim()).await?,
+        canonical_root == tokio::fs::canonicalize(top.trim()).await?,
         "Capture requires the repository root workspace"
     );
     let hidden = git(root, &["ls-files", "-v", "-z"]).await?;
@@ -84,18 +85,14 @@ pub async fn capture(root: &Path) -> Result<Value> {
             meta.is_file() && !meta.file_type().is_symlink(),
             "Cannot fingerprint non-regular tracked file {name}"
         );
-        let canonical = tokio::fs::canonicalize(&path).await?;
-        ensure!(
-            canonical.starts_with(tokio::fs::canonicalize(root).await?),
-            "Tracked file outside workspace"
-        );
+        let opened = crate::workspace::open_contained(&canonical_root, &path)?;
+        let meta = opened.metadata()?;
         ensure!(
             meta.len() <= 1024 * 1024,
             "Tracked file exceeds 1 MiB fingerprint budget"
         );
         let mut content = Vec::new();
-        tokio::fs::File::open(canonical)
-            .await?
+        tokio::fs::File::from_std(opened)
             .take(1024 * 1024 + 1)
             .read_to_end(&mut content)
             .await?;
@@ -131,18 +128,14 @@ pub async fn capture(root: &Path) -> Result<Value> {
             meta.is_file() && !meta.file_type().is_symlink(),
             "Cannot capture non-regular file {name}"
         );
-        let canonical = tokio::fs::canonicalize(&path).await?;
-        ensure!(
-            canonical.starts_with(tokio::fs::canonicalize(root).await?),
-            "File outside workspace"
-        );
+        let opened = crate::workspace::open_contained(&canonical_root, &path)?;
+        let meta = opened.metadata()?;
         ensure!(
             meta.len() <= 1024 * 1024,
             "Untracked file exceeds capture budget"
         );
         let mut content = Vec::new();
-        tokio::fs::File::open(&canonical)
-            .await?
+        tokio::fs::File::from_std(opened)
             .take(1024 * 1024 + 1)
             .read_to_end(&mut content)
             .await?;
@@ -269,12 +262,19 @@ pub async fn handle(
             None => None,
         };
         let key = format!("capture_{request_id}");
-        if let Some(prior) = db.lock().unwrap().get("artifacts", &key)? {
+        let folder = folder.unwrap_or(Value::Null);
+        let replay = |prior: Value| -> Result<Value> {
             ensure!(
-                prior["sessionId"] == session_id && prior["taskId"] == params["taskId"],
+                prior["sessionId"] == session_id
+                    && prior["taskId"] == params["taskId"]
+                    && prior["folder"]["id"] == folder["id"]
+                    && prior["folder"]["path"] == folder["path"],
                 "Capture ID reused with different target"
             );
-            return Ok(prior);
+            Ok(prior)
+        };
+        if let Some(prior) = db.lock().unwrap().get("artifacts", &key)? {
+            return replay(prior);
         }
         ensure!(
             db.lock().unwrap().count("artifacts")? < 100,
@@ -289,24 +289,29 @@ pub async fn handle(
                 .is_some_and(|turns| turns.iter().any(|t| t["turnId"] == task)),
             "Unknown producing turn"
         );
-        let target = folder
-            .as_ref()
-            .and_then(|f| f["path"].as_str())
-            .map_or(root, Path::new);
+        let target = folder["path"].as_str().map_or(root, Path::new);
         let mut row = capture(target).await?;
         ensure!(
             capture(target).await?["fingerprint"] == row["fingerprint"],
             "Repository changed during capture; try again"
         );
-        if let Some(folder) = folder {
-            row["folder"] = folder;
+        if !folder.is_null() {
+            row["folder"] = folder.clone();
         }
         row["id"] = json!(key);
         row["sessionId"] = json!(session_id);
         row["taskId"] = json!(task);
         row["provenance"] = json!("userAsserted");
         row["revision"] = json!(1);
-        db.lock().unwrap().put("artifacts", &key, &row)?;
+        let db = db.lock().unwrap();
+        if let Some(prior) = db.get("artifacts", &key)? {
+            return replay(prior);
+        }
+        ensure!(
+            db.count("artifacts")? < 100,
+            "Artifact retention limit reached"
+        );
+        db.put("artifacts", &key, &row)?;
         return Ok(row);
     }
     if operation == "review/list" {
@@ -586,6 +591,47 @@ mod tests {
         )
         .await?;
         assert_eq!(snapshot["folder"]["name"], "API");
+        assert_eq!(
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"f-api"}),
+                "c2"
+            )
+            .await?,
+            snapshot
+        );
+        assert!(
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"f-app"}),
+                "c2"
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("Capture ID reused with different target")
+        );
+        let (app_capture, api_capture) = tokio::join!(
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"f-app"}),
+                "c3"
+            ),
+            capture(
+                json!({"sessionId":"s","taskId":"t1","folderId":"f-api"}),
+                "c3"
+            ),
+        );
+        let (saved, refused) = match (app_capture, api_capture) {
+            (Ok(saved), Err(refused)) | (Err(refused), Ok(saved)) => (saved, refused),
+            results => anyhow::bail!("Expected a single capture for the shared ID: {results:?}"),
+        };
+        assert!(
+            refused
+                .to_string()
+                .contains("Capture ID reused with different target")
+        );
+        assert_eq!(
+            db.lock().unwrap().get("artifacts", "capture_c3")?,
+            Some(saved)
+        );
         let patch = snapshot["patch"].as_str().unwrap();
         assert!(
             patch.contains("api.txt") && !patch.contains("app.txt"),

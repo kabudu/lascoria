@@ -14,6 +14,9 @@ if (!Number.isInteger(seconds) || seconds < 1 || seconds > 600)
   throw Error('Idle seconds must be 1..600');
 // R11: session count (1, 5 or 10) and an optional packaged runtime, so release builds and the
 // marginal cost per session are measured with the same workload.
+const windows = platform() === 'win32';
+const executable = (name) => (windows ? `${name}.exe` : name);
+const sampleInterval = windows ? 5 : 1;
 const sessionCount = Number(process.env.SCH_BENCH_SESSIONS ?? 10);
 if (![1, 5, 10].includes(sessionCount)) throw Error('Sessions must be 1, 5 or 10');
 const packaged = process.env.SCH_BENCH_RUNTIME ? resolve(process.env.SCH_BENCH_RUNTIME) : null;
@@ -27,6 +30,8 @@ const env = {
   ...process.env,
   SCH_STATE_DIR: directory,
   SCH_PROVIDER: 'echo',
+  SCH_AUTH_MANAGED: '0',
+  MUSE_NO_AUTO_UPDATE: '1',
   XDG_CONFIG_HOME: join(root, 'config'),
   XDG_DATA_HOME: join(root, 'data'),
   XDG_CACHE_HOME: join(root, 'cache'),
@@ -36,11 +41,11 @@ delete env.META_API_KEY;
 if (packaged)
   Object.assign(env, {
     SCH_RESOURCES: packaged,
-    SCH_NODE: process.env.SCH_BENCH_NODE ?? join(packaged, 'node'),
+    SCH_NODE: process.env.SCH_BENCH_NODE ?? join(packaged, executable('node')),
   });
 const supervisorBinary = packaged
-  ? join(packaged, 'constellation-supervisor')
-  : resolve('supervisor/target/debug/constellation-supervisor');
+  ? join(packaged, executable('constellation-supervisor'))
+  : resolve('supervisor/target/debug', executable('constellation-supervisor'));
 const loadBefore = loadavg();
 const daemon = spawn(supervisorBinary, [], {
   env,
@@ -63,6 +68,27 @@ const summary = (xs) => ({
   maxMs: Math.max(...xs),
 });
 async function inventory() {
+  if (windows) {
+    // CIM supplies parent IDs; .NET supplies decimal CPU seconds and working-set bytes.
+    const script = `
+      $parents = @{}
+      Get-CimInstance Win32_Process | ForEach-Object { $parents[[int]$_.ProcessId] = $_.ParentProcessId }
+      $rows = @(Get-Process | Where-Object { $parents.ContainsKey($_.Id) } |
+        Select-Object @{n='pid';e={$_.Id}}, @{n='ppid';e={$parents[$_.Id]}},
+        @{n='rssBytes';e={$_.WorkingSet64}}, @{n='cpuSeconds';e={[double]$_.CPU}},
+        @{n='name';e={$_.ProcessName}})
+      ConvertTo-Json -InputObject $rows -Compress
+    `;
+    const { stdout } = await exec(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      {
+        timeout: 5000,
+        windowsHide: true,
+      },
+    );
+    return JSON.parse(stdout);
+  }
   const { stdout } = await exec('ps', ['-axo', 'pid=,ppid=,rss=,time=,comm=']);
   const all = stdout
     .trim()
@@ -233,8 +259,8 @@ try {
   const baseline = await processes();
   const idleStart = performance.now();
   const samples = [];
-  for (let i = 0; i < seconds; i++) {
-    await delay(1000);
+  for (let elapsed = 0; elapsed < seconds; elapsed += sampleInterval) {
+    await delay(Math.min(sampleInterval, seconds - elapsed) * 1000);
     samples.push(await processes());
   }
   verify(await request(directory, 'status'));
@@ -288,6 +314,7 @@ try {
       sdkMode: process.env.SCH_DEDICATED_WORKERS ? 'dedicated' : 'shared',
       guiIncluded: Boolean(guiPid),
       idleSeconds: seconds,
+      sampleIntervalSeconds: sampleInterval,
     },
     start: summary(startTimes),
     snapshot: summary(latency),
@@ -351,7 +378,7 @@ try {
       noErrors: failures === 0,
     },
     limitations: [
-      'CPU uses ps cumulative time at platform resolution; direct children of the supervisor are classified as SDK workers.',
+      'CPU uses cumulative process time at platform resolution; direct children of the supervisor are classified as SDK workers. Windows reports working set as RSS.',
       guiPid
         ? `GUI cohort includes every WebKit process that appeared after launch; ${foreignWebKit.size} pre-existing WebKit processes of other apps were excluded. Another WebKit app starting during observation would be charged to the GUI and fail the stable-tree gate. Native GUI uses ${sessionCount} sessions with one turn each, not the fifty-node synthetic workload.`
         : 'No GUI is represented.',

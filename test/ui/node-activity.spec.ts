@@ -111,11 +111,23 @@ test('node activity is visible while working, quiet when waiting or stale, and r
         availableChoices: [],
         rawArgs: '{}',
         toolName: 'bash',
+        subject: { kind: 'shell', command: 'npm test' },
       },
     },
   ];
   status.version = 'activity:4';
   await expect(node.locator('.node-activity-label')).toHaveText('Permission needed');
+  await expect(page.getByRole('button', { name: 'Show current task', exact: true })).toHaveCount(0);
+  await expect(
+    page.locator('.attention').getByRole('heading', { name: 'Permission decision' }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Requested command')).toHaveText('npm test');
+  await expect(
+    page.locator('.attention details').filter({ hasText: 'Full request details' }),
+  ).not.toHaveAttribute('open', '');
+  await page.getByRole('button', { name: /Needs your input/ }).click();
+  await expect(page.getByRole('heading', { name: 'Permission decision' })).toBeFocused();
+
   await expect(rail).toHaveCount(0);
   state.approvals = [];
   state.current = false;

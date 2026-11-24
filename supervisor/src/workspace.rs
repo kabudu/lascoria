@@ -610,18 +610,26 @@ async fn stream(
 
 /// Opens `path` without following a final link and confirms, from the open handle, that the
 /// file is a regular file inside `root` (canonical).
-fn open_contained(root: &Path, path: &Path) -> Result<std::fs::File> {
+pub(crate) fn open_contained(root: &Path, path: &Path) -> Result<std::fs::File> {
+    ensure!(
+        std::fs::symlink_metadata(path)?.is_file(),
+        "File must be a regular file inside the repository"
+    );
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW);
+        // A replacement between metadata and open must not block on a pipe.
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     }
+    // Windows can present ordinary files through data reparse providers, such as
+    // cloud storage. Inspect the final opened handle before reading any bytes.
     let file = options.open(path).context("File is unavailable")?;
+    let metadata = file.metadata()?;
     let real = lascoria_runtime::platform::opened_path(&file)?;
     ensure!(
-        real.starts_with(root) && file.metadata()?.is_file(),
+        real.starts_with(root) && metadata.is_file(),
         "File must remain inside the repository"
     );
     Ok(file)

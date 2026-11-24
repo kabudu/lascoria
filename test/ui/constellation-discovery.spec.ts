@@ -211,10 +211,39 @@ for (const project of [false, true])
       .getByRole('button', { name: /Discovery trial/ })
       .click();
     await clear(sent);
-    for (const width of [1100, 820]) {
-      await page.setViewportSize({ width, height: 800 });
-      await page.getByRole('button', { name: 'Show current task', exact: true }).click();
-      await clear(sent);
+    for (const [width, height] of [
+      [1100, 800],
+      [820, 600],
+      [820, 800],
+    ]) {
+      await page.setViewportSize({ width, height });
+      if (height === 800) {
+        await page.getByRole('button', { name: 'Show current task', exact: true }).click();
+        await clear(sent);
+      }
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const rail = document.querySelector('.canvas-discovery')?.getBoundingClientRect();
+            const toolbar = document
+              .querySelector('.surface-toolbar:not(.is-collapsed)')
+              ?.getBoundingClientRect();
+            const sessions = document
+              .querySelector('[aria-label="Sessions panel"]')
+              ?.getBoundingClientRect();
+            const attention = document
+              .querySelector('[aria-label="Attention panel"]')
+              ?.getBoundingClientRect();
+            if (!rail || !toolbar || !sessions || !attention || sessions.bottom > attention.top - 4)
+              return false;
+            return [...document.querySelectorAll('.floating-panel')].every(
+              (panel) =>
+                panel.getBoundingClientRect().bottom <= rail.top - 4 &&
+                panel.getBoundingClientRect().top >= toolbar.bottom + 4,
+            );
+          }),
+        )
+        .toBe(true);
     }
     expect(
       (await new AxeBuilder({ page }).include('.canvas-discovery').analyze()).violations,
