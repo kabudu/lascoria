@@ -261,11 +261,20 @@ impl Worker {
         session: String,
         generation: u64,
         pool: &tokio::sync::Mutex<Option<Arc<Broker>>>,
+        trust_workspace: bool,
     ) -> Result<Self> {
         if std::env::var_os("SCH_WORKER").is_some()
             || std::env::var_os("SCH_DEDICATED_WORKERS").is_some()
         {
-            let worker = Dedicated::spawn(node, script, db, session.clone(), generation).await?;
+            let worker = Dedicated::spawn(
+                node,
+                script,
+                db,
+                session.clone(),
+                generation,
+                trust_workspace,
+            )
+            .await?;
             return Ok(Self {
                 ready: worker.ready.clone(),
                 backend: Backend::Dedicated(Box::new(worker)),
@@ -305,7 +314,7 @@ impl Worker {
                 &session,
                 generation,
                 "open",
-                json!({"id":uuid::Uuid::new_v4().to_string()}),
+                json!({"id":uuid::Uuid::new_v4().to_string(),"trustWorkspace":trust_workspace}),
             )
             .await;
         match result {

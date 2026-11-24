@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, readFile, readdir } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join, resolve } from 'node:path';
@@ -134,6 +134,20 @@ test(
     );
     const a = (await api('start', { workspace }, 'start-a')).sessionId;
     const b = (await api('start', { workspace }, 'start-b')).sessionId;
+    for (const sessionId of [a, b]) {
+      await api('turn', { sessionId, text: 'Create an isolated session checkpoint' });
+      await until(
+        () => api('status'),
+        (s) =>
+          s.sessions.find((r) => r.id === sessionId).state.turns?.at(-1)?.terminal === 'completed',
+        'session checkpoint',
+      );
+      await api('relay/workspaceTrust', {
+        sessionId,
+        workspace: await realpath(workspace),
+        trusted: true,
+      });
+    }
     await until(
       () => api('status'),
       (s) => s.sessions.every((r) => r.state.current && r.state.relayToolsAvailable),

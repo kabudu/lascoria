@@ -15,7 +15,7 @@ import {
   PermissionValidationError,
 } from './permissions.js';
 
-export async function createSession(send, onDeath) {
+export async function createSession(send, onDeath, trustWorkspace = false) {
   let ended = false;
   let closePromise;
   function close() {
@@ -212,10 +212,7 @@ export async function createSession(send, onDeath) {
           .filter(([id, value]) => value?.revision === fold.items.get(id)?.revision),
       ),
       current: !stale && !opening && !!fold?.current,
-      relayToolsAvailable: Boolean(
-        process.env.SCH_RELAY_HELPER &&
-        runtime?.handshake.grantedCapabilities?.includes('sessionMcp'),
-      ),
+      relayWorkspaceTrusted: trustWorkspace,
       sessionState: Object.fromEntries(
         (fold?.sessionState.families() ?? []).map((family) => [
           family,
@@ -246,6 +243,7 @@ export async function createSession(send, onDeath) {
     runtime = await spawnRuntime(
       {
         binary: process.env.MUSE_BIN,
+        args: trustWorkspace ? ['--trust-workspace'] : [],
         provider: process.env.SCH_PROVIDER ?? 'echo',
         onHistory: rememberSource,
         capabilities: process.env.SCH_RELAY_HELPER ? ['sessionMcp'] : [],
@@ -333,6 +331,12 @@ export async function createSession(send, onDeath) {
 
   async function execute(message) {
     const { operation, params, commandId } = message;
+    if (operation === 'workspaceTrustScope') {
+      if (ended || stale || !runtime.session?.fold.current || params.sessionId !== sessionId)
+        throw new ValidationError('Session state unavailable');
+      const { session } = await runtime.request('session/read', { sessionId, excludeItems: true });
+      return { workspaceRoot: session.workspaceRoot, turnCount: session.turnCount };
+    }
     if (operation === 'permissions') {
       if (stale || !runtime.session?.fold.current || params.sessionId !== sessionId)
         throw new ValidationError('Session state unavailable');

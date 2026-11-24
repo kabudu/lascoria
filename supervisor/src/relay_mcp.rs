@@ -223,6 +223,17 @@ pub async fn run(session: &str) -> Result<()> {
         ensure!(text.len() <= 131072, "MCP response exceeds budget");
         output.write_all(text.as_bytes()).await?;
         output.flush().await?;
+        if request["method"] == "tools/list"
+            && response["result"].is_object()
+            && capability().is_some()
+        {
+            let _ = self::request(
+                "relay/toolsListed",
+                json!({"sessionId":session}),
+                uuid::Uuid::new_v4().to_string(),
+            )
+            .await;
+        }
     }
     Ok(())
 }

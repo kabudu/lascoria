@@ -39,6 +39,7 @@ const FEATURES: &[&str] = &[
     "relayViews",
     "relayUnread",
     "relayMap",
+    "relayWorkspaceTrust",
     "sessionNames",
     "projects",
     "projectWorktrees",
@@ -117,7 +118,7 @@ impl Actor {
             .unwrap()
             .put("sessions", row["id"].as_str().unwrap(), row)
     }
-    async fn launch(&mut self, row: &mut Value) -> Result<()> {
+    async fn launch(&mut self, row: &mut Value, trust_workspace: bool) -> Result<()> {
         projects::check_session(row).await?;
         let id = row["id"].as_str().unwrap().to_string();
         // Persist the intended budget, then retain interruption facts written during old-worker drain.
@@ -132,6 +133,7 @@ impl Actor {
         relay_identity::issue(&id, generation);
         row["lifecycle"] = json!("recovering");
         row["state"]["current"] = json!(false);
+        row["state"]["relayToolsAvailable"] = json!(false);
         self.save(row)?;
         let worker = Worker::spawn(
             &self.node,
@@ -140,6 +142,7 @@ impl Actor {
             id.clone(),
             generation,
             &self.broker,
+            trust_workspace,
         )
         .await?;
         {
@@ -213,6 +216,12 @@ impl Actor {
         session: &str,
         wire: Option<Value>,
     ) -> Result<Value> {
+        if operation == "turn" {
+            let row = self.row(session)?;
+            if row["state"]["relayWorkspaceTrusted"] == true {
+                workspace::check_trusted_root(&row)?;
+            }
+        }
         let reservation = self.db.lock().unwrap().get("commands", id)?;
         let wire_id = reservation
             .as_ref()
@@ -278,7 +287,12 @@ impl Actor {
         db.put("commands", id, &command)?;
         Ok(command)
     }
-    async fn recover(&mut self, id: &str, request_id: Option<&str>) -> Result<Value> {
+    async fn recover(
+        &mut self,
+        id: &str,
+        request_id: Option<&str>,
+        trust_workspace: bool,
+    ) -> Result<Value> {
         let mut row = self.row(id)?;
         ensure!(
             row["durability"] == "durable",
@@ -289,7 +303,7 @@ impl Actor {
             "Recovery retry limit reached; explicit resume required"
         );
         row["attempts"] = json!(row["attempts"].as_u64().unwrap_or(0) + 1);
-        self.launch(&mut row).await?;
+        self.launch(&mut row, trust_workspace).await?;
         if row["durability"] != "durable" {
             if let Some(mut worker) = self.workers.remove(id) {
                 worker.stop().await;
@@ -339,7 +353,7 @@ impl Actor {
             && row["attempts"].as_u64().unwrap_or(0) < 2
         {
             let id = row["id"].as_str().unwrap();
-            if let Err(error) = self.recover(id, None).await {
+            if let Err(error) = self.recover(id, None, false).await {
                 let mut row = self.row(id)?;
                 row["lifecycle"] = json!("interrupted");
                 row["recoveryError"] = json!(error.to_string());
@@ -373,6 +387,49 @@ impl Actor {
                         .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
                 "Invalid relay request ID"
             );
+            if operation == "relay/workspaceTrust" {
+                let session = params["sessionId"].as_str().context("Session required")?;
+                let mut row = self.row(session)?;
+                workspace::idle(&self.db, &row)?;
+                ensure!(
+                    row["lifecycle"] == "connected" && row["projectContext"].is_null(),
+                    "Workspace trust is available for connected single-folder sessions"
+                );
+                let workspace = row["workspace"].as_str().context("Workspace required")?;
+                let trust = params["trusted"]
+                    .as_bool()
+                    .context("Trust choice required")?;
+                ensure!(
+                    params == json!({"sessionId":session,"workspace":workspace,"trusted":trust}),
+                    "The workspace changed. Review the folder before continuing"
+                );
+                if trust {
+                    workspace::check_trusted_root(&row)?;
+                    let reply = self.workers.get_mut(session).context("Muse host unavailable")?
+                        .call(json!({"id":Uuid::new_v4().to_string(),"operation":"workspaceTrustScope",
+                            "params":{"sessionId":session}})).await?;
+                    let native = &reply["result"];
+                    let native_root = native["workspaceRoot"]
+                        .as_str()
+                        .and_then(|path| dunce::canonicalize(path).ok());
+                    ensure!(
+                        native_root.as_deref() == Some(std::path::Path::new(workspace)),
+                        "Muse could not verify the same workspace folder"
+                    );
+                    ensure!(
+                        native["turnCount"].as_u64().is_some_and(|count| count > 0),
+                        "Finish one task so Muse has a session checkpoint before restarting"
+                    );
+                }
+                self.db.lock().unwrap().journal_admits()?;
+                ensure!(
+                    self.db.lock().unwrap().get("commands", id)?.is_none(),
+                    "This trust request was already handled. Refresh the session"
+                );
+                row["attempts"] = json!(0);
+                self.save(&row)?;
+                return self.recover(session, Some(id), trust).await;
+            }
             if operation == "relay/deliver" {
                 let recipient = params["sessionId"].as_str().context("Recipient required")?;
                 let row = self.row(recipient)?;
@@ -820,7 +877,7 @@ impl Actor {
                 row["projectContextReceipt"] = json!({"requestId":id,"status":"requested"});
             }
             self.save(&row)?;
-            if let Err(error) = self.launch(&mut row).await {
+            if let Err(error) = self.launch(&mut row, false).await {
                 row["lifecycle"] = json!("failed");
                 row["recoveryError"] = json!(error.to_string());
                 self.save(&row)?;
@@ -928,7 +985,7 @@ impl Actor {
             );
             row["attempts"] = json!(0);
             self.save(&row)?;
-            let result = self.recover(session, Some(id)).await;
+            let result = self.recover(session, Some(id), false).await;
             if let Err(error) = &result {
                 let db = self.db.lock().unwrap();
                 let mut row = db
@@ -1154,6 +1211,19 @@ async fn connection(
                 std::process::id(),
                 lascoria_runtime::platform::parent_pid,
             )?;
+        }
+        if request["operation"] == "relay/toolsListed" {
+            ensure!(!enforced || peer_class == peer::Peer::RelayHelper, "Relay helper required");
+            let session = request["params"]["sessionId"].as_str().context("Session required")?;
+            let db = db.lock().unwrap();
+            let mut row = db.get("sessions", session)?.context("Unknown session")?;
+            relay_identity::mark_listed(session, row["generation"].as_u64().context("Generation missing")?,
+                request["relayCapability"].as_str(), peer_pid)?;
+            if row["state"]["relayToolsAvailable"] != true {
+                row["state"]["relayToolsAvailable"] = json!(true);
+                db.put("sessions", session, &row)?;
+            }
+            return Ok(json!({}));
         }
         started = Some(Instant::now());
         if request["operation"] == "account/status" { return auth.lock().await.status().await; }
@@ -1557,7 +1627,7 @@ async fn supervisor_main() -> Result<()> {
                     if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
                     continue;
                 }
-                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "permissionPreflight", "setPermissionProfile", "setApprovalMode", "compact", "answer", "decide", "relay/deliver"].iter().any(|op| call.request["operation"] == *op)
+                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "permissionPreflight", "setPermissionProfile", "setApprovalMode", "compact", "answer", "decide", "relay/deliver", "relay/workspaceTrust"].iter().any(|op| call.request["operation"] == *op)
                     && !account_ready.load(std::sync::atomic::Ordering::SeqCst) {
                     let _ = call.response.send(Err(anyhow::anyhow!("Sign in or reconnect your Muse account before continuing")));
                     continue;

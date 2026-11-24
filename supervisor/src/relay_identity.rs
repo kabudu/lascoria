@@ -28,6 +28,7 @@ struct Grant {
     generation: u64,
     capability: String,
     host: Option<u32>,
+    listed: bool,
 }
 
 static GRANTS: Mutex<Option<HashMap<String, Grant>>> = Mutex::new(None);
@@ -54,6 +55,7 @@ pub fn issue(session: &str, generation: u64) -> String {
                 generation,
                 capability: capability.clone(),
                 host: None,
+                listed: false,
             },
         );
     capability
@@ -119,6 +121,45 @@ pub fn verify(
         Some(pinned) => ensure!(pinned == host, "{refused}"),
     }
     Ok(())
+}
+
+/// Only a real host descendant may attest to a tool listing, even in development mode.
+pub fn mark_listed(
+    session: &str,
+    generation: u64,
+    presented: Option<&str>,
+    helper: Option<u32>,
+) -> Result<()> {
+    verify(
+        session,
+        presented,
+        helper,
+        std::process::id(),
+        lascoria_runtime::platform::parent_pid,
+    )?;
+    let mut grants = GRANTS.lock().unwrap();
+    let grant = grants
+        .as_mut()
+        .and_then(|grants| grants.get_mut(session))
+        .filter(|g| {
+            g.generation == generation
+                && presented
+                    .is_some_and(|capability| crate::peer::same_secret(capability, &g.capability))
+        });
+    let Some(grant) = grant else {
+        bail!("Relay host generation changed");
+    };
+    grant.listed = true;
+    Ok(())
+}
+
+pub fn tools_listed(session: &str, generation: u64) -> bool {
+    GRANTS
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|grants| grants.get(session))
+        .is_some_and(|grant| grant.generation == generation && grant.listed)
 }
 
 #[cfg(test)]

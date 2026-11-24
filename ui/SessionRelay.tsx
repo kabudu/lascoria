@@ -27,6 +27,7 @@ export function SessionRelay({
   draftsEnabled,
   viewsEnabled,
   initialPeer,
+  trustEnabled,
 }: {
   session: SessionRow;
   sessions: SessionRow[];
@@ -35,6 +36,7 @@ export function SessionRelay({
   draftsEnabled: boolean;
   viewsEnabled: boolean;
   initialPeer?: string;
+  trustEnabled?: boolean;
 }) {
   const [inbox, setInbox] = useState<Inbox>();
   const [peer, setPeer] = useState(initialPeer ?? '');
@@ -43,6 +45,7 @@ export function SessionRelay({
   const conflict = draftStore.conflicts[draftKey];
   const setText = (text: string) => draftStore.setDrafts((old) => ({ ...old, [draftKey]: text }));
   const [allowAgents, setAllowAgents] = useState(false);
+  const [reviewTrust, setReviewTrust] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [receipts, setReceipts] = useState<Record<string, Json>>({});
@@ -71,9 +74,11 @@ export function SessionRelay({
   const connection = inbox?.connections.find((c) => c.sessions.includes(peer));
   const active = Boolean(connection?.active);
   const toolsReady = Boolean(
+    session.state.current &&
     session.state.relayToolsAvailable &&
-    sessions.find((s) => s.id === peer)?.state.relayToolsAvailable,
+    sessions.some((s) => s.id === peer && s.state.current && s.state.relayToolsAvailable),
   );
+  const hasCheckpoint = session.state.turns?.some((turn: Json) => turn.terminal);
   const received =
     inbox?.messages.filter((m) => m.to === session.id && (!peer || m.from === peer)) ?? [];
   const unviewed = received.filter((m) => !m.viewedAtMillis);
@@ -144,9 +149,68 @@ export function SessionRelay({
       )}
       {peer && !toolsReady && (
         <p className="muted">
-          Resume both sessions with the current runtime to enable Muse messaging tools.
+          You can share messages manually. Muse messaging requires relay tools in both sessions.
         </p>
       )}
+      {trustEnabled &&
+        peer &&
+        !session.projectContext &&
+        session.lifecycle === 'connected' &&
+        (!session.state.relayToolsAvailable || session.state.relayWorkspaceTrusted) && (
+          <>
+            {!reviewTrust ? (
+              <button
+                disabled={busy || !!session.state.activeTurnId}
+                onClick={() => setReviewTrust(true)}
+              >
+                {session.state.relayWorkspaceTrusted
+                  ? 'Review workspace trust'
+                  : 'Review workspace trust for Muse messaging'}
+              </button>
+            ) : (
+              <section aria-label="Confirm Muse workspace trust">
+                <p>
+                  <strong>{session.workspace}</strong>
+                </p>
+                <p>
+                  Trust lets Muse load this folder’s hooks, skills and MCP servers, which can run
+                  code or open connections. This restarts only this idle session’s Muse host. Peer
+                  messaging still requires a separate permission.
+                </p>
+                {!session.state.relayWorkspaceTrusted && !hasCheckpoint && (
+                  <p>Finish one task in this session before restarting Muse.</p>
+                )}
+                <div className="relay-actions">
+                  <button disabled={busy} onClick={() => setReviewTrust(false)}>
+                    Continue with manual messages
+                  </button>
+                  <button
+                    disabled={
+                      busy ||
+                      !!session.state.activeTurnId ||
+                      (!session.state.relayWorkspaceTrusted && !hasCheckpoint)
+                    }
+                    onClick={() =>
+                      void run(async () => {
+                        await request('relay/workspaceTrust', {
+                          sessionId: session.id,
+                          workspace: session.workspace,
+                          trusted: !session.state.relayWorkspaceTrusted,
+                        });
+                        setReviewTrust(false);
+                        await refresh();
+                      })
+                    }
+                  >
+                    {session.state.relayWorkspaceTrusted
+                      ? 'Revoke workspace trust'
+                      : 'Trust this workspace'}
+                  </button>
+                </div>
+              </section>
+            )}
+          </>
+        )}
       {connection?.allowAgentMessages && (
         <p className="muted">
           Muse may exchange selected task context with this peer. No model turn starts
@@ -162,7 +226,7 @@ export function SessionRelay({
                 sessionId: session.id,
                 peerId: peer,
                 expectedRevision: inbox!.revision,
-                allowAgentMessages: allowAgents,
+                allowAgentMessages: toolsReady && allowAgents,
               });
               await refresh();
             })

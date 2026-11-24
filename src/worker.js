@@ -9,10 +9,14 @@ const send = (value) => {
 };
 let slot;
 try {
-  slot = await createSession(send, (exit) => {
-    send({ kind: 'death', exit });
-    process.stdout.end(() => process.exit(1));
-  });
+  slot = await createSession(
+    send,
+    (exit) => {
+      send({ kind: 'death', exit });
+      process.stdout.end(() => process.exit(1));
+    },
+    process.env.SCH_TRUST_WORKSPACE === '1',
+  );
   send(slot.ready);
 } catch (error) {
   send({ kind: 'fatal', error: error.message });

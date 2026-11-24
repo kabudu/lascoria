@@ -39,6 +39,16 @@ pub fn idle(db: &SharedDb, row: &Value) -> Result<()> {
     Ok(())
 }
 
+pub fn check_trusted_root(row: &Value) -> Result<()> {
+    let workspace = row["workspace"].as_str().context("Workspace required")?;
+    let canonical = dunce::canonicalize(workspace)?;
+    ensure!(
+        canonical.is_dir() && canonical == Path::new(workspace),
+        "The workspace changed. Review the folder before continuing"
+    );
+    Ok(())
+}
+
 pub async fn git(root: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8(
         crate::git::run(root, args, Duration::from_secs(8), false).await?,
