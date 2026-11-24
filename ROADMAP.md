@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 8 November 2026, after [v0.3.0](https://github.com/kabudu/lascoria/releases/tag/v0.3.0). The source and binary releases are public. What has shipped, and what is implemented but still incompletely validated, is tracked in the [release-readiness status summary](docs/release-readiness.md#status-summary-4-november).
+Updated 24 November 2026, after [v0.4.0](https://github.com/kabudu/lascoria/releases/tag/v0.4.0). The source and binary releases are public. What has shipped, and what is implemented but still incompletely validated, is tracked in the [release-readiness status summary](docs/release-readiness.md#status-summary-4-november).
 
 The proposed items below are **planned**: a proposal, not available, not scheduled and not authorised for implementation. An item moves into the release-readiness checklist only when it is explicitly scheduled, with its own acceptance criteria. Architecture constraints stay unchanged: the Rust supervisor owns durable control, the official Node SDK worker remains the production Muse integration, and Muse CLI/SDK pins stay exact, are upgraded together and are never auto-updated on a user's machine.
 
@@ -9,12 +9,16 @@ The proposed items below are **planned**: a proposal, not available, not schedul
 Shipped in v0.2.0: in isolated task worktrees, stage and unstage whole files or individual hunks and commit exactly the staged content ([selective staging](docs/staging.md)). Commits never push automatically; hooks and commit signing are not run. Shipped in v0.3.0: [guided review to delivery](docs/review-to-delivery.md), with current validation, reviewed pushes and GitHub pull requests through the GitHub CLI, using the user's own credentials. Proposed:
 
 - Show and switch branches, with clear warnings before anything changes the working tree.
-- Help with merges and conflicts, without resolving them silently.
+- Add broader branch merge and conflict workflows after the v0.5.0 PR base-update flow.
 - Respect repository hooks and commit signing where the user has set them up.
 
 ## Pull request follow-through
 
-Implementation is underway. The [technical plan and checklist](docs/pr-follow-through.md) track PR observations in the task inspector, feedback handoff, attention integration and acceptance.
+Shipped in v0.4.0: PR observations and feedback in the task inspector, with blocking review and check results in Attention. The [technical plan and checklist](docs/pr-follow-through.md) track acceptance.
+
+## Parallel delivery (v0.5.0)
+
+Scheduled for implementation: task delivery cues, revision-bound task handoffs, file overlap between isolated worktrees, and reviewed PR base updates with conflict recovery. The [implementation plan and checklist](docs/parallel-delivery.md) define the three-session acceptance workflow.
 
 ## Editing and terminal (after D2)
 

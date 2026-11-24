@@ -1001,3 +1001,7 @@ Comparative developer trials and voluntary repeat-use evidence remain open. Plat
 - [x] Prepare the version and curated notes for GitHub pull request follow-through, blocking decisions and Muse Code 1.4.25.
 - [ ] Validate the reviewed release candidate, check signed artifacts and exercise saved-session migration from v0.3.0.
 - [ ] Tag the accepted default-branch revision, publish the verified platform binaries and reconcile the public downloads and updater manifest.
+
+## v0.5.0 parallel delivery
+
+The [technical plan and running checklist](parallel-delivery.md) cover the four implementation slices and the three-session acceptance scenario. The focused native-bridge journey passed on macOS using real Git, Muse Code 1.4.25 and controlled model and GitHub fixtures. Cross-platform hosted verification and release distribution are separate gates.

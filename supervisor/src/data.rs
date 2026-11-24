@@ -677,7 +677,7 @@ pub fn summary(db: &Db, root: &Path) -> Result<Value> {
     let compactable: i64 = db.0.query_row(
         "SELECT count(*) FROM commands WHERE json_extract(value,'$.compacted') IS NULL
            AND json_extract(value,'$.status') IN ('applied','rejected')
-           AND json_extract(value,'$.operation') <> 'workspace/run'
+           AND json_extract(value,'$.operation') NOT IN ('workspace/run','workspace/baseApply','workspace/baseAbort','workspace/baseFinish')
            AND id NOT LIKE 'relay\\_%' ESCAPE '\\'
            AND coalesce(json_extract(value,'$.createdAtMillis'),0) < ?1",
         [cutoff],
@@ -820,6 +820,12 @@ pub fn remove_archived(
         for key in [format!("draft:{id}"), format!("session-name:{id}")] {
             transaction.execute("DELETE FROM presentation WHERE id=?1", [key])?;
         }
+        transaction.execute(
+            "UPDATE presentation SET value=COALESCE((SELECT json_group_array(json(value))
+                FROM json_each(presentation.value) WHERE json_extract(value,'$.source.sessionId') != ?1
+                AND json_extract(value,'$.target.sessionId') != ?1),'[]') WHERE id=?2",
+            params![id, crate::coordination::HANDOFFS],
+        )?;
         transaction.execute("DELETE FROM sessions WHERE id=?1", [id])?;
         crate::attachments::remove_session(root, id);
     }
@@ -1236,12 +1242,21 @@ mod tests {
     fn removing_archived_sessions_tombstones_requests_and_keeps_live_work() -> Result<()> {
         let root = Root::new();
         let db = seeded(&root.0)?;
+        let retained_handoff =
+            json!({"id":"keep","source":{"sessionId":"live"},"target":{"sessionId":"other"}});
+        db.put("presentation", crate::coordination::HANDOFFS, &json!([
+            {"id":"drop","source":{"sessionId":"live"},"target":{"sessionId":"old"}},retained_handoff
+        ]))?;
         assert!(remove_archived(&db, &root.0, "r0", &["live".into()]).is_err());
         let receipt = remove_archived(&db, &root.0, "r1", &["old".into()])?;
         assert_eq!(receipt["tombstoned"], 1);
         assert_eq!(receipt["retainedWorktrees"][0]["path"], "/tmp/worktree-old");
         assert!(db.get("sessions", "old")?.is_none());
         assert!(db.get("presentation", "draft:old")?.is_none());
+        assert_eq!(
+            db.get("presentation", crate::coordination::HANDOFFS)?,
+            Some(json!([retained_handoff]))
+        );
         assert_eq!(
             db.get("sessions", "live")?.unwrap()["state"]["items"][0]["text"],
             "keep"

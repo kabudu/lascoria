@@ -154,6 +154,23 @@ impl Db {
         }
         Ok(values)
     }
+    pub fn overlap_scopes(&self) -> Result<Vec<Value>> {
+        let mut statement = self.0.prepare(
+            "SELECT json_object('id', id, 'managedWorkspace', json_extract(value,'$.managedWorkspace'),
+               'managedWorkspaces', json_extract(value,'$.managedWorkspaces'),
+               'turnId', COALESCE(json_extract(value,'$.state.activeTurnId'), json_extract(value,'$.state.turns[#-1].turnId')))
+             FROM sessions WHERE json_extract(value,'$.lifecycle') != 'archived'
+               AND COALESCE(json_extract(value,'$.workspaceDiscarded'),0) = 0
+               AND (json_type(value,'$.managedWorkspace') = 'object' OR json_type(value,'$.managedWorkspaces') = 'array')
+             ORDER BY json_extract(value,'$.state.activeTurnId') IS NULL, rowid DESC LIMIT 13",
+        )?;
+        let mut rows = statement.query([])?;
+        let mut scopes = Vec::new();
+        while let Some(row) = rows.next()? {
+            scopes.push(serde_json::from_str(&row.get::<_, String>(0)?)?);
+        }
+        Ok(scopes)
+    }
     pub fn count(&self, table: &str) -> Result<usize> {
         ensure!(
             [
@@ -220,6 +237,36 @@ impl Db {
         Ok(record
             .map(|value| serde_json::from_str(&value))
             .transpose()?)
+    }
+    /// Git keeps pending merge state while the journal remembers who began it.
+    pub fn base_update_receipt(
+        &self,
+        session: &str,
+        folder: Option<&str>,
+        finish_only: bool,
+    ) -> Result<Option<Value>> {
+        let record: Option<String> = self
+            .0
+            .query_row(
+                "SELECT value FROM commands
+             WHERE json_extract(value,'$.sessionId')=?1
+               AND CASE WHEN json_type(value,'$.params.folderId')='text'
+                        THEN json_extract(value,'$.params.folderId') END IS ?2
+               AND ((json_extract(value,'$.operation')='workspace/baseFinish'
+                     AND (json_extract(value,'$.status')='applied'
+                          OR (?3 AND json_extract(value,'$.status')='outcomeUnknown')))
+                    OR (NOT ?3 AND json_extract(value,'$.operation')='workspace/baseAbort'
+                        AND json_extract(value,'$.status')='applied')
+                    OR (NOT ?3 AND json_extract(value,'$.operation')='workspace/baseApply'
+                        AND json_extract(value,'$.status') IN ('applied','outcomeUnknown')))
+             ORDER BY rowid DESC LIMIT 1",
+                params![session, folder, finish_only],
+                |row| row.get(0),
+            )
+            .optional()?;
+        record
+            .map(|value| serde_json::from_str(&value).map_err(Into::into))
+            .transpose()
     }
     /// Whether a developer test command is still running for this session.
     pub fn test_running(&self, session: &str) -> Result<bool> {

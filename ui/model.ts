@@ -1,5 +1,5 @@
 import type { SessionRow, Task, Prefs, Status } from './types';
-export function tasks(session: SessionRow, prefs: Prefs): Task[] {
+export function tasks(session: SessionRow, prefs: Pick<Prefs, 'labels'>): Task[] {
   const turns = (session.state.turns ?? []).map((turn) => {
     const prompt = session.state.items?.find(
       (i) => i.turnId === turn.turnId && i.kind === 'userMessage',

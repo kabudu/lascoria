@@ -4070,3 +4070,60 @@ button.link {
   max-height: 8rem;
   overflow: auto;
 }
+
+.task-handoffs,
+.file-overlaps,
+.base-update {
+  border-top: 1px solid var(--line);
+  padding-block: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.base-update > h4 {
+  margin: 0 0 0.6rem;
+}
+.base-update > .row {
+  margin-top: 0.65rem;
+}
+.base-paths li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 0.45rem;
+  row-gap: 0.35rem;
+}
+.base-paths li code {
+  min-width: 5rem;
+}
+.task-handoffs form {
+  display: grid;
+  gap: 0.65rem;
+}
+.task-handoffs form > button {
+  justify-self: start;
+}
+.task-handoffs textarea {
+  width: 100%;
+  min-height: 5rem;
+}
+.task-handoffs pre {
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.handoff-list,
+.overlap-list,
+.base-paths {
+  padding-left: 1.25rem;
+}
+.handoff-list li,
+.base-paths li {
+  margin-block: 0.35rem;
+}
+.handoff-list li button {
+  margin-inline-start: 0.4rem;
+}
+.task-node[data-delivery] .node-activity-label,
+.task-node[data-file-overlap] .node-activity-label,
+.task-node[data-task-handoff] .node-activity-label {
+  color: var(--accent);
+}

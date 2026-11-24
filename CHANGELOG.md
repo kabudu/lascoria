@@ -4,6 +4,11 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+- Show PR review, CI and base conflicts on the owning task card, with direct access to the right Workspace folder.
+- Link tasks across local Muse sessions and add a selected diff excerpt, verified test result or decision to the receiving draft after reviewing its source revision.
+- Compare isolated worktrees from the same repository and show when tasks change the same paths.
+- Preview PR base changes, resolve or abort conflicts in the isolated worktree, and run fresh checks before pushing the update.
+
 ## 0.4.0 - 2026-11-24
 
 - Follow GitHub pull requests from the Workspace tab. See failed checks and change requests in Attention, and preview selected feedback before adding it to the original Muse draft.

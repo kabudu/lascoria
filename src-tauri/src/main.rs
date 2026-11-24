@@ -47,6 +47,18 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "workspace/commit",
         "workspace/discard",
         "workspace/delivery",
+        "workspace/overlap",
+        "workspace/baseStatus",
+        "workspace/basePreview",
+        "workspace/baseApply",
+        "workspace/baseStage",
+        "workspace/baseFinish",
+        "workspace/baseAbort",
+        "handoff/list",
+        "handoff/links",
+        "handoff/preview",
+        "handoff/save",
+        "handoff/check",
         "workspace/push",
         "workspace/pullRequest",
         "session/archive",
@@ -132,7 +144,7 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
     } else if ["decision/evaluate", "decision/test"].contains(&operation) {
         // Vault (10s), two capture checks (10s each) and HTTP (20s), plus IPC overhead.
         Duration::from_secs(65)
-    } else if operation == "workspace/delivery" {
+    } else if operation == "workspace/delivery" || operation.starts_with("workspace/base") {
         // A remote and a GitHub check (20s each); the supervisor bounds it at 55 seconds.
         Duration::from_secs(65)
     } else if operation.starts_with("data/") && operation != "data/summary" {
