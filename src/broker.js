@@ -30,12 +30,16 @@ input.on('line', (line) => {
         const reservation = { session: null, opening: null, dead: false };
         slots.set(key, reservation);
         try {
-          reservation.opening = createSession(emit, (exit) => {
-            if (slots.get(key) === reservation) {
-              reservation.dead = true;
-              emit({ kind: 'death', exit });
-            }
-          });
+          reservation.opening = createSession(
+            emit,
+            (exit) => {
+              if (slots.get(key) === reservation) {
+                reservation.dead = true;
+                emit({ kind: 'death', exit });
+              }
+            },
+            message.request.trustWorkspace === true,
+          );
           reservation.session = await reservation.opening;
           if (closing || slots.get(key) !== reservation) {
             await reservation.session.close();

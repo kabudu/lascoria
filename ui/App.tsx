@@ -4181,6 +4181,7 @@ export function App() {
             draftStore={relayDrafts}
             draftsEnabled={Boolean(status.features?.includes('relayDrafts'))}
             viewsEnabled={Boolean(status.features?.includes('relayViews'))}
+            trustEnabled={Boolean(status.features?.includes('relayWorkspaceTrust'))}
             initialPeer={relayTarget?.source === session.id ? relayTarget.peer : undefined}
           />
         )}

@@ -83,6 +83,7 @@ async fn request(operation: &str, params: Value, id: String) -> Result<Value, St
         "relay/draftsGet",
         "relay/draftSave",
         "relay/connect",
+        "relay/workspaceTrust",
         "relay/disconnect",
         "relay/send",
         "relay/deliver",

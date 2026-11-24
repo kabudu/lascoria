@@ -35,7 +35,15 @@ export function SessionConnections({
         ? [
             {
               peer,
-              agents: connection.allowAgentMessages,
+              messaging: !connection.allowAgentMessages
+                ? 'Selected text only'
+                : connected &&
+                    session.state.current &&
+                    peer.state.current &&
+                    session.state.relayToolsAvailable &&
+                    peer.state.relayToolsAvailable
+                  ? 'Muse messaging enabled'
+                  : 'Muse messaging paused',
               count:
                 unread.find((entry) => entry.sessionId === session.id && entry.peerId === peer.id)
                   ?.count ?? 0,
@@ -71,25 +79,19 @@ export function SessionConnections({
               </small>
               <small>This session</small>
             </div>
-            {peers.map(({ peer, agents, count }, index) => (
+            {peers.map(({ peer, messaging, count }, index) => (
               <button
                 key={peer.id}
                 className="session-link-peer"
                 style={{ top: index * 112 + 8 }}
-                aria-label={`Open local conversation with ${name(peer)} (${peer.id.slice(-8)}), ${activity(peer, connected)}, ${count} new for this session, ${agents ? 'Muse messaging enabled' : 'Selected text only'}`}
                 onClick={() => onOpen(peer.id)}
               >
+                <span className="visually-hidden">Open local conversation with </span>
                 <strong>{name(peer)}</strong>
                 <small>
                   {peer.id.slice(-8)} · {activity(peer, connected)}
                 </small>
-                <small>
-                  {count
-                    ? `${count} new for this session`
-                    : agents
-                      ? 'Muse messaging enabled'
-                      : 'Selected text only'}
-                </small>
+                <small>{count ? `${count} new for this session` : messaging}</small>
               </button>
             ))}
           </div>

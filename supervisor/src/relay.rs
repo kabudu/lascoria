@@ -261,8 +261,10 @@ pub fn handle(db: SharedDb, operation: &str, params: &Value, request_id: &str) -
             let allow_agents = active && params["allowAgentMessages"] == true;
             ensure!(
                 !allow_agents
-                    || (owner_row["state"]["relayToolsAvailable"] == true
-                        && peer_row["state"]["relayToolsAvailable"] == true),
+                    || [&owner_row, &peer_row]
+                        .into_iter()
+                        .all(|row| row["state"]["current"] == true
+                            && row["state"]["relayToolsAvailable"] == true),
                 "Resume both sessions with compatible Muse tools before enabling agent messaging"
             );
             let connection = json!({"sessions":ids,"active":active,"allowAgentMessages":allow_agents,"agentEpoch":uuid::Uuid::new_v4().to_string()});

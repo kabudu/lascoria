@@ -36,6 +36,7 @@ impl Dedicated {
         db: SharedDb,
         session: String,
         generation: u64,
+        trust_workspace: bool,
     ) -> Result<Self> {
         let mut command = lascoria_runtime::command(node);
         crate::auth::configure(&mut command, &db).await?;
@@ -49,6 +50,10 @@ impl Dedicated {
                 dunce::canonicalize(lascoria_runtime::state_dir())?,
             )
             .arg(script)
+            .env(
+                "SCH_TRUST_WORKSPACE",
+                if trust_workspace { "1" } else { "0" },
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

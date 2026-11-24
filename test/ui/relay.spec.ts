@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, execFile } from 'node:child_process';
@@ -40,6 +40,28 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
       .toBe(daemon.pid);
     const a = (await request(directory, 'start', { workspace }, 'start-a')).sessionId;
     const b = (await request(directory, 'start', { workspace }, 'start-b')).sessionId;
+    for (const sessionId of [a, b]) {
+      await request(directory, 'turn', {
+        sessionId,
+        text: 'Create an isolated session checkpoint',
+      });
+      await expect
+        .poll(
+          async () =>
+            (await request(directory, 'status')).sessions
+              .find((row: any) => row.id === sessionId)
+              .state.turns?.at(-1)?.terminal,
+        )
+        .toBe('completed');
+    }
+    const turnCommands = async () =>
+      (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn');
+    const checkpointCommands = await turnCommands();
+    await request(directory, 'relay/workspaceTrust', {
+      sessionId: b,
+      workspace: await realpath(workspace),
+      trusted: true,
+    });
     let loseSendReply = true;
     let failStatus = false;
     let heldDraftRead: Promise<void> | undefined;
@@ -91,6 +113,15 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     const modal = page.getByRole('dialog');
     await modal.getByLabel('Other session').selectOption(b);
     await expect(modal.getByRole('checkbox', { name: 'Allow Muse' })).not.toBeChecked();
+    await modal.getByRole('button', { name: 'Review workspace trust for Muse messaging' }).click();
+    await expect(modal.getByRole('region', { name: 'Confirm Muse workspace trust' })).toContainText(
+      workspace,
+    );
+    await modal.getByRole('button', { name: 'Continue with manual messages' }).click();
+    await expect(modal.getByRole('checkbox', { name: 'Allow Muse' })).toBeDisabled();
+    await modal.getByRole('button', { name: 'Review workspace trust for Muse messaging' }).click();
+    await modal.getByRole('button', { name: 'Trust this workspace', exact: true }).click();
+    await expect(modal.getByRole('checkbox', { name: 'Allow Muse' })).toBeEnabled();
     await modal.getByRole('checkbox', { name: 'Allow Muse' }).check();
     await modal.getByRole('button', { name: 'Connect sessions', exact: true }).click();
     await expect(modal.getByRole('button', { name: 'Disconnect sessions' })).toBeVisible();
@@ -118,9 +149,8 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     failStatus = true;
     await expect(links.locator('.session-link-owner')).toContainText('Unavailable');
     await expect(links.locator('.session-link-peer')).toContainText('Unavailable');
-    await expect(links.locator('.session-link-peer')).toHaveAttribute(
-      'aria-label',
-      /Unavailable.*Muse messaging enabled/,
+    await expect(links.locator('.session-link-peer')).toHaveAccessibleName(
+      /Unavailable.*Muse messaging paused/,
     );
     failStatus = false;
     await expect(links.locator('.session-link-owner')).toContainText('Idle');
@@ -202,9 +232,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     expect((await request(directory, 'relay/get', { sessionId: a })).messages).toHaveLength(1);
 
     await expect(modal.getByText('UI selected finding for B', { exact: true })).toBeVisible();
-    expect(
-      (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn'),
-    ).toHaveLength(0);
+    expect(await turnCommands()).toEqual(checkpointCommands);
     await page.setViewportSize({ width: 800, height: 650 });
     expect(await modal.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
     expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
@@ -252,9 +280,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await expect(modal.getByRole('status')).toHaveText('0 new messages');
     await expect(page.getByRole('button', { name: '1 new message', exact: true })).toHaveCount(0);
     await expect(modal.getByText('Viewed in Lascoria', { exact: true })).toBeVisible();
-    expect(
-      (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn'),
-    ).toHaveLength(0);
+    expect(await turnCommands()).toEqual(checkpointCommands);
     await modal.getByRole('button', { name: 'Close dialog' }).click();
     await page.reload();
     await page.getByLabel('Workspace menu').click();

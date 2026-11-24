@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -120,13 +120,50 @@ test(
       (s) => s.pid === daemon.pid,
       'boot',
     );
+    const otherWorkspace = join(root, 'other-workspace');
+    await mkdir(otherWorkspace);
     const a = (await api('start', { workspace }, 'start-a')).sessionId,
       b = (await api('start', { workspace }, 'start-b')).sessionId,
-      c = (await api('start', { workspace }, 'start-c')).sessionId;
+      c = (await api('start', { workspace: otherWorkspace }, 'start-c')).sessionId;
     const status = await api('status');
+    assert.ok(status.sessions.every((s) => !s.state.relayToolsAvailable));
+    await assert.rejects(
+      api('relay/workspaceTrust', { sessionId: a, workspace: root, trusted: true }),
+      /workspace changed/,
+    );
+    for (const sessionId of [a, b]) {
+      await api('turn', { sessionId, text: 'Create an isolated session checkpoint' });
+      await until(
+        () => api('status'),
+        (s) =>
+          s.sessions.find((r) => r.id === sessionId).state.turns?.at(-1)?.terminal === 'completed',
+        'session checkpoint',
+      );
+    }
+    await api('relay/workspaceTrust', {
+      sessionId: a,
+      workspace: await realpath(workspace),
+      trusted: true,
+    });
+    await until(
+      () => api('status'),
+      (s) => s.sessions.find((r) => r.id === a).state.relayToolsAvailable,
+      'relay listed',
+    );
     assert.ok(
-      status.sessions.every((s) => s.state.relayToolsAvailable),
-      'native capability/config advertised',
+      (await api('status')).sessions
+        .filter((r) => r.id !== a)
+        .every((r) => !r.state.relayToolsAvailable),
+    );
+    await api('relay/workspaceTrust', {
+      sessionId: b,
+      workspace: await realpath(workspace),
+      trusted: true,
+    });
+    await until(
+      () => api('status'),
+      (s) => s.sessions.find((r) => r.id === b).state.relayToolsAvailable,
+      'peer relay listed',
     );
     const ha = await helper(a, env);
     helpers.push(ha);
@@ -270,6 +307,14 @@ test(
       ).isError,
       'lost reply reconciles after revocation without another message',
     );
+    await api('relay/workspaceTrust', {
+      sessionId: a,
+      workspace: await realpath(workspace),
+      trusted: false,
+    });
+    const revoked = (await api('status')).sessions.find((row) => row.id === a);
+    assert.equal(revoked.state.relayWorkspaceTrusted, false);
+    assert.equal(revoked.state.relayToolsAvailable, false);
     // Installed-platform proof: the durable composer survives a real supervisor restart.
     const draftInput = {
       sessionId: a,
@@ -297,6 +342,10 @@ test(
         .viewedAtMillis,
     );
     await api('resume', { sessionId: a }, 'resume-a');
+    assert.equal(
+      (await api('status')).sessions.find((r) => r.id === a).state.relayToolsAvailable,
+      false,
+    );
     await api('resume', { sessionId: b }, 'resume-b');
     const resumed = await helper(a, env);
     helpers.push(resumed);

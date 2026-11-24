@@ -306,6 +306,10 @@ impl Db {
             return Ok(());
         }
         row["state"] = state;
+        if row["state"].is_object() {
+            row["state"]["relayToolsAvailable"] =
+                json!(crate::relay_identity::tools_listed(id, generation));
+        }
         self.put("sessions", id, &row)?;
         let commands_applied: HashSet<&str> = std::iter::once(event)
             .chain(facts.as_array().into_iter().flatten())
