@@ -239,6 +239,15 @@ esac
     await workspace().getByRole('button', { name: 'Review handoff', exact: true }).click();
     const handoff = workspace().getByRole('region', { name: 'Saved handoff' });
     await expect(handoff).toContainText('Source revision verified');
+    await page.setViewportSize({ width: 820, height: 700 });
+    expect(await handoff.evaluate((panel) => panel.scrollWidth <= panel.clientWidth + 1)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).include('.task-handoffs').analyze()).violations).toEqual(
+      [],
+    );
+    await handoff.screenshot({ path: testInfo.outputPath('handoff-review.png') });
+    await page.setViewportSize({ width: 1440, height: 990 });
     await handoff.getByRole('button', { name: 'Add to receiving draft' }).click();
     await expect(page.getByRole('textbox', { name: 'New task for this session' })).toHaveValue(
       /Workspace test: grep -q addition design.md/,
@@ -272,6 +281,7 @@ esac
     await openWorkspace();
     const delivery = workspace().getByRole('region', { name: 'Deliver this work' });
     await delivery.getByRole('button', { name: 'Check again' }).click();
+    await expect(delivery.locator('.delivery-step')).toHaveCSS('border-left-width', '1px');
     await expect(page.locator('.task-node[data-delivery="Waiting on CI"]')).toHaveCount(1);
 
     // The PR base moves while C retains its independent edit.
@@ -310,7 +320,8 @@ esac
 
     await baseReview.getByRole('button', { name: 'Apply base update' }).click();
     const basePanel = delivery.getByRole('region', { name: 'Pull request base update' });
-    await expect(basePanel.getByText('Base update in progress')).toBeVisible();
+    await expect(basePanel.getByRole('heading', { name: 'Resolve merge conflicts' })).toBeVisible();
+    await expect(delivery.locator('.delivery-step')).toHaveCount(0);
     await expect(basePanel.getByRole('button', { name: 'Stage resolution' })).toBeVisible();
     await page.setViewportSize({ width: 820, height: 700 });
     expect(await basePanel.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
@@ -320,8 +331,26 @@ esac
     await page.setViewportSize({ width: 1440, height: 990 });
 
     await basePanel.getByRole('button', { name: 'Stage resolution' }).click();
-    await expect(basePanel.getByRole('alert')).toContainText('Remove conflict markers');
+    await expect(basePanel.getByRole('listitem').getByRole('alert')).toContainText(
+      'Remove conflict markers',
+    );
     expect(await git(b.worktree, 'rev-parse', 'HEAD')).toBe(initialDelivery.head);
+    // Git can recreate the same pair of merge parents after an external abort.
+    // The prior Lascoria receipt must grant no authority over that new merge.
+    await git(b.worktree, 'merge', '--abort');
+    await expect(
+      git(b.worktree, 'merge', '--no-ff', '--no-commit', '--no-edit', baseHead),
+    ).rejects.toThrow();
+    expect(await git(b.worktree, 'rev-parse', 'MERGE_HEAD')).toBe(baseHead);
+    await delivery.getByRole('button', { name: 'Check again' }).click();
+    await expect(delivery.getByText('Resolve merge conflicts first')).toBeVisible();
+    await expect(basePanel.getByRole('button', { name: 'Abort base update…' })).toHaveCount(0);
+    await git(b.worktree, 'merge', '--abort');
+    await delivery.getByRole('button', { name: 'Check again' }).click();
+    await basePanel.getByRole('button', { name: 'Update from base…' }).click();
+    await baseReview.getByRole('button', { name: 'Apply base update' }).click();
+    await expect(basePanel.getByRole('button', { name: 'Stage resolution' })).toBeVisible();
+
     // The unrelated session can continue while Git preserves B's merge in progress.
     await turn(c.sessionId, 'Continue verification while the other task is blocked');
     expect((await row(c.sessionId)).state.turns).toHaveLength(2);

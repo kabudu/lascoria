@@ -625,7 +625,7 @@ impl Actor {
                 return Ok(previous);
             }
             if operation == "workspace/baseApply" {
-                let result = base_update::apply(&self.db, &row, &params).await;
+                let result = base_update::apply(&self.db, &row, &params, id).await;
                 return workspace::finish(&self.db, id, result);
             }
             if operation.starts_with("workspace/base") {

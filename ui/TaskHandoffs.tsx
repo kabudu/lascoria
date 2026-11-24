@@ -125,19 +125,18 @@ export function TaskHandoffs({
       className="task-handoffs"
     >
       <summary>Task handoffs{mine.length ? ` (${mine.length})` : ''}</summary>
-      <p className="muted">Link a dependent task and select what its Muse session should see.</p>
-      {error && <p role="alert">{error}</p>}
       {mine.length > 0 && (
-        <ul className="handoff-list">
+        <ul className="handoff-list" aria-label="Saved task handoffs">
           {mine.map((link) => {
             const incoming = taskKey(link.target) === current;
             return (
               <li key={link.id}>
-                <span>
-                  {incoming ? 'From ' : 'To '}
-                  {label(incoming ? link.source : link.target)}
+                <span className="handoff-endpoint">
+                  <span>{incoming ? 'From' : 'To'}</span>
+                  <strong>{label(incoming ? link.source : link.target)}</strong>
                 </span>
                 <button
+                  className="coordination-action"
                   disabled={loading}
                   onClick={() =>
                     void perform(async () =>
@@ -153,64 +152,70 @@ export function TaskHandoffs({
         </ul>
       )}
       {inspected && (
-        <section className="decision" aria-label="Saved handoff">
+        <section className="handoff-review" aria-label="Saved handoff">
           <h4 ref={heading} tabIndex={-1}>
             Saved handoff
           </h4>
-          <p role="status">
+          <p className={`handoff-status ${inspected.current ? 'current' : 'stale'}`} role="status">
             {inspected.current
               ? 'Source revision verified'
               : 'Source changed or is unavailable. Review and share fresh evidence.'}
           </p>
           <pre>{draftText(inspected.handoff.evidence).trimStart()}</pre>
-          <button disabled={loading} onClick={() => setInspected(undefined)}>
-            Close handoff
-          </button>
-          {inspected.current && (
-            <button
-              disabled={loading}
-              onClick={() =>
-                void perform(async () => {
-                  const checked: Json = await request('handoff/check', {
-                    handoffId: inspected.handoff.id,
-                  });
-                  setInspected(checked);
-                  if (!checked.current) return;
-                  append(checked.handoff.target, draftText(checked.handoff.evidence));
-                })
-              }
-            >
-              Add to receiving draft
+          <div className="handoff-actions">
+            <button disabled={loading} onClick={() => setInspected(undefined)}>
+              Close handoff
             </button>
-          )}
+            {inspected.current && (
+              <button
+                className="primary"
+                disabled={loading}
+                onClick={() =>
+                  void perform(async () => {
+                    const checked: Json = await request('handoff/check', {
+                      handoffId: inspected.handoff.id,
+                    });
+                    setInspected(checked);
+                    if (!checked.current) return;
+                    append(checked.handoff.target, draftText(checked.handoff.evidence));
+                  })
+                }
+              >
+                Add to receiving draft
+              </button>
+            )}
+          </div>
         </section>
       )}
       {review ? (
-        <section className="decision" aria-label="Preview handoff">
+        <section className="handoff-review" aria-label="Preview handoff">
           <h4 ref={heading} tabIndex={-1}>
             Review handoff to {selected?.label}
           </h4>
           <pre>{draftText(review.evidence).trimStart()}</pre>
           {review.evidence.truncated && <p>This is the first 4,000 bytes of the captured diff.</p>}
-          <button disabled={loading} onClick={() => setReview(undefined)}>
-            Cancel
-          </button>
-          <button
-            disabled={loading}
-            onClick={() =>
-              void perform(async () => {
-                const saved = await request('handoff/save', review.params, review.id);
-                setHandoffs((previous) => [
-                  saved,
-                  ...previous.filter((link) => link.id !== saved.id),
-                ]);
-                setReview(undefined);
-                changed();
-              })
-            }
-          >
-            Save handoff
-          </button>
+          <div className="handoff-actions">
+            <button disabled={loading} onClick={() => setReview(undefined)}>
+              Cancel
+            </button>
+            <button
+              className="primary"
+              disabled={loading}
+              onClick={() =>
+                void perform(async () => {
+                  const saved = await request('handoff/save', review.params, review.id);
+                  setHandoffs((previous) => [
+                    saved,
+                    ...previous.filter((link) => link.id !== saved.id),
+                  ]);
+                  setReview(undefined);
+                  changed();
+                })
+              }
+            >
+              Save handoff
+            </button>
+          </div>
         </section>
       ) : (
         targets.some((item) => item.sessionId !== source.sessionId) && (
@@ -288,6 +293,11 @@ export function TaskHandoffs({
           </form>
         )
       )}
+      {error && (
+        <p className="base-update-error" role="alert">
+          {error}
+        </p>
+      )}
     </details>
   );
 }
@@ -347,7 +357,7 @@ export function FileOverlaps({
       )}
       {scan?.incomplete && <p className="muted">Some open worktrees could not be compared.</p>}
       {mine.length > 0 && (
-        <ul className="overlap-list">
+        <ul className="overlap-list" aria-label="Overlapping files">
           {mine.map((item) => (
             <li key={item.path}>
               <code>{item.path}</code>
@@ -362,6 +372,7 @@ export function FileOverlaps({
                       <li key={`${owner.sessionId}:${owner.folderId ?? ''}`}>
                         {target ? (
                           <button
+                            className="coordination-action"
                             onClick={() =>
                               jump({ ...target, folderId: owner.folderId ?? undefined })
                             }
@@ -379,7 +390,9 @@ export function FileOverlaps({
           ))}
         </ul>
       )}
-      <button onClick={refresh}>Refresh file overlap</button>
+      <button className="coordination-action" onClick={refresh}>
+        Refresh file overlap
+      </button>
     </details>
   );
 }

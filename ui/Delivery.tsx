@@ -511,10 +511,12 @@ export function Delivery({
           Check again
         </button>
       </div>
-      <div className={`delivery-step step-${step.kind}`} role="status" aria-live="polite">
-        <strong>{step.headline}</strong>
-        {step.detail && <p>{step.detail}</p>}
-      </div>
+      {!(parallelDelivery && d.basePending?.owned) && (
+        <div className={`delivery-step step-${step.kind}`} role="status" aria-live="polite">
+          <strong>{step.headline}</strong>
+          {step.detail && <p>{step.detail}</p>}
+        </div>
+      )}
       {error && <p role="alert">{error}</p>}
       {refused && !confirm && <p role="alert">{refused}</p>}
       {step.action && !confirm && !offersBase && (

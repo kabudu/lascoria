@@ -12,6 +12,7 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+use tokio::io::AsyncReadExt;
 
 fn root(row: &Value) -> Result<&Path> {
     ensure!(
@@ -90,6 +91,26 @@ async fn merge_head(root: &Path) -> Result<Option<String>> {
         }
         Err(error) => Err(error.into()),
     }
+}
+
+fn merge_message(id: &str) -> String {
+    format!("Lascoria PR base update ({id})")
+}
+
+async fn has_merge_message(root: &Path, id: &str) -> Result<bool> {
+    let path = git_path(root, "MERGE_MSG").await?;
+    if !tokio::fs::symlink_metadata(&path)
+        .await
+        .is_ok_and(|metadata| metadata.is_file())
+    {
+        return Ok(false);
+    }
+    let expected = format!("{}\n", merge_message(id));
+    let mut prefix = vec![0; expected.len()];
+    let Ok(mut message) = tokio::fs::File::open(&path).await else {
+        return Ok(false);
+    };
+    Ok(message.read_exact(&mut prefix).await.is_ok() && prefix == expected.as_bytes())
 }
 
 async fn guards(root: &Path) -> Result<()> {
@@ -300,12 +321,16 @@ pub async fn status(db: &SharedDb, row: &Value, folder: Option<&str>) -> Result<
         folder,
         false,
     )?;
-    let owned = command.as_ref().is_some_and(|command| {
+    let candidate = command.as_ref().filter(|command| {
         command["operation"] == "workspace/baseApply"
             && command["params"]["preview"]["head"] == head
             && command["params"]["preview"]["baseHead"] == incoming
             && command["status"] != "rejected"
     });
+    let owned = match candidate.and_then(|command| command["id"].as_str()) {
+        Some(id) => has_merge_message(root, id).await?,
+        None => false,
+    };
     let unmerged = read(
         root,
         &[
@@ -348,7 +373,7 @@ pub async fn status(db: &SharedDb, row: &Value, folder: Option<&str>) -> Result<
     }))
 }
 
-pub async fn apply(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> {
+pub async fn apply(db: &SharedDb, row: &Value, params: &Value, id: &str) -> Result<Value> {
     workspace::check_trusted_root(row)?;
     let root = root(row)?;
     let reviewed = &params["preview"];
@@ -376,6 +401,9 @@ pub async fn apply(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> 
     let sha = reviewed["baseHead"]
         .as_str()
         .context("Missing reviewed base")?;
+    // Git writes the message with its pending merge metadata. An external abort and merge
+    // can reuse the same parents, but must never inherit this receipt's recovery controls.
+    let message = merge_message(id);
     let result = run(
         root,
         &[
@@ -385,6 +413,8 @@ pub async fn apply(db: &SharedDb, row: &Value, params: &Value) -> Result<Value> 
             "--no-edit",
             "--no-autostash",
             "--no-overwrite-ignore",
+            "-m",
+            &message,
             "-s",
             "ort",
             "--",
