@@ -61,7 +61,7 @@ export function openPullRequest(d: Json) {
 }
 
 export function deliveryStep(d: Json): Step {
-  if (d.basePending)
+  if (d.basePending?.owned)
     return {
       kind: 'basePending',
       headline: d.basePending.conflicts?.length
@@ -75,6 +75,12 @@ export function deliveryStep(d: Json): Step {
       kind: 'conflicts',
       headline: 'Resolve merge conflicts first',
       detail: `${plural(d.changes.conflicts, 'file')} with conflicts. Resolve them with your Git client; delivery is paused.`,
+    };
+  if (d.basePending)
+    return {
+      kind: 'basePending',
+      headline: 'Finish the pending merge first',
+      detail: 'Finish or abort this merge with your Git client.',
     };
   if (sending)
     return {
@@ -405,6 +411,7 @@ export function Delivery({
   const openPr = openPullRequest(d);
   const offersBase =
     parallelDelivery &&
+    !d.basePending &&
     d.clean &&
     observation?.state === 'OPEN' &&
     observation.head === d.head &&
@@ -517,7 +524,7 @@ export function Delivery({
           </button>
         </div>
       )}
-      {parallelDelivery && (
+      {parallelDelivery && (!d.basePending || d.basePending.owned) && (
         <BaseUpdate
           sessionId={sessionId}
           folderId={folderId}

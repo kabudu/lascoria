@@ -25,7 +25,8 @@ A developer can see which parallel Muse task needs a delivery decision, pass onl
 - [x] Build and test clean and conflicting PR updates, stale previews, external edits, abort and fresh validation before push.
 - [x] Run the integrated three-session scenario through the desktop bridge, real Git and controlled Muse and GitHub endpoints. A hands off to B, B and C overlap, one PR becomes blocked, and the developer resolves or aborts then delivers a checked fix while another session can proceed.
 - [x] Review safety, revision checks, resource caps and compatibility, then push the implementation.
-- [ ] Run full local CI and hosted checks on the reviewed revision. Record the exact evidence in the PR.
+
+The [PR validation checklist](https://github.com/kabudu/lascoria/pull/38) tracks the full local and hosted checks against the reviewed commit.
 
 The integrated check must show the task and revision at each entry point, preserve unrelated work and prove observed test/push/PR results. A controlled scenario verifies behaviour and failure boundaries. Comparative developer timing and live subscription acceptance are tracked separately.
 
