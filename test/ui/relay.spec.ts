@@ -54,6 +54,9 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
         )
         .toBe('completed');
     }
+    const turnCommands = async () =>
+      (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn');
+    const checkpointCommands = await turnCommands();
     await request(directory, 'relay/workspaceTrust', {
       sessionId: b,
       workspace: await realpath(workspace),
@@ -229,9 +232,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     expect((await request(directory, 'relay/get', { sessionId: a })).messages).toHaveLength(1);
 
     await expect(modal.getByText('UI selected finding for B', { exact: true })).toBeVisible();
-    expect(
-      (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn'),
-    ).toHaveLength(0);
+    expect(await turnCommands()).toEqual(checkpointCommands);
     await page.setViewportSize({ width: 800, height: 650 });
     expect(await modal.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
     expect((await new AxeBuilder({ page }).include('dialog').analyze()).violations).toEqual([]);
@@ -279,9 +280,7 @@ test('local session sharing and explicit Muse delivery through native Rust bridg
     await expect(modal.getByRole('status')).toHaveText('0 new messages');
     await expect(page.getByRole('button', { name: '1 new message', exact: true })).toHaveCount(0);
     await expect(modal.getByText('Viewed in Lascoria', { exact: true })).toBeVisible();
-    expect(
-      (await request(directory, 'status')).commands.filter((c: any) => c.operation === 'turn'),
-    ).toHaveLength(0);
+    expect(await turnCommands()).toEqual(checkpointCommands);
     await modal.getByRole('button', { name: 'Close dialog' }).click();
     await page.reload();
     await page.getByLabel('Workspace menu').click();

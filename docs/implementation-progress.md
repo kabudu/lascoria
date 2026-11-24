@@ -990,4 +990,6 @@ Comparative developer trials and voluntary repeat-use evidence remain open. Plat
 
 - [x] Verify the Meta stable channel and official TypeScript SDK resolve to Muse Code 1.4.25-R9361.1 and SDK 1.4.25 with identical schema fingerprints. Pin the build and fingerprint for native installation and controlled test bootstrap.
 - [x] Refresh npm and compatible Rust lockfiles, and pin CI and bundled Node to the verified Node 24 LTS release 24.22.3. The supply-chain scan passed with zero known vulnerabilities and the existing reviewed informational warnings.
+- [x] Add explicit trust and revocation for the exact folder in a resumable standalone session. New and recovered hosts start without Lascoria workspace trust. Existing local messages and pair permissions remain independent of host trust.
+- [x] Require the current Muse host's authenticated MCP tool-listing receipt before showing Muse messaging as available.
 - [ ] Validate controlled Muse lifecycle, recovery and native bridge on the upgraded pins, then verify the hosted platform matrix.

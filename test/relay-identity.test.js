@@ -257,6 +257,15 @@ test(
       (s) => s.sessions.find((r) => r.id === a)?.state.current,
       'resumed',
     );
+    assert.equal(
+      (await api('status')).sessions.find((r) => r.id === a).state.relayToolsAvailable,
+      false,
+    );
+    await api('relay/workspaceTrust', {
+      sessionId: a,
+      workspace: await realpath(workspace),
+      trusted: true,
+    });
     await turn(a, `STAGE_RELAY_SEND_TO:${b}:after-restart`, 'send-a-2');
     assert.equal(
       (await api('relay/get', { sessionId: b })).messages.at(-1)?.body,

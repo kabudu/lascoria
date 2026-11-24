@@ -287,6 +287,16 @@ impl Actor {
         db.put("commands", id, &command)?;
         Ok(command)
     }
+    fn record_recovery_failure(&self, session: &str, error: &anyhow::Error) -> Result<()> {
+        let db = self.db.lock().unwrap();
+        let mut row = db
+            .get("sessions", session)?
+            .context("Recovery session disappeared")?;
+        row["lifecycle"] = json!("interrupted");
+        row["state"]["current"] = json!(false);
+        row["recoveryError"] = json!(error.to_string());
+        db.put("sessions", session, &row)
+    }
     async fn recover(
         &mut self,
         id: &str,
@@ -428,7 +438,13 @@ impl Actor {
                 );
                 row["attempts"] = json!(0);
                 self.save(&row)?;
-                return self.recover(session, Some(id), trust).await;
+                let result = self.recover(session, Some(id), trust).await;
+                if let Err(error) = &result
+                    && self.row(session)?["generation"] != row["generation"]
+                {
+                    self.record_recovery_failure(session, error)?;
+                }
+                return result;
             }
             if operation == "relay/deliver" {
                 let recipient = params["sessionId"].as_str().context("Recipient required")?;
@@ -987,14 +1003,7 @@ impl Actor {
             self.save(&row)?;
             let result = self.recover(session, Some(id), false).await;
             if let Err(error) = &result {
-                let db = self.db.lock().unwrap();
-                let mut row = db
-                    .get("sessions", session)?
-                    .context("Resume session disappeared")?;
-                row["lifecycle"] = json!("interrupted");
-                row["state"]["current"] = json!(false);
-                row["recoveryError"] = json!(error.to_string());
-                db.put("sessions", session, &row)?;
+                self.record_recovery_failure(session, error)?;
             }
             return result;
         }
