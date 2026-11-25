@@ -410,7 +410,7 @@ export function ProjectMission({
           )}
         </div>
       </header>
-      {error && (
+      {error && !review && (
         <p className="mission-error" role="alert">
           {error}
         </p>
@@ -826,51 +826,53 @@ export function ProjectMission({
                 <ul>
                   {assembled.preview.sources.map((item: Json, i: number) => (
                     <li key={item.taskId}>
-                      <strong>{item.title}</strong>{' '}
+                      <strong>{item.title}</strong>
                       <span>{i < assembled.next ? 'Included' : 'Waiting'}</span>
                     </li>
                   ))}
                 </ul>
-                {state?.status === 'conflict' && (
-                  <button
-                    className="primary"
-                    disabled={busy}
-                    onClick={() =>
-                      preview('mission/conflictPreview', { sessionId: assembled.sessionId })
-                    }
-                  >
-                    Inspect conflicts
-                  </button>
-                )}
-                {state?.status === 'interrupted' && (
-                  <div className="mission-actions">
+                <div className="mission-actions">
+                  {state?.status === 'conflict' && (
                     <button
                       className="primary"
                       disabled={busy}
                       onClick={() =>
-                        void act('mission/continue', { sessionId: assembled.sessionId })
+                        preview('mission/conflictPreview', { sessionId: assembled.sessionId })
                       }
                     >
-                      Continue rehearsal
+                      Inspect conflicts
                     </button>
+                  )}
+                  {state?.status === 'interrupted' && (
+                    <>
+                      <button
+                        className="primary"
+                        disabled={busy}
+                        onClick={() =>
+                          void act('mission/continue', { sessionId: assembled.sessionId })
+                        }
+                      >
+                        Continue rehearsal
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          void act('mission/abandon', { sessionId: assembled.sessionId })
+                        }
+                      >
+                        Stop and keep worktree
+                      </button>
+                    </>
+                  )}
+                  {state?.status !== 'unavailable' && (
                     <button
-                      disabled={busy}
-                      onClick={() =>
-                        void act('mission/abandon', { sessionId: assembled.sessionId })
-                      }
+                      className="quiet-button"
+                      onClick={() => workOn(assembled.sessionId, undefined, 'workspace')}
                     >
-                      Stop and keep worktree
+                      Open integration workspace
                     </button>
-                  </div>
-                )}
-                {state?.status !== 'unavailable' && (
-                  <button
-                    className="quiet-button"
-                    onClick={() => workOn(assembled.sessionId, undefined, 'workspace')}
-                  >
-                    Open integration workspace
-                  </button>
-                )}
+                  )}
+                </div>
                 {state?.status === 'assembled' && (
                   <p className={state.test ? 'mission-evidence' : 'muted'}>
                     {state.sourcesCurrent === false
@@ -1066,6 +1068,7 @@ export function ProjectMission({
           review={review}
           heading={reviewHeading}
           busy={busy}
+          error={error}
           act={act}
           refreshConflict={() => preview('mission/conflictPreview', review.params)}
           close={() => setReview(undefined)}
@@ -1079,6 +1082,7 @@ function MissionPreview({
   review,
   heading,
   busy,
+  error,
   act,
   refreshConflict,
   close,
@@ -1086,6 +1090,7 @@ function MissionPreview({
   review: { operation: string; params: Json; data: Json };
   heading: React.RefObject<HTMLHeadingElement | null>;
   busy: boolean;
+  error: string;
   act: (operation: string, params?: Json, inspect?: (result: Json) => void) => Promise<void>;
   refreshConflict: () => void;
   close: () => void;
@@ -1111,6 +1116,11 @@ function MissionPreview({
       <h4 ref={heading} tabIndex={-1}>
         {titles[operation]}
       </h4>
+      {error && (
+        <p className="mission-error" role="alert">
+          {error}
+        </p>
+      )}
       {operation === 'mission/evidencePreview' && (
         <>
           <p>{data.note}</p>
@@ -1187,7 +1197,11 @@ function MissionPreview({
               </button>
             </div>
           ) : (
-            <button className="quiet-button" disabled={busy} onClick={() => setAbort(true)}>
+            <button
+              className="quiet-button mission-abort-link"
+              disabled={busy}
+              onClick={() => setAbort(true)}
+            >
               Abort merge…
             </button>
           )}

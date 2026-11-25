@@ -4468,11 +4468,28 @@ dialog.mission-dialog {
   border-radius: 8px;
   background: var(--bg);
 }
-.mission-conflicts button {
-  justify-self: start;
+.mission-integration-state {
+  display: grid;
+  gap: 10px;
 }
-.mission-integration-state ul span {
+.mission-integration-state ul {
+  margin: 0;
+}
+.mission-integration-state li,
+.mission-conflicts li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.mission-conflicts code {
+  overflow-wrap: anywhere;
+}
+.mission-integration-state li span {
   color: var(--muted);
+}
+.mission-abort-link {
+  justify-self: start;
 }
 @media (max-width: 960px) {
   .mission-plan-layout,

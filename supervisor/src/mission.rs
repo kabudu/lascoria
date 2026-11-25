@@ -700,8 +700,21 @@ pub(crate) async fn handle(db: &SharedDb, op: &str, params: &Value, id: &str) ->
         _ => rehearsal::handle(db, op, project, params, id).await,
     }
 }
-pub(crate) async fn review_launch(db: &SharedDb, params: &Value, id: &str) -> Result<Value> {
-    rehearsal::review_launch(db, uuid(&params["projectId"])?, params, id).await
+pub(crate) async fn review_preview(
+    db: &SharedDb,
+    params: &Value,
+    effective: &Value,
+) -> Result<Value> {
+    rehearsal::review_preview(db, uuid(&params["projectId"])?, params, effective).await
+}
+
+pub(crate) async fn review_launch(
+    db: &SharedDb,
+    params: &Value,
+    id: &str,
+    effective: &Value,
+) -> Result<Value> {
+    rehearsal::review_launch(db, uuid(&params["projectId"])?, params, id, effective).await
 }
 
 fn integration(db: &SharedDb, row: &Value) -> Result<Option<Plan>> {

@@ -406,7 +406,27 @@ impl Actor {
             );
             params = match operation {
                 "mission/launch" => mission::launch(&self.db, &params, id).await?,
-                "mission/review" => mission::review_launch(&self.db, &params, id).await?,
+                "mission/reviewPreview" | "mission/review" => {
+                    let session = params["sessionId"]
+                        .as_str()
+                        .context("Choose a reviewer session")?;
+                    let response = self
+                        .workers
+                        .get_mut(session)
+                        .context("Reconnect the reviewer session before continuing")?
+                        .call(json!({"id":Uuid::new_v4().to_string(),
+                            "operation":"permissions","params":{"sessionId":session}}))
+                        .await?;
+                    ensure!(
+                        response.get("error").is_none(),
+                        "Muse could not confirm reviewer access. Try again."
+                    );
+                    let effective = &response["result"]["effective"];
+                    if operation == "mission/reviewPreview" {
+                        return mission::review_preview(&self.db, &params, effective).await;
+                    }
+                    mission::review_launch(&self.db, &params, id, effective).await?
+                }
                 _ => return mission::handle(&self.db, operation, &params, id).await,
             };
             operation = "turn";

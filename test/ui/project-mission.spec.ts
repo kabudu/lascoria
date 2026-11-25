@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { promisify } from 'node:util';
 import { request } from '../../src/client.js';
 import { provider } from '../../testing/provider.js';
@@ -254,17 +255,27 @@ test('a mission recovers stale dependencies, resolves a rehearsal conflict and g
     expect((await row(integration.sessionId)).state.current).toBe(false);
     const conflict = await act('conflictPreview', scope);
     expect(conflict.conflicts).toEqual([file]);
-    await expect(act('stage', { ...scope, path: file, conflict })).rejects.toThrow(
-      /conflict markers/i,
+    await refresh();
+    await btn('Integration & review').click();
+    await btn('Inspect conflicts').click();
+    const resolution = dialog.getByRole('region', { name: 'Review the conflict resolution' });
+    const fileLabel = (await resolution.getByText(file, { exact: true }).boundingBox())!;
+    const stage = (await btn('Stage resolution').boundingBox())!;
+    expect(Math.abs(fileLabel.y + fileLabel.height / 2 - stage.y - stage.height / 2)).toBeLessThan(
+      2,
     );
+    await btn('Stage resolution').click();
+    await expect(resolution.getByRole('alert')).toContainText(/conflict markers/i);
     await writeFile(join(integration.worktree, file), change('a + b'));
     await expect(act('stage', { ...scope, path: file, conflict })).rejects.toThrow(/changed/i);
-    await act('stage', { ...scope, path: file, conflict: await act('conflictPreview', scope) });
+    await btn('Refresh conflict preview').click();
+    await btn('Stage resolution').click();
+    await btn('Inspect conflicts').click();
     const staged = await act('conflictPreview', scope);
     expect(staged.conflicts).toEqual([]);
     expect(staged.patch).toContain('a + b');
-    await act('continue', { ...scope, conflict: staged });
-    expect((await mission()).integration.status).toBe('assembled');
+    await btn('Commit resolution and continue').click();
+    await expect.poll(async () => (await mission()).integration.status).toBe('assembled');
     expect(await git(integration.worktree, 'status', '--porcelain')).toBe('');
     expect((await git(integration.worktree, 'show', '-s', '--format=%P')).split(' ')).toHaveLength(
       2,
@@ -286,6 +297,20 @@ test('a mission recovers stale dependencies, resolves a rehearsal conflict and g
     await expect(act('reviewPreview', { sessionId: b.sessionId })).rejects.toThrow(/separate/i);
     const reviewer = await start('Review isolate', ':read-only');
     const reviewScope = { sessionId: reviewer.sessionId };
+    // Muse can accept the session start while the initial permissions observation
+    // is unavailable. Simulate that journal snapshot while retaining the real host.
+    const journal = new DatabaseSync(join(directory, 'state.sqlite'));
+    try {
+      journal.exec('PRAGMA busy_timeout=5000');
+      journal
+        .prepare(
+          "UPDATE sessions SET value=json_set(value, '$.state.permissions', json(?)) WHERE id=?",
+        )
+        .run(JSON.stringify({ current: false }), reviewer.sessionId);
+    } finally {
+      journal.close();
+    }
+    expect((await row(reviewer.sessionId)).state.permissions.current).toBe(false);
     const packet = await act('reviewPreview', reviewScope);
     expect(packet.text).toContain('a + b');
     expect(packet.text).toContain(tasks[0].criteria);

@@ -552,7 +552,24 @@ async fn tested(db: &SharedDb, state: &Rehearsal, row: &Value) -> Result<(String
     Ok((fingerprint, test))
 }
 
-async fn review_preview(db: &SharedDb, project: &str, params: &Value) -> Result<Value> {
+fn ensure_read_only(effective: &Value) -> Result<()> {
+    ensure!(
+        effective["current"] == true,
+        "Muse could not confirm reviewer access. Try again."
+    );
+    ensure!(
+        effective["permissionState"]["profileId"] == ":read-only",
+        "Set the reviewer session to Read-only in Session permissions"
+    );
+    Ok(())
+}
+
+pub(super) async fn review_preview(
+    db: &SharedDb,
+    project: &str,
+    params: &Value,
+    effective: &Value,
+) -> Result<Value> {
     let reviewer = params["sessionId"]
         .as_str()
         .context("Choose a reviewer session")?;
@@ -581,10 +598,7 @@ async fn review_preview(db: &SharedDb, project: &str, params: &Value) -> Result<
         )
     };
     workspace::idle(db, &reviewer_row)?;
-    ensure!(
-        reviewer_row["state"]["permissions"]["permissionState"]["profileId"] == ":read-only",
-        "Set the reviewer session to Read-only in Session permissions"
-    );
+    ensure_read_only(effective)?;
     let path = root(&integration)?;
     ensure!(
         root(&reviewer_row)? != path,
@@ -636,6 +650,7 @@ pub(super) async fn review_launch(
     project: &str,
     params: &Value,
     id: &str,
+    effective: &Value,
 ) -> Result<Value> {
     let session = params["sessionId"]
         .as_str()
@@ -647,10 +662,11 @@ pub(super) async fn review_launch(
             && review.launch.request_id == id
         {
             ensure!(review.session_id == session, "Review session changed");
+            ensure_read_only(effective)?;
             return Ok(json!({"sessionId":session,"text":review.launch.text}));
         }
     }
-    let preview = review_preview(db, project, params).await?;
+    let preview = review_preview(db, project, params, effective).await?;
     ensure!(
         params["preview"] == preview,
         "The tested revision or review changed. Preview it again."
@@ -908,7 +924,6 @@ pub(super) async fn handle(
         | "mission/continue"
         | "mission/abort"
         | "mission/abandon" => update(db, project, params, op).await,
-        "mission/reviewPreview" => review_preview(db, project, params).await,
         "mission/finding" | "mission/resolveFinding" | "mission/acceptReview" => {
             record_review(db, project, params, id, op).await
         }

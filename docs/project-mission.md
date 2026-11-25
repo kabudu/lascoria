@@ -11,7 +11,7 @@ Project Mission brings an approved project plan, task dependencies, evidence, in
 - [x] Exercise planning, stale evidence, conflicts, recovery, independent review and delivery in one end-to-end scenario. Check narrow layout, keyboard access and both themes.
 - [x] Verify the packaged macOS map at an 820-pixel window width. Keep the task inspector below the map in both themes so the next task remains visible. Cover that width in the controlled regression.
 - [ ] Review authority, compatibility, recovery and resource bounds. Run final-head local CI and hosted validation, and record evidence in the PR.
-- [ ] Run native installed-app and live-provider acceptance before signed distribution.
+- [x] Run the Project Mission acceptance workflow in the packaged macOS app with a live Muse subscription.
 
 ## Boundaries
 
@@ -32,4 +32,14 @@ One plan holds up to 12 tasks and six dependencies per task. A rehearsal accepts
 
 ## Acceptance
 
-The controlled scenario uses two contributing tasks, a dependent verification task and an independent reviewer. It tests a Muse question and its Attention destination, changes an upstream interface after acceptance, resolves a Git conflict across a supervisor restart, checks the combined tree and routes a finding to its owner. The push targets a temporary local repository. The test uses the real Tauri IPC bridge, Rust supervisor, Muse CLI and SDK, a controlled model provider and Chromium. A live-provider run in the installed native app and signed distribution are separate release acceptance.
+The controlled scenario uses two contributing tasks, a dependent verification task and an independent reviewer. It tests a Muse question and its Attention destination, changes an upstream interface after acceptance, resolves a Git conflict across a supervisor restart, checks the combined tree and routes a finding to its owner. The push targets a temporary local repository. The test uses the real Tauri IPC bridge, Rust supervisor, Muse CLI and SDK, a controlled model provider and Chromium.
+
+### Packaged macOS and live Muse acceptance
+
+On 25 November 2026, an isolated arm64 Tauri/WebKit bundle ran the arithmetic fixture with Muse Wonder 1.0 over the existing QA subscription and the pinned Muse Code 1.4.25 CLI and SDK. Native controls started project tasks, opened a real model question from Attention, submitted the answer and resumed the task. Changing upstream evidence marked the verification task stale. A new verification turn ran against the revised evidence.
+
+Real Git conflict state survived a supervisor restart. The app refused to stage conflict markers, then staged and committed the reviewed resolution. The live independent reviewer found missing input validation in the fixture. The finding reached the owning task's draft. A fresh rehearsal passed checks for signed and decimal values and rejected invalid operands. Running the tests again invalidated the earlier approval. The native delivery screen pushed the exact approved commit to a disposable local Git remote after a fresh independent review. The original checkout and contributing branches were checked after the push.
+
+At an 820-pixel native window width, the inspector now sits below the map. The conflict view has spaced actions, compact confirmation controls and inline errors. Light and dark mode were inspected in the packaged app. Review now reads fresh effective Muse permissions before preview and launch, so a missing startup observation does not send a developer to change an already read-only session. The focused regression covers the stale observation and the live retest opened the review without a separate permissions refresh.
+
+The owned QA processes were stopped. Signed distribution and physical Windows and Linux live interaction are separate release checks.
