@@ -245,6 +245,22 @@ for (const project of [false, true])
         )
         .toBe(true);
     }
+    await page.getByRole('button', { name: 'Collapse canvas controls', exact: true }).click();
+    const inspector = page.getByRole('button', { name: 'Move Task inspector panel' });
+    for (const [width, height] of [
+      [820, 600],
+      [1100, 800],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await expect
+        .poll(async () => {
+          const heading = await inspector.boundingBox();
+          const toolbar = await page.getByRole('region', { name: 'Canvas controls' }).boundingBox();
+          return heading && toolbar ? heading.y - (toolbar.y + toolbar.height) : null;
+        })
+        .toBeGreaterThanOrEqual(4);
+      await expect(inspector).toBeVisible();
+    }
     expect(
       (await new AxeBuilder({ page }).include('.canvas-discovery').analyze()).violations,
     ).toEqual([]);

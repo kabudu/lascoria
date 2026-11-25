@@ -10,6 +10,7 @@ Project Mission brings an approved project plan, task dependencies, evidence, in
 - [x] Start an independent review in a separate Muse session with the acceptance criteria and exact tested diff. Record actionable findings against the owning plan task. Rechecking a changed integration revision requires fresh evidence.
 - [x] Exercise planning, stale evidence, conflicts, recovery, independent review and delivery in one end-to-end scenario. Check narrow layout, keyboard access and both themes.
 - [x] Verify the packaged macOS map at an 820-pixel window width. Keep the task inspector below the map in both themes so the next task remains visible. Cover that width in the controlled regression.
+- [x] Verify that the canvas toolbar clears the inspector header with the controls collapsed and expanded. Reproduce the overlap in the packaged macOS app, then confirm clearance at 820 and 1100 pixels and the layout at 1440 pixels. The browser regression covers standalone and Project sessions.
 - [ ] Review authority, compatibility, recovery and resource bounds. Run final-head local CI and hosted validation, and record evidence in the PR.
 - [x] Run the Project Mission acceptance workflow in the packaged macOS app with a live Muse subscription.
 

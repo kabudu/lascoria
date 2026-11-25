@@ -6,6 +6,7 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 - Plan a project on a shared mission canvas. Assign tasks to Muse sessions, link dependencies, and see which tasks are ready, need input, or depend on results that have changed.
 - Rehearse committed changes together in a dedicated worktree. Resolve conflicts, run tests, and send the tested diff to a separate read-only Muse session for review. Route findings to the tasks that own them.
+- Keep canvas controls clear of the inspector header in narrow windows, with the controls collapsed or expanded.
 
 ## 0.5.0 - 2026-11-24
 

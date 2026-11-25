@@ -1671,10 +1671,11 @@ export function App() {
   const [panelViewportHeight, setPanelViewportHeight] = useState(window.innerHeight);
   useLayoutEffect(() => {
     const chrome = chromeRef.current;
-    if (!chrome || prefs.canvasControlsCollapsed) {
+    if (!chrome) {
       setPanelTopInset(76);
       return;
     }
+    // Narrow chrome keeps the toolbar in its layout in both disclosure states.
     const measure = () => {
       setPanelViewportHeight(window.innerHeight);
       setPanelTopInset(
