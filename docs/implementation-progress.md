@@ -1013,3 +1013,10 @@ The [technical plan and running checklist](parallel-delivery.md) cover the four 
 - [x] Merge the validated parallel delivery milestone and prepare the v0.5.0 manifests, changelog and curated release notes.
 - [ ] Validate the reviewed release revision and inspect signed candidate artifacts.
 - [ ] Tag the accepted default-branch revision, publish the platform binaries and verify the public downloads and updater channels.
+
+## v0.6.0 release checklist
+
+- [x] Validate Project Mission in packaged macOS with a live Muse subscription, including Attention, stale evidence, conflict recovery, independent review and exact delivery to a disposable remote. See the [Project Mission acceptance evidence](project-mission.md#packaged-macos-and-live-muse-acceptance).
+- [x] Verify the toolbar and inspector do not overlap at 820- and 1100-pixel window widths with the canvas controls collapsed or expanded.
+- [x] Prepare v0.6.0 version metadata and curated release notes. Render the notes at desktop and mobile widths in light and dark mode.
+- [ ] Verify the signed candidate packages and macOS migration, then verify the production packages and updater manifests after publication.
