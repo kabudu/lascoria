@@ -4,6 +4,9 @@ User-visible changes in Lascoria. Detailed development and validation records li
 
 ## Unreleased
 
+- Plan a project on a shared mission canvas. Assign tasks to Muse sessions, link dependencies, and see which tasks are ready, need input, or depend on results that have changed.
+- Rehearse committed changes together in a dedicated worktree. Resolve conflicts, run tests, and send the tested diff to a separate read-only Muse session for review. Route findings to the tasks that own them.
+
 ## 0.5.0 - 2026-11-24
 
 - Show PR review, CI and base conflicts on the owning task card, with direct access to the right Workspace folder.

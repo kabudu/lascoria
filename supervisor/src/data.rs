@@ -826,6 +826,10 @@ pub fn remove_archived(
                 AND json_extract(value,'$.target.sessionId') != ?1),'[]') WHERE id=?2",
             params![id, crate::coordination::HANDOFFS],
         )?;
+        let row = db.get("sessions", id)?.context("Unknown session")?;
+        if let Some(project) = row["projectContext"]["id"].as_str() {
+            crate::mission::forget_session(&transaction, project, id)?;
+        }
         transaction.execute("DELETE FROM sessions WHERE id=?1", [id])?;
         crate::attachments::remove_session(root, id);
     }

@@ -4262,3 +4262,231 @@ button.link {
 .task-node[data-task-handoff] .node-activity-label {
   color: var(--accent);
 }
+
+/* Project Mission: the dependency map owns the space, details follow the current selection. */
+dialog.mission-dialog {
+  width: min(1260px, calc(100vw - 32px));
+  max-height: min(900px, calc(100vh - 32px));
+  padding: clamp(14px, 3vw, 28px);
+}
+.mission-dialog .dialog-heading {
+  margin-bottom: 14px;
+}
+.project-mission {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.mission-header,
+.mission-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mission-header {
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-block: 12px;
+  border-block: 1px solid var(--line);
+}
+.mission-header h3 {
+  max-width: 60ch;
+  font-size: clamp(1rem, 2.5vw, 1.3rem);
+  overflow-wrap: anywhere;
+}
+.mission-header .eyebrow,
+.mission-task-state {
+  color: var(--accent);
+  font-weight: 600;
+}
+.mission-plan-tools {
+  justify-content: flex-end;
+}
+.mission-plan-layout,
+.mission-integration {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+.mission-plan-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
+}
+.mission-integration {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.mission-map,
+.mission-empty {
+  min-width: 0;
+  min-height: 300px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 19px 19px;
+}
+.mission-map {
+  overflow: auto;
+  max-height: clamp(310px, 55vh, 600px);
+}
+.mission-map-stage {
+  position: relative;
+}
+.mission-map-stage svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  fill: var(--accent);
+}
+.mission-connector {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  opacity: 0.7;
+}
+.mission-node {
+  position: absolute;
+  display: grid;
+  align-content: center;
+  align-items: start;
+  justify-items: start;
+  gap: 9px;
+  width: 220px;
+  height: 140px;
+  padding: 14px;
+  border-radius: 13px;
+  text-align: left;
+  background: var(--panel);
+  box-shadow: 0 5px 15px #1615270a;
+}
+.mission-node strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.mission-node span,
+.mission-node small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+.mission-owner {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mission-node[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-surface);
+}
+.mission-node:is([data-state='needsInput'], [data-state='stale']) span {
+  color: var(--attention);
+}
+.mission-node[data-state='accepted'] span {
+  color: var(--success);
+}
+.mission-empty {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+}
+.mission-inspector,
+.mission-confirm {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.mission-inspector h4,
+.mission-inspector h5,
+.mission-confirm h4 {
+  margin: 0;
+}
+.mission-inspector > button,
+.mission-inspector details > button {
+  justify-self: start;
+  margin-bottom: 6px;
+}
+.mission-inspector fieldset {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.mission-inspector fieldset .row {
+  margin: 6px 0;
+}
+.mission-inspector fieldset input[type='checkbox'] {
+  margin: 0;
+}
+.mission-goal {
+  margin: 0;
+}
+.mission-evidence,
+.mission-error,
+.mission-abort {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--raised);
+}
+.mission-evidence {
+  color: var(--success);
+}
+.mission-error {
+  color: var(--error);
+}
+.mission-confirm {
+  background: var(--bg);
+}
+.mission-confirm pre {
+  margin: 0;
+  max-height: 260px;
+  background: var(--panel);
+}
+.mission-conflicts,
+.mission-findings,
+.mission-integration-state ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+}
+.mission-conflicts li,
+.mission-findings li {
+  display: grid;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+.mission-conflicts button {
+  justify-self: start;
+}
+.mission-integration-state ul span {
+  color: var(--muted);
+}
+@media (max-width: 780px) {
+  .mission-plan-layout,
+  .mission-integration {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mission-map {
+    min-height: 240px;
+    max-height: 34vh;
+  }
+  .mission-plan-tools {
+    justify-content: flex-start;
+  }
+}
+.mission-plan-layout.mission-plan-wide {
+  grid-template-columns: minmax(0, 1fr);
+}

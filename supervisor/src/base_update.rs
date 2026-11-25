@@ -24,13 +24,13 @@ fn root(row: &Value) -> Result<&Path> {
     ))
 }
 
-async fn read(root: &Path, args: &[&str]) -> Result<String> {
+pub(crate) async fn read(root: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8(
         git::run(root, args, Duration::from_secs(5), true).await?,
     )?)
 }
 
-async fn run(root: &Path, args: &[&str], index: Option<&Path>) -> Result<()> {
+pub(crate) async fn run(root: &Path, args: &[&str], index: Option<&Path>) -> Result<()> {
     let mut command = vec![
         "-c",
         "rerere.enabled=false",
@@ -75,7 +75,7 @@ fn valid_sha(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-async fn merge_head(root: &Path) -> Result<Option<String>> {
+pub(crate) async fn merge_head(root: &Path) -> Result<Option<String>> {
     let path = git_path(root, "MERGE_HEAD").await?;
     match tokio::fs::symlink_metadata(&path).await {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -97,7 +97,7 @@ fn merge_message(id: &str) -> String {
     format!("Lascoria PR base update ({id})")
 }
 
-async fn has_merge_message(root: &Path, id: &str) -> Result<bool> {
+pub(crate) async fn has_merge_message(root: &Path, message: &str) -> Result<bool> {
     let path = git_path(root, "MERGE_MSG").await?;
     if !tokio::fs::symlink_metadata(&path)
         .await
@@ -105,7 +105,7 @@ async fn has_merge_message(root: &Path, id: &str) -> Result<bool> {
     {
         return Ok(false);
     }
-    let expected = format!("{}\n", merge_message(id));
+    let expected = format!("{message}\n");
     let mut prefix = vec![0; expected.len()];
     let Ok(mut message) = tokio::fs::File::open(&path).await else {
         return Ok(false);
@@ -113,7 +113,7 @@ async fn has_merge_message(root: &Path, id: &str) -> Result<bool> {
     Ok(message.read_exact(&mut prefix).await.is_ok() && prefix == expected.as_bytes())
 }
 
-async fn guards(root: &Path) -> Result<()> {
+pub(crate) async fn guards(root: &Path) -> Result<()> {
     for flag in [
         "rebase-merge",
         "rebase-apply",
@@ -143,7 +143,7 @@ async fn guards(root: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn branch_head(root: &Path, row: &Value) -> Result<String> {
+pub(crate) async fn branch_head(root: &Path, row: &Value) -> Result<String> {
     ensure!(
         read(root, &["branch", "--show-current"]).await?.trim()
             == row["managedWorkspace"]["branch"]
@@ -154,7 +154,7 @@ async fn branch_head(root: &Path, row: &Value) -> Result<String> {
     Ok(read(root, &["rev-parse", "HEAD"]).await?.trim().to_owned())
 }
 
-async fn clean(root: &Path) -> Result<()> {
+pub(crate) async fn clean(root: &Path) -> Result<()> {
     ensure!(
         merge_head(root).await?.is_none(),
         "Finish or abort the pending merge first"
@@ -328,7 +328,7 @@ pub async fn status(db: &SharedDb, row: &Value, folder: Option<&str>) -> Result<
             && command["status"] != "rejected"
     });
     let owned = match candidate.and_then(|command| command["id"].as_str()) {
-        Some(id) => has_merge_message(root, id).await?,
+        Some(id) => has_merge_message(root, &merge_message(id)).await?,
         None => false,
     };
     let unmerged = read(

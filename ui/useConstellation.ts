@@ -26,10 +26,10 @@ function view(element: HTMLElement, prefs: Prefs) {
     )
     .map((el) => {
       const r = el.getBoundingClientRect();
-      return inflate(
-        { x: r.x - bounds.x, y: r.y - bounds.y, width: r.width, height: r.height },
-        12,
-      );
+      return {
+        ...inflate({ x: r.x - bounds.x, y: r.y - bounds.y, width: r.width, height: r.height }, 12),
+        discovery: el.classList.contains('canvas-discovery'),
+      };
     });
   return {
     offset,
@@ -166,6 +166,9 @@ export function useConstellation(
         tick((n) => n + 1);
       }
     }
+    // The discovery panel is driven by this count. Counting its own coverage can
+    // make it and other floating controls repeatedly move between two layouts.
+    const visibilityObstacles = v.obstacles.filter((o) => !o.discovery);
     const hidden = nodes
       .filter((n) => {
         const r = screen(positions[n.id] ?? fallback[n.id]);
@@ -174,7 +177,7 @@ export function useConstellation(
           r.y < 12 ||
           r.x + r.width > v.width - 12 ||
           r.y + r.height > v.height - 12 ||
-          v.obstacles.some((o) => intersects(r, o))
+          visibilityObstacles.some((o) => intersects(r, o))
         );
       })
       .map((n) => n.id);

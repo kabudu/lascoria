@@ -28,6 +28,8 @@ External credentials, platform access or human-trial gates will be recorded prec
 
 ## Running checklist
 
+Project Mission for v0.6.0 is tracked in the [Project Mission checklist](project-mission.md), including its controlled end-to-end scenario and outstanding release acceptance.
+
 Rows keep their dated evidence. Every implemented row is in the public builds; the [status summary](release-readiness.md#status-summary-4-november) gives the current shipped / incompletely validated / planned state for each gate.
 
 | Item | State | Evidence / next action |

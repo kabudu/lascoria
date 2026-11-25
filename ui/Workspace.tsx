@@ -43,6 +43,7 @@ export function Workspace({
   revealPullRequest,
   linkedTaskId,
   parallel,
+  missionIntegration,
 }: {
   session: SessionRow;
   commands: Json[];
@@ -52,6 +53,7 @@ export function Workspace({
   initialFolderId?: string;
   revealPullRequest?: boolean;
   linkedTaskId?: string;
+  missionIntegration?: boolean;
   parallel?: {
     task?: TaskRef;
     targets: HandoffTarget[];
@@ -104,6 +106,14 @@ export function Workspace({
   const canArchive = !busy && !running && (!session.state.current || !session.state.activeTurnId);
   const ready =
     session.state.current && !session.state.activeTurnId && !running && !busy && !archived;
+  const canTestOrDeliver =
+    ready ||
+    (!!missionIntegration &&
+      folderId === session.managedWorkspaces?.[0]?.folderId &&
+      !session.state.activeTurnId &&
+      !running &&
+      !busy &&
+      !archived);
   const canDiscard = !busy && !running && (ready || archived);
   useEffect(() => {
     const current = ++generation.current;
@@ -206,7 +216,7 @@ export function Workspace({
           key={folderId ?? session.id}
           sessionId={session.id}
           folderId={folderId}
-          ready={ready}
+          ready={canTestOrDeliver}
           busy={busy}
           commands={commands}
           version={deliveryVersion}
@@ -375,11 +385,11 @@ export function Workspace({
             />
           </label>
           {/* In an isolated worktree the delivery step holds the one primary action. */}
-          <button className={managed ? undefined : 'primary'} disabled={!ready}>
+          <button className={managed ? undefined : 'primary'} disabled={!canTestOrDeliver}>
             Run command
           </button>
         </form>
-        {!ready && !archived && (
+        {!canTestOrDeliver && !archived && (
           <small>Wait for a current, idle Muse session and any running test command.</small>
         )}
         {reuse && (
@@ -402,7 +412,7 @@ export function Workspace({
               </button>
               <button
                 className="primary"
-                disabled={!ready}
+                disabled={!canTestOrDeliver}
                 onClick={async () => {
                   const command = reuse.command;
                   setReuse(null);

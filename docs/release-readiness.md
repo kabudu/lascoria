@@ -59,6 +59,11 @@ The sections below keep the detailed acceptance contract and dated evidence. Dat
 
 - [x] Complete the four [parallel delivery workstreams](parallel-delivery.md) and the integrated three-session validation.
 - [x] Review the final revision and record local, native and hosted validation in [PR #38](https://github.com/kabudu/lascoria/pull/38) before merge.
+- [x] Publish the [signed v0.5.0 distribution](https://github.com/kabudu/lascoria/releases/tag/v0.5.0).
+
+### v0.6.0 Project Mission
+
+- [x] Validate the four Project Mission workstreams together against the controlled Muse provider, including dependency changes, a conflicting rehearsal, recovery, review findings, and delivery. See the [implementation and validation checklist](project-mission.md).
 - [ ] Validate and publish signed distribution in a separately authorised release.
 
 ## Release blockers
