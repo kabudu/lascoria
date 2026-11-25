@@ -9,6 +9,7 @@ Project Mission brings an approved project plan, task dependencies, evidence, in
 - [x] Prepare a revision-bound rehearsal from committed changes in the same repository. Use a separate isolated session for the rehearsal. Preserve the original repository and contributing branches, handle conflicts without guessing, and run the existing revision-bound checks on the combined changes.
 - [x] Start an independent review in a separate Muse session with the acceptance criteria and exact tested diff. Record actionable findings against the owning plan task. Rechecking a changed integration revision requires fresh evidence.
 - [x] Exercise planning, stale evidence, conflicts, recovery, independent review and delivery in one end-to-end scenario. Check narrow layout, keyboard access and both themes.
+- [x] Verify the packaged macOS map at an 820-pixel window width. Keep the task inspector below the map in both themes so the next task remains visible. Cover that width in the controlled regression.
 - [ ] Review authority, compatibility, recovery and resource bounds. Run final-head local CI and hosted validation, and record evidence in the PR.
 - [ ] Run native installed-app and live-provider acceptance before signed distribution.
 

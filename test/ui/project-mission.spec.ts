@@ -176,6 +176,17 @@ test('a mission recovers stale dependencies, resolves a rehearsal conflict and g
     await btn('Save plan').click();
     await expect(btn('Edit plan')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('mission-plan-light.png') });
+    await page.setViewportSize({ width: 820, height: 720 });
+    const map = dialog.getByRole('region', { name: 'Mission task map' });
+    const detail = dialog.getByRole('region', { name: 'Mission task detail' });
+    const mapBounds = (await map.boundingBox())!;
+    const detailBounds = (await detail.boundingBox())!;
+    const dependentBounds = (await pick('Verify both tasks').boundingBox())!;
+    expect(detailBounds.y).toBeGreaterThanOrEqual(mapBounds.y + mapBounds.height);
+    expect(dependentBounds.x + dependentBounds.width).toBeLessThanOrEqual(
+      mapBounds.x + mapBounds.width,
+    );
+    await page.setViewportSize({ width: 1440, height: 960 });
     await pick('Design the sum').click();
     await btn('Start this task').click();
     await taskState(0, 'needsInput');
@@ -291,7 +302,7 @@ test('a mission recovers stale dependencies, resolves a rehearsal conflict and g
     await pick('Design the sum').click();
     await btn('Open review findings').click();
     await expect(dialog.getByText('Document negative inputs in the interface.')).toBeVisible();
-    await page.setViewportSize({ width: 760, height: 720 });
+    await page.setViewportSize({ width: 820, height: 720 });
     const audit = () => new AxeBuilder({ page }).include('.mission-dialog').analyze();
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     expect((await audit()).violations).toEqual([]);
