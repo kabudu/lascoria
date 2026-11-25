@@ -1005,3 +1005,9 @@ Comparative developer trials and voluntary repeat-use evidence remain open. Plat
 ## v0.5.0 parallel delivery
 
 The [technical plan and running checklist](parallel-delivery.md) cover the four implementation slices and the three-session acceptance scenario. The focused native-bridge journey passed on macOS using real Git, Muse Code 1.4.25 and controlled model and GitHub fixtures. Cross-platform hosted verification and release distribution are separate gates.
+
+## v0.5.0 release checklist
+
+- [x] Merge the validated parallel delivery milestone and prepare the v0.5.0 manifests, changelog and curated release notes.
+- [ ] Validate the reviewed release revision and inspect signed candidate artifacts.
+- [ ] Tag the accepted default-branch revision, publish the platform binaries and verify the public downloads and updater channels.
