@@ -1,8 +1,12 @@
 # Roadmap
 
-Updated 24 November 2026, after [v0.4.0](https://github.com/kabudu/lascoria/releases/tag/v0.4.0). The source and binary releases are public. What has shipped, and what is implemented but still incompletely validated, is tracked in the [release-readiness status summary](docs/release-readiness.md#status-summary-4-november).
+Updated 25 November 2026, after [v0.5.0](https://github.com/kabudu/lascoria/releases/tag/v0.5.0). The source and binary releases are public. The [release-readiness backlog](docs/release-readiness.md) tracks implementation and acceptance.
 
-The proposed items below are **planned**: a proposal, not available, not scheduled and not authorised for implementation. An item moves into the release-readiness checklist only when it is explicitly scheduled, with its own acceptance criteria. Architecture constraints stay unchanged: the Rust supervisor owns durable control, the official Node SDK worker remains the production Muse integration, and Muse CLI/SDK pins stay exact, are upgraded together and are never auto-updated on a user's machine.
+## Project Mission (v0.6.0)
+
+In development. Give a saved project a shared goal and a spatial plan, see which tasks are ready or need input, and rehearse committed changes together in a dedicated worktree. A separate Muse session reviews the tested diff, and findings go back to the tasks that own them. The [Project Mission checklist](docs/project-mission.md) tracks validation.
+
+The proposed items below are candidates for future releases. An item moves into the release-readiness checklist when scheduled, with its own acceptance criteria.
 
 ## Git delivery (after D1)
 
@@ -18,7 +22,7 @@ Shipped in v0.4.0: PR observations and feedback in the task inspector, with bloc
 
 ## Parallel delivery (v0.5.0)
 
-Scheduled for implementation: task delivery cues, revision-bound task handoffs, file overlap between isolated worktrees, and reviewed PR base updates with conflict recovery. The [implementation plan and checklist](docs/parallel-delivery.md) define the three-session acceptance workflow.
+Shipped in v0.5.0: task delivery cues, revision-bound task handoffs, file overlap between isolated worktrees, and reviewed PR base updates with conflict recovery. The [implementation checklist](docs/parallel-delivery.md) records the three-session acceptance workflow.
 
 ## Editing and terminal (after D2)
 

@@ -27,6 +27,7 @@ export function ProjectStart({
   worktrees,
   maps,
   onMap,
+  openMission,
   permissionControls,
   defaultPermissionProfile = ':ask-me',
 }: {
@@ -39,6 +40,7 @@ export function ProjectStart({
   /** Per-user card positions for each Project's map, by Project and folder ID. */
   maps?: Record<string, MapLayout>;
   onMap?: (projectId: string, layout: MapLayout) => void;
+  openMission?: (projectId: string) => void;
   /** T4: start with the lowest reasoning effort the model offers. */
   economical?: boolean;
 }) {
@@ -438,6 +440,11 @@ export function ProjectStart({
         />
       </label>
       {error && <p role="alert">{error}</p>}
+      {saved && openMission && !locked && (
+        <button type="button" className="quiet-button" onClick={() => openMission(saved.id)}>
+          Open Project Mission
+        </button>
+      )}
       {busy ? (
         <p className="muted" aria-live="polite">
           {attempt?.operation === 'project/save'

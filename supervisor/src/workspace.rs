@@ -26,6 +26,11 @@ pub fn idle(db: &SharedDb, row: &Value) -> Result<()> {
         row["state"]["current"] == true,
         "Recover the session before changing its workspace"
     );
+    local_idle(db, row)
+}
+
+pub fn local_idle(db: &SharedDb, row: &Value) -> Result<()> {
+    ensure!(row["lifecycle"] != "archived", "Session is archived");
     ensure!(
         row["state"]["activeTurnId"].is_null(),
         "Wait for Muse to finish or cancel its turn"

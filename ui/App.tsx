@@ -40,6 +40,7 @@ import { SessionRelay } from './SessionRelay';
 import { SessionConnections } from './SessionConnections';
 import { RenameSession } from './RenameSession';
 import { SessionSettings } from './SessionSettings';
+import { ProjectMission } from './ProjectMission';
 import { Permissions, PermissionProfileField } from './Permissions';
 import { permissionSummary } from './permissionPresentation';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -398,11 +399,13 @@ export function App() {
     };
   }, []);
   const [startFolder, setStartFolder] = useState('');
+  const [missionProject, setMissionProject] = useState<string>();
   const [folderPicking, setFolderPicking] = useState(false);
   const [modal, setModal] = useState<
       | 'archive'
       | 'rename'
       | 'start'
+      | 'mission'
       | 'stop'
       | 'palette'
       | 'diagnostics'
@@ -697,6 +700,7 @@ export function App() {
         folderId?: string;
         jump: number;
         focus?: 'delivery' | 'handoffs' | 'overlap';
+        missionIntegration?: boolean;
       }
     | undefined
   >();
@@ -1532,15 +1536,18 @@ export function App() {
   function jumpWorkspace(
     target: { sessionId: string; turnId?: string; folderId?: string },
     focus: 'delivery' | 'handoffs' | 'overlap',
+    missionIntegration?: boolean,
   ) {
     const row = status.sessions.find((row) => row.id === target.sessionId);
     if (!row) return;
     const node = tasks(row, prefs).find((node) => !node.item && node.turnId === target.turnId);
     if (node) showTask(node);
+    else chooseSession(row);
     setAttentionWorkspace((previous) => ({
       sessionId: target.sessionId,
       folderId: target.folderId,
       focus,
+      missionIntegration,
       jump: (previous?.jump ?? 0) + 1,
     }));
     setTab('workspace');
@@ -1586,6 +1593,7 @@ export function App() {
   useEffect(() => {
     if (!decisionFocus) return;
     const heading = document.getElementById(decisionFocus.id);
+    if (!heading) return;
     if (
       !heading?.closest('.attention-decision') &&
       (decisionFocus.sessionId !== session?.id || tab !== 'transcript')
@@ -1594,7 +1602,7 @@ export function App() {
     heading?.scrollIntoView({ block: 'nearest' });
     heading?.focus({ preventScroll: true });
     setDecisionFocus(undefined);
-  }, [decisionFocus, session?.id, tab]);
+  }, [decisionFocus, session?.id, tab, status.version]);
   function focusAttention(entry: (typeof queue)[number], destination: string) {
     if (entry.kind === 'approval' || entry.kind === 'question') {
       setDecisionFocus({ id: `decision-${entry.kind}-${entry.id}`, sessionId: entry.sessionId });
@@ -1663,10 +1671,11 @@ export function App() {
   const [panelViewportHeight, setPanelViewportHeight] = useState(window.innerHeight);
   useLayoutEffect(() => {
     const chrome = chromeRef.current;
-    if (!chrome || prefs.canvasControlsCollapsed) {
+    if (!chrome) {
       setPanelTopInset(76);
       return;
     }
+    // Narrow chrome keeps the toolbar in its layout in both disclosure states.
     const measure = () => {
       setPanelViewportHeight(window.innerHeight);
       setPanelTopInset(
@@ -1695,7 +1704,9 @@ export function App() {
     observer.observe(rail);
     return () => observer.disconnect();
   }, [showDiscovery]);
-  const discoveryInset = showDiscovery ? 48 + noticeHeight + discoveryHeight + 12 : 12;
+  // Keep the same allowance when the last hidden card comes into view. The rail
+  // must never resize a floating panel into hiding that card again.
+  const discoveryInset = nodes.length ? 60 + noticeHeight + Math.max(60, discoveryHeight) : 12;
   // When expanded tools displace the left column, keep its two panels usable.
   const sessionsLayout = prefs.panels?.sessions;
   const stackedPanels =
@@ -2357,6 +2368,17 @@ export function App() {
                 </div>
                 <p className="muted">Tasks, decisions and the evidence behind a change.</p>
               </div>
+              {session.projectContext && status.features?.includes('projectMission') && (
+                <button
+                  className="attention-jump"
+                  onClick={() => {
+                    setMissionProject(session.projectContext!.id);
+                    setModal('mission');
+                  }}
+                >
+                  Project Mission
+                </button>
+              )}
               {waiting.length > 0 && (
                 <button
                   className="attention-jump"
@@ -3265,6 +3287,10 @@ export function App() {
                     {tab === 'workspace' && (
                       <Workspace
                         key={`${session.id}:${session.projectContext?.revision ?? 0}:${attentionWorkspace?.jump ?? 0}`}
+                        missionIntegration={
+                          attentionWorkspace?.sessionId === session.id &&
+                          attentionWorkspace.missionIntegration
+                        }
                         initialFolderId={
                           attentionWorkspace?.sessionId === session.id
                             ? attentionWorkspace.folderId
@@ -4205,45 +4231,86 @@ export function App() {
             ? 'settings-dialog'
             : modal === 'update'
               ? 'update-dialog'
-              : undefined
+              : modal === 'mission'
+                ? 'mission-dialog'
+                : undefined
         }
       >
         <div className="dialog-heading">
           <h2 id="dialog-heading">
             {isSettingsSection(modal)
               ? 'Settings'
-              : modal === 'update'
-                ? 'Update Lascoria'
-                : modal === 'archive'
-                  ? 'Archive session'
-                  : modal === 'rename'
-                    ? 'Rename session'
-                    : modal === 'inbox'
-                      ? 'New local messages'
-                      : modal === 'help'
-                        ? 'Lascoria help'
-                        : modal === 'search'
-                          ? 'Search history'
-                          : modal === 'relay'
-                            ? 'Local session messages'
-                            : modal === 'account'
-                              ? 'Your Muse connection'
-                              : modal === 'start'
-                                ? 'Start a Muse session'
-                                : modal === 'stop'
-                                  ? 'Log out of Lascoria'
-                                  : modal === 'diagnostics'
-                                    ? 'Performance diagnostics'
-                                    : modal === 'permissions'
-                                      ? 'Session permissions'
-                                      : modal === 'settings'
-                                        ? 'Session model and effort'
-                                        : 'Command palette'}
+              : modal === 'mission'
+                ? 'Project Mission'
+                : modal === 'update'
+                  ? 'Update Lascoria'
+                  : modal === 'archive'
+                    ? 'Archive session'
+                    : modal === 'rename'
+                      ? 'Rename session'
+                      : modal === 'inbox'
+                        ? 'New local messages'
+                        : modal === 'help'
+                          ? 'Lascoria help'
+                          : modal === 'search'
+                            ? 'Search history'
+                            : modal === 'relay'
+                              ? 'Local session messages'
+                              : modal === 'account'
+                                ? 'Your Muse connection'
+                                : modal === 'start'
+                                  ? 'Start a Muse session'
+                                  : modal === 'stop'
+                                    ? 'Log out of Lascoria'
+                                    : modal === 'diagnostics'
+                                      ? 'Performance diagnostics'
+                                      : modal === 'permissions'
+                                        ? 'Session permissions'
+                                        : modal === 'settings'
+                                          ? 'Session model and effort'
+                                          : 'Command palette'}
           </h2>
           <button onClick={() => setModal(null)} aria-label="Close dialog">
             ×
           </button>
         </div>
+        {modal === 'mission' && missionProject && (
+          <ProjectMission
+            key={missionProject}
+            projectId={missionProject}
+            sessions={status.sessions}
+            canStart={runtimeReady && !(account?.managed && !account.authenticated)}
+            refreshStatus={refresh}
+            openSession={(sessionId, turnId, destination) => {
+              setModal(null);
+              if (destination === 'workspace') {
+                jumpWorkspace({ sessionId, turnId }, 'delivery', true);
+                return;
+              }
+              const row = status.sessions.find((r) => r.id === sessionId);
+              if (!row) return;
+              const node = tasks(row, prefs).find((n) => !n.item && n.turnId === turnId);
+              if (node) showTask(node);
+              else {
+                chooseSession(row);
+                setTab('transcript');
+              }
+              openInspector();
+              if (destination) {
+                setCollapsedForDecision(undefined);
+                setDecisionFocus({
+                  id: `decision-${destination.kind}-${destination.id}`,
+                  sessionId,
+                });
+                void refresh().catch((e) => setError(String(e)));
+              }
+            }}
+            sendFinding={(sessionId, turnId, note) => {
+              setModal(null);
+              appendHandoff({ sessionId, turnId }, `\n\nIndependent review finding:\n${note}`);
+            }}
+          />
+        )}
         {modal === 'update' && (
           <div className="update-dialog-content">
             <UpdateSettings
@@ -4571,6 +4638,14 @@ export function App() {
         )}
         {modal === 'start' && startKind === 'project' && status.features?.includes('projects') && (
           <ProjectStart
+            openMission={
+              status.features?.includes('projectMission')
+                ? (projectId) => {
+                    setMissionProject(projectId);
+                    setModal('mission');
+                  }
+                : undefined
+            }
             disabled={!runtimeReady || !!(account?.managed && !account.authenticated)}
             worktrees={Boolean(status.features?.includes('projectWorktrees'))}
             permissionControls={Boolean(status.features?.includes('sessionPermissions'))}

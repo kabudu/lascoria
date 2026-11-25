@@ -10,6 +10,7 @@ mod dedicated;
 mod delivery;
 mod git;
 mod metrics;
+mod mission;
 mod peer;
 mod projects;
 mod relay;
@@ -61,6 +62,7 @@ const FEATURES: &[&str] = &[
     "decisionTool",
     "idleStop",
     "parallelDelivery",
+    "projectMission",
 ];
 
 use anyhow::{Context, Result, bail, ensure};
@@ -377,7 +379,7 @@ impl Actor {
         Ok(())
     }
     async fn handle(&mut self, request: Value) -> Result<Value> {
-        let operation = request["operation"]
+        let mut operation = request["operation"]
             .as_str()
             .context("Operation required")?;
         if operation == "status" {
@@ -388,8 +390,47 @@ impl Actor {
                 json!({"pid":std::process::id(),"version":db.version(),"appVersion":env!("CARGO_PKG_VERSION"),"features":FEATURES,"relayUnread":relay["unread"],"relayConnections":relay["connections"],"sessions":session_names::list(&db)?,"commands":commands,"storage":unsaved::report(),"dataRecovery":data::recovery(&db)?}),
             );
         }
-        let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+        let mut params = request.get("params").cloned().unwrap_or_else(|| json!({}));
         ensure!(params.is_object(), "Params must be an object");
+        if operation.starts_with("mission/") {
+            let id = request["id"]
+                .as_str()
+                .context("Mission request identity required")?;
+            ensure!(
+                !id.is_empty()
+                    && id.len() <= 100
+                    && id
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte)),
+                "Invalid mission request identity"
+            );
+            params = match operation {
+                "mission/launch" => mission::launch(&self.db, &params, id).await?,
+                "mission/reviewPreview" | "mission/review" => {
+                    let session = params["sessionId"]
+                        .as_str()
+                        .context("Choose a reviewer session")?;
+                    let response = self
+                        .workers
+                        .get_mut(session)
+                        .context("Reconnect the reviewer session before continuing")?
+                        .call(json!({"id":Uuid::new_v4().to_string(),
+                            "operation":"permissions","params":{"sessionId":session}}))
+                        .await?;
+                    ensure!(
+                        response.get("error").is_none(),
+                        "Muse could not confirm reviewer access. Try again."
+                    );
+                    let effective = &response["result"]["effective"];
+                    if operation == "mission/reviewPreview" {
+                        return mission::review_preview(&self.db, &params, effective).await;
+                    }
+                    mission::review_launch(&self.db, &params, id, effective).await?
+                }
+                _ => return mission::handle(&self.db, operation, &params, id).await,
+            };
+            operation = "turn";
+        }
         if operation.starts_with("relay/") {
             let id = request["id"].as_str().context("Request ID required")?;
             ensure!(
@@ -459,6 +500,10 @@ impl Actor {
                     None => false,
                 };
                 if !admitted {
+                    ensure!(
+                        !mission::integration_session(&self.db, &row)?,
+                        "This session is reserved for mission integration"
+                    );
                     workspace::idle(&self.db, &row)?;
                 }
                 let (command_id, wire, reserved) = relay::delivery(self.db.clone(), &params)?;
@@ -578,6 +623,7 @@ impl Actor {
             }
             if operation == "session/archive" {
                 ensure!(row["lifecycle"] != "archived", "Session already archived");
+                mission::check_archive(&self.db, &row)?;
                 ensure!(
                     row["state"]["current"] != true || row["state"]["activeTurnId"].is_null(),
                     "Cancel the active Muse turn before archiving"
@@ -587,10 +633,17 @@ impl Actor {
                     "Wait for the test command to finish"
                 );
             } else if !(operation == "workspace/discard" && row["lifecycle"] == "archived") {
-                workspace::idle(&self.db, &row)?;
+                if ["workspace/run", "workspace/push", "workspace/pullRequest"].contains(&operation)
+                    && mission::integration_worktree(&self.db, &row)?
+                {
+                    workspace::local_idle(&self.db, &row)?;
+                } else {
+                    workspace::idle(&self.db, &row)?;
+                }
             }
             if ["workspace/push", "workspace/pullRequest"].contains(&operation) {
                 ensure!(row["lifecycle"] != "archived", "This session is archived");
+                mission::delivery_gate(&self.db, &row).await?;
                 ensure!(
                     !delivery::running(&self.db, session)?,
                     "Wait for the current push or pull request to finish"
@@ -1027,6 +1080,10 @@ impl Actor {
         );
         let mut replacement = None;
         if operation == "turn" {
+            ensure!(
+                !mission::integration_session(&self.db, &row)?,
+                "This session is reserved for mission integration"
+            );
             projects::settle_pending(&self.db.lock().unwrap(), session)?;
             row = self.row(session)?;
             replacement = projects::replacement(&self.db.lock().unwrap(), &row, &params)?;
@@ -1375,6 +1432,12 @@ async fn connection(
             return timeout(Duration::from_secs(15), coordination::overlaps(&db)).await
                 .context("The overlap observation timed out")?;
         }
+        if request["operation"] == "mission/get" {
+            return timeout(Duration::from_secs(25), mission::handle(
+                &db, "mission/get", &request["params"],
+                request["id"].as_str().context("Mission request identity required")?,
+            )).await.context("Mission evidence check timed out")?;
+        }
         if request["operation"].as_str().is_some_and(|op| op.starts_with("handoff/")) {
             return timeout(Duration::from_secs(28), coordination::handoff(
                 &db, request["operation"].as_str().unwrap(), &request["params"],
@@ -1695,7 +1758,7 @@ async fn supervisor_main() -> Result<()> {
                     if stop { let _ = timeout(Duration::from_secs(5), call.delivered).await; break; }
                     continue;
                 }
-                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "permissionPreflight", "setPermissionProfile", "setApprovalMode", "compact", "answer", "decide", "relay/deliver", "relay/workspaceTrust"].iter().any(|op| call.request["operation"] == *op)
+                if ["start", "turn", "steer", "resume", "setModel", "setEffort", "permissionPreflight", "setPermissionProfile", "setApprovalMode", "compact", "answer", "decide", "relay/deliver", "relay/workspaceTrust", "mission/launch", "mission/review"].iter().any(|op| call.request["operation"] == *op)
                     && !account_ready.load(std::sync::atomic::Ordering::SeqCst) {
                     let _ = call.response.send(Err(anyhow::anyhow!("Sign in or reconnect your Muse account before continuing")));
                     continue;
